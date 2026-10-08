@@ -1,0 +1,63 @@
+{
+  "name": "rowfish",
+  "version": "0.1.0",
+  "description": "A macOS-first desktop app starter built with Bun, Electron, React and TypeScript",
+  "private": true,
+  "type": "module",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "bun scripts/dev.ts",
+    "dev:bare": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron ./out/main/index.js",
+    "preview": "electron-vite preview",
+    "clean": "rm -rf out release",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "assets": "bun scripts/make-tray-icon.ts",
+    "dist": "electron-builder",
+    "dist:dir": "electron-builder --dir",
+    "dist:mac": "electron-builder --mac",
+    "dist:ci": "electron-builder --publish never --mac",
+    "postinstall": "install-electron"
+  },
+  "build": {
+    "appId": "com.pylotlight.rowfish",
+    "productName": "Rowfish",
+    "directories": {
+      "buildResources": "build",
+      "output": "release"
+    },
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "files": ["out/**/*", "build/icon.png", "package.json"],
+    "mac": {
+      "icon": "build/icon.icns",
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "target": [
+        { "target": "zip", "arch": ["arm64", "x64"] },
+        { "target": "dmg", "arch": ["arm64", "x64"] }
+      ]
+    }
+  },
+  "devDependencies": {
+    "@electron-toolkit/utils": "^4.0.0",
+    "@types/bun": "latest",
+    "@types/node": "^26.6.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.5.1",
+    "electron-builder": "^26.0.0",
+    "electron-vite": "^5.0.0",
+    "typescript": "~5.9.2",
+    "vite": "^8.3.2"
+  },
+  "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  }
+}

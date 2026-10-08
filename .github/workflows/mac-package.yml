@@ -1,0 +1,40 @@
+name: mac-package
+
+# Manual smoke-package job: uploads arm64 and x64 DMG/ZIP artifacts, but never publishes a release.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-package-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: macOS arm64 + x64
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run test
+      - run: bun run typecheck
+      - run: bun run build
+      - name: package unsigned Mac apps
+        run: bun run dist:ci
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rowfish-macos-unsigned-${{ github.sha }}
+          path: |
+            release/Rowfish-*-mac-arm64.dmg
+            release/Rowfish-*-mac-arm64.zip
+            release/Rowfish-*-mac-x64.dmg
+            release/Rowfish-*-mac-x64.zip
+          if-no-files-found: error
+          retention-days: 14
