@@ -4,6 +4,8 @@ import { Client as PostgresClient } from 'pg'
 import Cursor from 'pg-cursor'
 import type {
   DatabaseCell,
+  DatabaseBrowserDatabase,
+  DatabaseBrowserTable,
   DatabaseConnectionInput,
   DatabaseQueryRequest,
   DatabaseRow
@@ -16,11 +18,15 @@ interface WorkerConfig extends DatabaseConnectionInput {}
 
 type WorkerRequest =
   | { type: 'run'; request: DatabaseQueryRequest }
+  | { type: 'inspect-databases'; requestId: string }
+  | { type: 'inspect-tables'; requestId: string }
   | { type: 'close' }
 
 type WorkerEvent =
   | { type: 'ready' }
   | { type: 'connect-error'; message: string }
+  | { type: 'inspection-result'; requestId: string; databases?: DatabaseBrowserDatabase[]; tables?: DatabaseBrowserTable[] }
+  | { type: 'inspection-error'; requestId: string; message: string }
   | { type: 'rows'; queryId: string; columns: string[]; rows: DatabaseRow[]; receivedRows: number }
   | { type: 'complete'; queryId: string; receivedRows: number; elapsedMs: number; truncated: boolean }
   | { type: 'error'; queryId: string; message: string }
@@ -102,7 +108,7 @@ async function openConnection(): Promise<void> {
     postgres = new PostgresClient({
       host: config.host,
       port: config.port,
-      database: config.database,
+      database: config.database || 'postgres',
       user: config.username || undefined,
       password: config.password || undefined,
       ssl: config.tls ? { rejectUnauthorized: true } : false,
@@ -120,7 +126,7 @@ async function openConnection(): Promise<void> {
       ? `${encodeURIComponent(config.username)}${config.password ? `:${encodeURIComponent(config.password)}` : ''}@`
       : ''
     const authSource = config.username ? `?authSource=${encodeURIComponent(config.database)}&tls=${String(config.tls)}` : `?tls=${String(config.tls)}`
-    const uri = `mongodb://${credentials}${host}:${config.port}/${encodeURIComponent(config.database)}${authSource}`
+    const uri = config.connectionString || `mongodb://${credentials}${host}:${config.port}/${encodeURIComponent(config.database)}${authSource}`
     mongo = new MongoClient(uri, {
       connectTimeoutMS: 8_000,
       serverSelectionTimeoutMS: 8_000,
@@ -254,6 +260,44 @@ async function readMongo(request: DatabaseQueryRequest): Promise<void> {
   })
 }
 
+async function inspect(request: Extract<WorkerRequest, { type: 'inspect-databases' | 'inspect-tables' }>): Promise<void> {
+  try {
+    if (!postgres || config.kind !== 'postgres') throw new Error('The PostgreSQL browser is only available for PostgreSQL connections.')
+    if (request.type === 'inspect-databases') {
+      const result = await postgres.query<{ name: string; canConnect: boolean }>(`
+        SELECT datname AS name,
+          (datallowconn AND has_database_privilege(datname, 'CONNECT')) AS "canConnect"
+        FROM pg_database
+        WHERE NOT datistemplate
+        ORDER BY datname
+      `)
+      post({ type: 'inspection-result', requestId: request.requestId, databases: result.rows.map((row) => ({ name: row.name, canConnect: row.canConnect })) })
+      return
+    }
+
+    const result = await postgres.query<{ schema: string; name: string; kind: DatabaseBrowserTable['kind'] }>(`
+      SELECT n.nspname AS schema,
+        c.relname AS name,
+        CASE c.relkind
+          WHEN 'v' THEN 'view'
+          WHEN 'm' THEN 'materialized view'
+          WHEN 'f' THEN 'foreign table'
+          WHEN 'p' THEN 'partitioned table'
+          ELSE 'table'
+        END AS kind
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f')
+        AND n.nspname <> 'information_schema'
+        AND n.nspname !~ '^pg_'
+      ORDER BY n.nspname, c.relname
+    `)
+    post({ type: 'inspection-result', requestId: request.requestId, tables: result.rows })
+  } catch (error) {
+    post({ type: 'inspection-error', requestId: request.requestId, message: safeError(error) })
+  }
+}
+
 async function run(request: DatabaseQueryRequest): Promise<void> {
   try {
     if (config.kind === 'postgres') await readPostgres(request)
@@ -275,6 +319,10 @@ parentPort?.on('message', (message: WorkerRequest) => {
         parentPort?.close()
       }
     })()
+    return
+  }
+  if (message.type === 'inspect-databases' || message.type === 'inspect-tables') {
+    void inspect(message)
     return
   }
   void run(message.request)

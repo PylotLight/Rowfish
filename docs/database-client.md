@@ -1,12 +1,22 @@
 # Database client
 
-Rowfish connects to PostgreSQL and MongoDB only after you enter connection details and choose **Connect**. It does not maintain a saved-connection vault.
+Rowfish connects to PostgreSQL and MongoDB when you enter connection details and choose **Connect**. The connection dialog saves profiles by default so they remain available between app sessions. Saved profiles are not live sockets: after a restart, choose a saved server in the sidebar to reconnect.
 
-## Connect
+## Save and reconnect
 
 Provide a display name, database type, host, port, database and optional username/password. PostgreSQL defaults to port `5432`; MongoDB defaults to `27017`. The **Require TLS** option enables certificate-verified TLS; certificates must be trusted by the operating system.
 
-Connection details and credentials are passed through the typed Electron bridge and held in application and worker memory only. They are not written to disk or restored after restart. Closing a connection or the app terminates the worker and releases its in-memory credentials. Rowfish allows up to **8 active connections**.
+Profile metadata is stored in Rowfish's app-specific user-data directory. If you save a password, Electron `safeStorage` encrypts it using the operating system credential store. Rowfish does not fall back to plaintext password storage; if secure storage is unavailable, turn off **Save this connection** to connect for the current session only. Choosing **Forget** removes the saved profile but does not disconnect an already-open session.
+
+For a quick MongoDB connection, choose MongoDB, enable **Connect with a connection string**, paste a standard `mongodb://` or `mongodb+srv://` URI, enter a display name, and choose **Connect**. The URI is passed to the MongoDB driver intact so options such as replica sets, Atlas SRV discovery, authentication source and TLS settings are retained. When saving is enabled, the full URI is encrypted as a secret and is never returned to the renderer after connection.
+
+Each live connection uses a worker. Rowfish supports up to **8 active connections**, including PostgreSQL server-browser and opened database sessions.
+
+## PostgreSQL server browser
+
+To browse multiple databases on one PostgreSQL server, choose **Browse all databases on this server** instead of entering a database name. Rowfish uses the `postgres` maintenance database to list databases and indicates which ones the current PostgreSQL user can connect to. Select an accessible database in the sidebar to open a separate session; Rowfish then lists its tables and views by schema.
+
+This mode does not grant database access or bypass PostgreSQL permissions. It depends on being able to connect to the server's `postgres` maintenance database; if that is unavailable, connect directly to a database you can access instead. A direct PostgreSQL connection also shows its tables and views in the sidebar. Select a table to place a schema-qualified `SELECT * ... LIMIT 100` starter query in the editor; review it before running.
 
 ## Run a query
 
@@ -48,15 +58,16 @@ Choosing **Cancel** terminates the worker to interrupt server-side work. Rowfish
 
 ## Current scope
 
-Rowfish does not yet include saved connections, connection-string import, SSH tunnels, a custom CA-file picker, connection sync, result export, PostgreSQL query parameters or multi-statement execution. MongoDB aggregation, update and delete operations are not exposed. The row cap is not a full export workflow.
+Saved-profile sync, SSH tunnels, a custom CA-file picker, result export, PostgreSQL query parameters and multi-statement execution are not included. MongoDB aggregation, update and delete operations are not exposed. The row cap is not a full export workflow.
 
 The checked-in [PostgreSQL seed script](examples/postgres.sql) and [MongoDB seed script](examples/mongodb.js) create matching fictional order examples for local demos. The screenshots in the [README](../README.md) use these same synthetic records; they are interface previews, not live database sessions.
 
 ## Test against a database
 
 1. Start the app with `bun run dev`.
-2. Connect to a reachable PostgreSQL or MongoDB server using valid credentials.
-3. Run a small read query or filter and confirm that rows arrive in batches.
-4. Change the row limit, try local result search, then choose **Cancel** and reconnect before another query.
+2. Connect to a reachable PostgreSQL or MongoDB server using valid credentials; leave **Save this connection** enabled to test profile persistence.
+3. For PostgreSQL, try both a direct database connection and **Browse all databases on this server**. Open an accessible database, select a table in the sidebar, and run the generated query.
+4. Quit and relaunch. Confirm the saved profile remains visible, reconnect works, and live sessions are not automatically reopened.
+5. Run a small read query or filter, change the row limit, try local result search, then choose **Cancel** and reconnect before another query.
 
-Unit tests and build checks cover contracts, filter restrictions, bounds and worker startup/error handling. A successful live database session still requires a reachable server and valid credentials.
+Unit tests and build checks cover query guards, identifier escaping, bounds and worker behavior. A successful live database session still requires a reachable server and valid credentials.

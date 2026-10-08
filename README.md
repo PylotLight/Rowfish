@@ -14,7 +14,9 @@ These previews show the real Rowfish interface with synthetic order data. Their 
 
 ## What it does
 
-- Connect to PostgreSQL or MongoDB when you choose **Connect**. Connection details and credentials stay in memory for the session; Rowfish does not save or restore them.
+- Save PostgreSQL or MongoDB connection profiles between sessions; passwords and MongoDB URI secrets are encrypted with the operating system credential store.
+- Quickly connect to MongoDB by pasting a `mongodb://` or `mongodb+srv://` URI and choosing a display name.
+- Browse accessible PostgreSQL databases on a server, inspect schemas and tables in the sidebar, and load a table query with one click.
 - Run one PostgreSQL statement at a time, or query a MongoDB collection with a JSON `find` filter.
 - Stream query results into a virtualized grid, filter received rows locally, choose a result limit and cancel a running query.
 - Keep query work off the UI thread. Results are bounded to 10,000 rows and 16 MB; queries time out after 120 seconds. Rowfish supports up to eight active connections.

@@ -172,7 +172,7 @@ select option { background: #161a1f; }
 .db-connect-button span { font-size: 17px; }
 .db-connect-button:hover { background: rgba(126, 226, 168, 0.2); }
 
-.db-connection-list { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
+.db-connection-list { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 6px; margin-top: 16px; overflow-y: auto; scrollbar-color: rgba(255, 255, 255, 0.16) transparent; }
 .db-connection { position: relative; display: flex; align-items: center; border: 1px solid transparent; border-radius: 11px; }
 .db-connection.selected { background: rgba(255, 255, 255, 0.075); border-color: rgba(255, 255, 255, 0.08); }
 .db-connection-select { display: flex; align-items: center; gap: 10px; min-width: 0; width: 100%; padding: 10px 29px 10px 9px; border: 0; background: transparent; color: var(--text); text-align: left; }
@@ -191,6 +191,37 @@ select option { background: #161a1f; }
 .db-empty-symbol { display: block; margin-bottom: 10px; color: rgba(242, 244, 246, 0.26); font-size: 28px; }
 .db-empty-rail b { display: block; color: rgba(242, 244, 246, 0.82); font-size: 12.5px; }
 .db-empty-rail p { margin: 7px 0 0; font-size: 11.5px; line-height: 1.5; }
+.db-browser-server { min-width: 0; }
+.db-browser-section-title { padding: 11px 10px 5px; color: rgba(242, 244, 246, 0.42); font-size: 8px; font-weight: 750; letter-spacing: 0.12em; }
+.db-browser-objects { display: flex; flex-direction: column; gap: 2px; padding: 0 4px 7px 15px; }
+.db-browser-databases { padding-left: 12px; }
+.db-browser-database-group { position: relative; min-width: 0; }
+.db-browser-database,
+.db-browser-object { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 27px; padding: 5px 7px; overflow: hidden; border: 0; border-radius: 7px; background: transparent; color: rgba(242, 244, 246, 0.72); font: inherit; font-size: 10px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.db-browser-database:hover,
+.db-browser-object:hover { background: rgba(255, 255, 255, 0.065); color: var(--text); }
+.db-browser-database:disabled { color: rgba(242, 244, 246, 0.36); cursor: default; }
+.db-browser-database-group > .db-browser-database { padding-right: 26px; }
+.db-child-close { position: absolute; top: 3px; right: 4px; width: 19px; height: 21px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font: inherit; font-size: 15px; line-height: 1; cursor: pointer; }
+.db-child-close:hover { background: rgba(229, 99, 111, 0.12); color: #ff9ca5; }
+.db-browser-database > span:first-child { width: 10px; color: rgba(242, 244, 246, 0.4); }
+.db-browser-database > span:nth-child(2),
+.db-browser-object > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; }
+.db-browser-schema { display: flex; flex-direction: column; gap: 1px; }
+.db-browser-schema-name { padding: 6px 7px 3px; color: rgba(242, 244, 246, 0.4); font-size: 8.5px; font-weight: 650; }
+.db-browser-object { min-height: 25px; padding-left: 12px; color: rgba(242, 244, 246, 0.62); }
+.db-browser-object > span:first-child { color: #9ec4ff; font-size: 10px; }
+.db-browser-hint { display: flex; align-items: center; gap: 7px; padding: 6px 8px; color: var(--muted); font-size: 9px; line-height: 1.45; }
+.db-browser-indent { margin-left: 16px; }
+.db-browser-error { padding: 6px 8px; color: #ffb4bb; font-size: 9px; line-height: 1.4; overflow-wrap: anywhere; }
+.db-saved-connections { margin-top: 8px; padding-top: 5px; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.db-saved-profile { position: relative; display: flex; align-items: center; border: 1px solid transparent; border-radius: 10px; }
+.db-saved-profile.active { border-color: rgba(126, 226, 168, 0.11); background: rgba(126, 226, 168, 0.04); }
+.db-saved-connect { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 8px 30px 8px 7px; border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.db-saved-connect:disabled { opacity: 0.65; cursor: default; }
+.db-delete-saved { right: 7px; }
+.db-saved-profile:hover .db-delete-saved { display: block; }
+.db-rail-error { flex: 0 0 auto; max-height: 100px; overflow: auto; }
 .db-rail-footer { display: flex; align-items: center; gap: 10px; margin-top: auto; padding: 12px 7px 2px; border-top: 1px solid var(--border); color: var(--muted); font-size: 10.5px; line-height: 1.45; }
 .db-security-mark { color: var(--mint); font-size: 20px; }
 
@@ -255,6 +286,9 @@ select option { background: #161a1f; }
 .db-grid-footer { display: flex; justify-content: space-between; gap: 12px; padding: 8px 13px; border-top: 1px solid var(--border); color: var(--muted); font-size: 9px; }
 
 .db-empty-workspace { flex: 1; min-height: 300px; display: flex; align-items: center; justify-content: center; }
+.db-server-welcome { flex-direction: column; padding: 28px; color: var(--muted); text-align: center; }
+.db-server-welcome b { margin-top: 10px; color: rgba(242, 244, 246, 0.84); font-size: 13px; }
+.db-server-welcome p { max-width: 380px; margin: 7px 0 0; font-size: 11px; line-height: 1.55; }
 
 .db-modal-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(3, 5, 7, 0.7); backdrop-filter: blur(8px); }
 .db-connect-modal { width: min(100%, 560px); max-height: min(90vh, 760px); overflow: auto; padding: 22px; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 18px; background: rgba(23, 27, 32, 0.97); box-shadow: 0 28px 100px rgba(0, 0, 0, 0.48); }
@@ -270,6 +304,7 @@ select option { background: #161a1f; }
 .db-form-field input:focus,
 .db-form-field select:focus { border-color: rgba(126, 226, 168, 0.42); }
 .db-tls-toggle { display: flex; align-items: center; gap: 9px; margin-top: 16px; cursor: pointer; }
+.db-uri-toggle { grid-column: 1 / -1; margin-top: 2px; }
 .db-tls-toggle input { accent-color: var(--mint); }
 .db-tls-toggle span { display: flex; flex-direction: column; gap: 3px; }
 .db-tls-toggle b { font-size: 10.5px; }

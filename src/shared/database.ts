@@ -9,6 +9,8 @@ export interface DatabaseConnectionInput {
   username: string
   password: string
   tls: boolean
+  serverMode: boolean
+  connectionString?: string
 }
 
 export interface DatabaseConnectionSummary {
@@ -19,6 +21,25 @@ export interface DatabaseConnectionSummary {
   port: number
   database: string
   connectedAt: number
+  serverMode?: boolean
+  savedConnectionId?: string
+  parentConnectionId?: string
+}
+
+export interface SavedConnectionProfile extends Omit<DatabaseConnectionInput, 'password' | 'connectionString'> {
+  id: string
+  hasSecret: boolean
+}
+
+export interface DatabaseBrowserDatabase {
+  name: string
+  canConnect: boolean
+}
+
+export interface DatabaseBrowserTable {
+  schema: string
+  name: string
+  kind: 'table' | 'view' | 'materialized view' | 'foreign table' | 'partitioned table'
 }
 
 export interface DatabaseQueryRequest {

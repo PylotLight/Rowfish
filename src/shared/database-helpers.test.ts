@@ -1,7 +1,26 @@
 import { describe, expect, test } from 'bun:test'
-import { DATABASE_LIMITS, getVirtualRowRange, isValidRowLimit, parseMongoFilter } from './database-helpers'
+import { DATABASE_LIMITS, getVirtualRowRange, isValidRowLimit, parseMongoConnectionString, parseMongoFilter, quotePostgresIdentifier } from './database-helpers'
 
 describe('database query guards', () => {
+  test('quotes table-browser identifiers without allowing SQL injection', () => {
+    expect(quotePostgresIdentifier('sales')).toBe('"sales"')
+    expect(quotePostgresIdentifier('odd"; DROP TABLE users;--')).toBe('"odd""; DROP TABLE users;--"')
+  })
+
+  test('parses MongoDB direct and SRV connection strings without exposing credentials', () => {
+    expect(parseMongoConnectionString('mongodb://user:secret@db.example:27018/rowfish?authSource=admin')).toEqual({
+      host: 'db.example', port: 27018, database: 'rowfish'
+    })
+    expect(parseMongoConnectionString('mongodb+srv://user:secret@cluster.example/')).toEqual({
+      host: 'cluster.example', port: 27017, database: 'admin'
+    })
+    expect(parseMongoConnectionString('mongodb://db-a.example:27018,db-b.example:27019/rowfish?replicaSet=rs0')).toEqual({
+      host: 'db-a.example,db-b.example', port: 27018, database: 'rowfish'
+    })
+    expect(() => parseMongoConnectionString('https://db.example/rowfish')).toThrow('mongodb://')
+    expect(() => parseMongoConnectionString('mongodb+srv://cluster.example:27017/db')).toThrow('must not specify a port')
+  })
+
   test('accepts only whole row limits inside the configured bounds', () => {
     expect(isValidRowLimit(DATABASE_LIMITS.minRows)).toBe(true)
     expect(isValidRowLimit(DATABASE_LIMITS.maxRows)).toBe(true)

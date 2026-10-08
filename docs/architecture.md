@@ -11,13 +11,16 @@ React renderer → preload bridge → Electron IPC → connection manager → No
 - `src/main/ipc.ts` validates and dispatches renderer requests.
 - `src/main/database.ts` owns active connections and enforces sender ownership, connection/query limits and cancellation.
 - `src/main/database-worker.ts` opens driver connections, reads cursors and normalizes result rows off the UI thread.
+- `src/main/saved-connections.ts` stores profile metadata in the app's user-data directory and protects passwords with Electron `safeStorage` backed by the operating system credential store.
 - `src/shared/` contains database types, validation helpers and app configuration.
 
 ## Query path
 
 Each connection owns one worker; the app supports up to eight concurrent connections. PostgreSQL uses `pg-cursor`, and MongoDB uses a `find` cursor. Workers send rows in batches of 100 and stop at the requested row limit or the 16 MB normalized-result cap. Each query has a 120-second server timeout. The renderer retains at most 10,000 rows and virtualizes the visible table window.
 
-Workers have a 256 MB old-generation heap cap. If a query is cancelled, Rowfish terminates its worker and closes that connection to interrupt server-side work. Closing the app also terminates active workers. Credentials remain in memory and are not persisted.
+Workers have a 256 MB old-generation heap cap. If a query is cancelled, Rowfish terminates its worker and closes that connection to interrupt server-side work. Closing the app also terminates active workers. Saved profiles are not live connections: they are listed after restart and reconnect only when selected. A password or MongoDB URI is persisted only as operating-system-encrypted data; Rowfish refuses to save it when secure storage is unavailable.
+
+PostgreSQL catalog inspection runs through the same worker boundary. Server-browser profiles connect to the `postgres` maintenance database to enumerate databases and `CONNECT` privileges; opening a database creates a separate worker. Table and view names are read from PostgreSQL catalogs and quoted as identifiers when Rowfish generates a starter `SELECT` statement.
 
 ## Process boundaries
 
