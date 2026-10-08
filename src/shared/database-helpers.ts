@@ -118,6 +118,21 @@ export function parseMongoFilter(source: string): Record<string, unknown> {
   return parsed as Record<string, unknown>
 }
 
+export function parseMongoPipeline(source: string): Record<string, unknown>[] {
+  const parsed: unknown = JSON.parse(source)
+  if (!Array.isArray(parsed) || parsed.some((stage) => !stage || typeof stage !== 'object' || Array.isArray(stage) || Object.keys(stage).length === 0)) {
+    throw new Error('MongoDB aggregation must be a JSON array of pipeline stage objects.')
+  }
+  const forbidden = new Set(['$where', '$function', '$accumulator', '$out', '$merge'])
+  const containsForbidden = (value: unknown): boolean => {
+    if (Array.isArray(value)) return value.some(containsForbidden)
+    if (!value || typeof value !== 'object') return false
+    return Object.entries(value as Record<string, unknown>).some(([key, nested]) => forbidden.has(key) || containsForbidden(nested))
+  }
+  if (containsForbidden(parsed)) throw new Error('Aggregation pipelines cannot use $where, server-side JavaScript, $out or $merge.')
+  return parsed as Record<string, unknown>[]
+}
+
 export function getVirtualRowRange(
   totalRows: number,
   scrollTop: number,

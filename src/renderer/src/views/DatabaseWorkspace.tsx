@@ -6,6 +6,9 @@ import type {
   DatabaseConnectionSummary,
   DatabaseEvent,
   DatabaseRow,
+  MongoBrowserCollection,
+  MongoBrowserDatabase,
+  MongoMutationRequest,
   SavedConnectionProfile
 } from '../../../shared/database'
 import { DATABASE_LIMITS, getVirtualRowRange, quotePostgresIdentifier } from '../../../shared/database-helpers'
@@ -25,6 +28,11 @@ const DEFAULT_FORM: DatabaseConnectionInput = {
 }
 
 type RunState = 'idle' | 'running' | 'cancelling'
+type MongoOperation = 'insert' | 'update' | 'delete' | 'create-collection' | 'drop-collection' | 'create-index' | 'drop-index' | 'drop-database'
+
+function mongoBrowserKey(connectionId: string, database: string): string {
+  return `${connectionId}::${database}`
+}
 
 function connectionSubline(connection: DatabaseConnectionSummary): string {
   if (connection.serverMode) return `PostgreSQL · ${connection.host}:${connection.port} · all databases`
@@ -43,6 +51,7 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
   const [connectionError, setConnectionError] = useState('')
   const [queryText, setQueryText] = useState('')
   const [collection, setCollection] = useState('documents')
+  const [mongoQueryMode, setMongoQueryMode] = useState<'find' | 'aggregate'>('find')
   const [maxRows, setMaxRows] = useState(1_000)
   const [runState, setRunState] = useState<RunState>('idle')
   const [rows, setRows] = useState<DatabaseRow[]>([])
@@ -53,6 +62,28 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
   const [tableLists, setTableLists] = useState<Record<string, DatabaseBrowserTable[]>>({})
   const [browserLoading, setBrowserLoading] = useState<Record<string, boolean>>({})
   const [browserErrors, setBrowserErrors] = useState<Record<string, string>>({})
+  const [mongoDatabases, setMongoDatabases] = useState<Record<string, MongoBrowserDatabase[]>>({})
+  const [mongoCollections, setMongoCollections] = useState<Record<string, MongoBrowserCollection[]>>({})
+  const [expandedMongoDatabases, setExpandedMongoDatabases] = useState<Record<string, boolean>>({})
+  const [selectedMongoDatabase, setSelectedMongoDatabase] = useState('')
+  const [selectedMongoCollection, setSelectedMongoCollection] = useState<MongoBrowserCollection | null>(null)
+  const [mongoOperation, setMongoOperation] = useState<MongoOperation | null>(null)
+  const [mongoOperationBusy, setMongoOperationBusy] = useState(false)
+  const [mongoDocument, setMongoDocument] = useState('{}')
+  const [mongoFilter, setMongoFilter] = useState('{}')
+  const [mongoUpdate, setMongoUpdate] = useState('{"$set":{}}')
+  const [mongoMany, setMongoMany] = useState(false)
+  const [mongoUpsert, setMongoUpsert] = useState(false)
+  const [mongoIndexKeys, setMongoIndexKeys] = useState('{"field":1}')
+  const [mongoUniqueIndex, setMongoUniqueIndex] = useState(false)
+  const [mongoIndexName, setMongoIndexName] = useState('')
+  const [mongoOperationError, setMongoOperationError] = useState('')
+  const [mongoOperationSummary, setMongoOperationSummary] = useState('')
+  const [mongoCollectionName, setMongoCollectionName] = useState('')
+  const [mongoDatabaseName, setMongoDatabaseName] = useState('')
+  const [mongoCreateNewDatabase, setMongoCreateNewDatabase] = useState(false)
+  const [mongoConfirmName, setMongoConfirmName] = useState('')
+  const [mongoDeleteConfirmed, setMongoDeleteConfirmed] = useState(false)
   const [viewport, setViewport] = useState({ top: 0, height: 480 })
   const scrollElement = useRef<HTMLDivElement>(null)
   const activeQuery = useRef<{ id: string; connectionId: string } | null>(null)
@@ -73,11 +104,34 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
   }
 
   async function inspectConnection(connection: DatabaseConnectionSummary): Promise<void> {
-    if (connection.kind !== 'postgres') return
     setBrowserLoading((current) => ({ ...current, [connection.id]: true }))
     setBrowserErrors((current) => ({ ...current, [connection.id]: '' }))
     try {
-      if (connection.serverMode) {
+      if (connection.kind === 'mongodb') {
+        let databases: MongoBrowserDatabase[]
+        try {
+          databases = await window.api.database.listMongoDatabases(connection.id)
+        } catch (error) {
+          databases = connection.database ? [{ name: connection.database }] : []
+          if (connection.database) setBrowserErrors((current) => ({ ...current, [connection.id]: `Could not list all databases; showing the connected database only. ${error instanceof Error ? error.message : ''}` }))
+          else throw error
+        }
+        if (databases.length === 0 && connection.database) {
+          databases = [{ name: connection.database }]
+          setBrowserErrors((current) => ({ ...current, [connection.id]: 'The server returned no database list; showing the connected database only.' }))
+        }
+        setMongoDatabases((current) => ({ ...current, [connection.id]: databases }))
+        const preferred = databases.some((database) => database.name === connection.database)
+          ? connection.database
+          : databases[0]?.name ?? ''
+        if (preferred) {
+          const key = mongoBrowserKey(connection.id, preferred)
+          const collections = await window.api.database.listMongoCollections(connection.id, preferred)
+          setMongoCollections((current) => ({ ...current, [key]: collections }))
+          setExpandedMongoDatabases((current) => ({ ...current, [key]: true }))
+          setSelectedMongoDatabase(preferred)
+        }
+      } else if (connection.serverMode) {
         const databases = await window.api.database.listDatabases(connection.id)
         setServerDatabases((current) => ({ ...current, [connection.id]: databases }))
       } else {
@@ -112,6 +166,12 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
           delete next[event.connectionId]
           return next
         })
+        setMongoDatabases((current) => {
+          const next = { ...current }
+          delete next[event.connectionId]
+          return next
+        })
+        setMongoCollections((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${event.connectionId}::`))))
         if (activeQuery.current?.connectionId === event.connectionId) {
           activeQuery.current = null
           setRunState('idle')
@@ -154,9 +214,13 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
   }, [])
 
   useEffect(() => {
+    setSelectedMongoCollection(null)
     if (activeConnection?.kind === 'mongodb') {
       setQueryText('')
       setCollection('documents')
+      setMongoQueryMode('find')
+      setSelectedMongoDatabase(activeConnection.database || '')
+      setSelectedMongoCollection(null)
     } else if (activeConnection?.kind === 'postgres') {
       setQueryText('')
     }
@@ -183,7 +247,7 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
       return [...withoutDuplicate, connection]
     })
     setActiveId(connection.id)
-    if (connection.kind === 'postgres') void inspectConnection(connection)
+    void inspectConnection(connection)
   }
 
   async function connect(): Promise<void> {
@@ -248,10 +312,13 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
     }
   }
 
-  async function runQuery(): Promise<void> {
-    if (!activeConnection || activeConnection.serverMode || runState !== 'idle' || !queryText.trim()) return
+  async function runQuery(overrides: { connection?: DatabaseConnectionSummary; database?: string; collection?: string; query?: string; mongoMode?: 'find' | 'aggregate' } = {}): Promise<void> {
+    const target = overrides.connection ?? activeConnection
+    const query = overrides.query ?? queryText
+    const targetCollection = overrides.collection ?? collection
+    if (!target || target.serverMode || runState !== 'idle' || !query.trim()) return
     const queryId = window.crypto.randomUUID()
-    activeQuery.current = { id: queryId, connectionId: activeConnection.id }
+    activeQuery.current = { id: queryId, connectionId: target.id }
     setRows([])
     setColumns([])
     setQueryError('')
@@ -260,17 +327,177 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
     if (scrollElement.current) scrollElement.current.scrollTop = 0
     try {
       await window.api.database.run({
-        connectionId: activeConnection.id,
+        connectionId: target.id,
         queryId,
-        query: queryText,
+        query,
         maxRows,
-        ...(activeConnection.kind === 'mongodb' ? { collection } : {})
+        ...(target.kind === 'mongodb' ? { collection: targetCollection, database: overrides.database ?? (selectedMongoDatabase || target.database), mongoMode: overrides.mongoMode ?? mongoQueryMode } : {})
       })
     } catch (error) {
       if (activeQuery.current?.id === queryId) activeQuery.current = null
       setRunState('idle')
       setQueryError(error instanceof Error ? error.message : 'Could not start the query.')
       setQuerySummary('Query was not started.')
+    }
+  }
+
+  async function expandMongoDatabase(connection: DatabaseConnectionSummary, database: MongoBrowserDatabase): Promise<void> {
+    if (selectedMongoDatabase !== database.name) {
+      setSelectedMongoCollection(null)
+      setRows([])
+      setColumns([])
+    }
+    setActiveId(connection.id)
+    setSelectedMongoDatabase(database.name)
+    const key = mongoBrowserKey(connection.id, database.name)
+    if (expandedMongoDatabases[key]) {
+      setExpandedMongoDatabases((current) => ({ ...current, [key]: false }))
+      return
+    }
+    setExpandedMongoDatabases((current) => ({ ...current, [key]: true }))
+    if (mongoCollections[key]) return
+    setBrowserLoading((current) => ({ ...current, [key]: true }))
+    setBrowserErrors((current) => ({ ...current, [key]: '' }))
+    try {
+      const collections = await window.api.database.listMongoCollections(connection.id, database.name)
+      setMongoCollections((current) => ({ ...current, [key]: collections }))
+    } catch (error) {
+      setBrowserErrors((current) => ({ ...current, [key]: error instanceof Error ? error.message : 'Could not load MongoDB collections.' }))
+    } finally {
+      setBrowserLoading((current) => ({ ...current, [key]: false }))
+    }
+  }
+
+  async function selectMongoCollection(connection: DatabaseConnectionSummary, database: string, item: MongoBrowserCollection): Promise<void> {
+    const mode = activeConnection?.id === connection.id ? mongoQueryMode : 'find'
+    setActiveId(connection.id)
+    setSelectedMongoDatabase(database)
+    setSelectedMongoCollection(item)
+    setCollection(item.name)
+    setMongoQueryMode(mode)
+    setQueryText(mode === 'aggregate' ? '[]' : '{}')
+    setQueryError('')
+    setQuerySummary(`Loading ${database}.${item.name}…`)
+    setRows([])
+    setColumns([])
+    const key = mongoBrowserKey(connection.id, database)
+    try {
+      const details = await window.api.database.getMongoCollectionDetails(connection.id, database, item.name)
+      setMongoCollections((current) => ({ ...current, [key]: (current[key] ?? []).map((entry) => entry.name === item.name ? details : entry) }))
+      setSelectedMongoCollection(details)
+    } catch (error) {
+      setQueryError(error instanceof Error ? error.message : 'Could not inspect this collection.')
+    }
+    await runQuery({ connection, database, collection: item.name, query: mode === 'aggregate' ? '[]' : '{}', mongoMode: mode })
+  }
+
+  function openMongoOperation(operation: MongoOperation, connectionOverride?: DatabaseConnectionSummary): void {
+    const operationConnection = connectionOverride ?? activeConnection
+    if (!operationConnection || operationConnection.kind !== 'mongodb') return
+    setMongoOperation(operation)
+    setMongoOperationError('')
+    setMongoOperationSummary('')
+    setMongoDocument('{}')
+    setMongoFilter('')
+    setMongoUpdate('{"$set":{}}')
+    setMongoMany(false)
+    setMongoUpsert(false)
+    setMongoIndexKeys('{"field":1}')
+    setMongoUniqueIndex(false)
+    setMongoIndexName('')
+    setMongoCollectionName(operation === 'drop-collection' ? (selectedMongoCollection?.name ?? '') : '')
+    setMongoDatabaseName(selectedMongoDatabase || operationConnection.database)
+    setMongoCreateNewDatabase(false)
+    setMongoConfirmName('')
+    setMongoDeleteConfirmed(false)
+  }
+
+  async function submitMongoOperation(): Promise<void> {
+    if (!activeConnection || activeConnection.kind !== 'mongodb' || !mongoOperation) return
+    const database = mongoCreateNewDatabase ? mongoDatabaseName.trim() : mongoDatabaseName.trim() || selectedMongoDatabase || activeConnection.database
+    const targetCollection = mongoCollectionName.trim() || (mongoOperation === 'create-collection' ? '' : selectedMongoCollection?.name || collection)
+    let request: MongoMutationRequest
+    const base = { connectionId: activeConnection.id, database }
+    if (mongoOperation === 'drop-database') {
+      request = { ...base, operation: 'drop-database' }
+    } else if (mongoOperation === 'insert') {
+      request = { ...base, operation: 'insert', collection: targetCollection, document: mongoDocument }
+    } else if (mongoOperation === 'update') {
+      request = { ...base, operation: 'update', collection: targetCollection, filter: mongoFilter, update: mongoUpdate, many: mongoMany, upsert: mongoUpsert }
+    } else if (mongoOperation === 'delete') {
+      request = { ...base, operation: 'delete', collection: targetCollection, filter: mongoFilter, many: mongoMany }
+    } else if (mongoOperation === 'create-collection' || mongoOperation === 'drop-collection') {
+      request = { ...base, operation: mongoOperation, collection: targetCollection }
+    } else if (mongoOperation === 'create-index') {
+      request = { ...base, operation: 'create-index', collection: targetCollection, keys: mongoIndexKeys, unique: mongoUniqueIndex }
+    } else {
+      request = { ...base, operation: 'drop-index', collection: targetCollection, indexName: mongoIndexName }
+    }
+    setMongoOperationBusy(true)
+    setMongoOperationError('')
+    try {
+      const result = await window.api.database.mutateMongo(request)
+      setMongoOperation(null)
+      setQueryError('')
+      setQuerySummary(result.message + (result.affectedCount !== undefined ? ` · ${result.affectedCount.toLocaleString()} affected` : ''))
+      const browserKey = mongoBrowserKey(activeConnection.id, database)
+      if (mongoOperation === 'drop-database') {
+        try {
+          const databases = await window.api.database.listMongoDatabases(activeConnection.id)
+          setMongoDatabases((current) => ({ ...current, [activeConnection.id]: databases }))
+        } catch {
+          setMongoDatabases((current) => ({ ...current, [activeConnection.id]: (current[activeConnection.id] ?? []).filter((item) => item.name !== database) }))
+        }
+        setSelectedMongoDatabase('')
+        setSelectedMongoCollection(null)
+        setRows([])
+        setColumns([])
+        return
+      }
+
+      let collections: MongoBrowserCollection[]
+      try {
+        collections = await window.api.database.listMongoCollections(activeConnection.id, database)
+      } catch (error) {
+        setBrowserErrors((current) => ({ ...current, [browserKey]: error instanceof Error ? error.message : 'The operation succeeded, but collections could not be refreshed.' }))
+        return
+      }
+      setMongoCollections((current) => ({ ...current, [browserKey]: collections }))
+      try {
+        const databases = await window.api.database.listMongoDatabases(activeConnection.id)
+        setMongoDatabases((current) => ({ ...current, [activeConnection.id]: databases }))
+      } catch {
+        setMongoDatabases((current) => {
+          const known = current[activeConnection.id] ?? []
+          if (mongoOperation === 'drop-collection' && collections.length === 0) return { ...current, [activeConnection.id]: known.filter((item) => item.name !== database) }
+          if (known.some((item) => item.name === database)) return current
+          return { ...current, [activeConnection.id]: [...known, { name: database }] }
+        })
+      }
+      if (mongoOperation === 'drop-collection') {
+        setSelectedMongoCollection(null)
+        setRows([])
+        setColumns([])
+        return
+      }
+      setSelectedMongoDatabase(database)
+      setExpandedMongoDatabases((current) => ({ ...current, [browserKey]: true }))
+      const found = collections.find((item) => item.name === targetCollection)
+      if (!found) return
+      const details = await window.api.database.getMongoCollectionDetails(activeConnection.id, database, targetCollection)
+      setMongoCollections((current) => ({ ...current, [browserKey]: (current[browserKey] ?? []).map((item) => item.name === targetCollection ? details : item) }))
+      setSelectedMongoCollection(details)
+      if (mongoOperation === 'create-collection') {
+        setMongoQueryMode('find')
+        setQueryText('{}')
+        await runQuery({ connection: activeConnection, database, collection: targetCollection, query: '{}', mongoMode: 'find' })
+      } else if (mongoOperation === 'insert' || mongoOperation === 'update' || mongoOperation === 'delete') {
+        await runQuery({ connection: activeConnection, database, collection: targetCollection, query: queryText || '{}', mongoMode: mongoQueryMode })
+      }
+    } catch (error) {
+      setMongoOperationError(error instanceof Error ? error.message : 'MongoDB operation failed.')
+    } finally {
+      setMongoOperationBusy(false)
     }
   }
 
@@ -341,6 +568,40 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
     )
   }
 
+  function renderMongoDatabases(connection: DatabaseConnectionSummary): React.JSX.Element {
+    const databases = mongoDatabases[connection.id] ?? []
+    return (
+      <div className="db-browser-objects db-browser-databases">
+        <div className="db-browser-section-title">DATABASES <button className="db-inline-add" title="Create a database" aria-label="Create a database" onClick={() => { setActiveId(connection.id); setSelectedMongoDatabase(''); openMongoOperation('create-collection', connection); setMongoDatabaseName(''); setMongoCreateNewDatabase(true); setMongoCollectionName('') }}>＋</button></div>
+        {browserLoading[connection.id] && <div className="db-browser-hint"><span className="db-spinner small" /> Loading databases…</div>}
+        {browserErrors[connection.id] && <div className="db-browser-error">{browserErrors[connection.id]}</div>}
+        {databases.map((database) => {
+          const key = mongoBrowserKey(connection.id, database.name)
+          const expanded = Boolean(expandedMongoDatabases[key])
+          const items = mongoCollections[key] ?? []
+          return (
+            <div className="db-browser-database-group" key={database.name}>
+              <button className={`db-browser-database${selectedMongoDatabase === database.name && activeId === connection.id ? ' active' : ''}`} title={`${database.name}${database.sizeOnDisk !== undefined ? ` · ${database.sizeOnDisk.toLocaleString()} bytes` : ''}`} onClick={() => void expandMongoDatabase(connection, database)}>
+                <span aria-hidden="true">{expanded ? '▾' : '›'}</span><span>{database.name}</span>{database.sizeOnDisk !== undefined && <small className="db-browser-size">{database.sizeOnDisk >= 1024 * 1024 ? `${(database.sizeOnDisk / (1024 * 1024)).toFixed(1)} MB` : `${Math.ceil(database.sizeOnDisk / 1024)} KB`}</small>}
+              </button>
+              {!['admin', 'config', 'local'].includes(database.name) && <button className="db-child-close" title={`Drop database ${database.name}`} aria-label={`Drop database ${database.name}`} onClick={() => { setActiveId(connection.id); setSelectedMongoDatabase(database.name); openMongoOperation('drop-database', connection); setMongoDatabaseName(database.name) }}>×</button>}
+              {expanded && <div className="db-browser-mongo-collections">
+                <div className="db-browser-collection-actions"><span>{items.length} {items.length === 1 ? 'collection' : 'collections'}</span><button className="db-inline-add" title={`Create collection in ${database.name}`} aria-label={`Create collection in ${database.name}`} onClick={() => { setSelectedMongoDatabase(database.name); setActiveId(connection.id); openMongoOperation('create-collection', connection); setMongoDatabaseName(database.name) }}>＋</button></div>
+                {browserLoading[key] && <div className="db-browser-hint"><span className="db-spinner small" /> Loading collections…</div>}
+                {browserErrors[key] && <div className="db-browser-error">{browserErrors[key]}</div>}
+                {items.map((item) => <button className={`db-browser-object${selectedMongoCollection?.name === item.name && selectedMongoDatabase === database.name ? ' active' : ''}`} key={item.name} title={`${item.type}: ${database.name}.${item.name}`} onClick={() => void selectMongoCollection(connection, database.name, item)}>
+                  <span aria-hidden="true">{item.type === 'view' ? '◉' : '▤'}</span><span>{item.name}</span>
+                </button>)}
+                {!browserLoading[key] && !browserErrors[key] && items.length === 0 && <div className="db-browser-hint">No collections yet.</div>}
+              </div>}
+            </div>
+          )
+        })}
+        {!browserLoading[connection.id] && !browserErrors[connection.id] && databases.length === 0 && <div className="db-browser-hint">No accessible databases found.</div>}
+      </div>
+    )
+  }
+
   return (
     <section className="db-workspace">
       <aside className="db-rail">
@@ -384,6 +645,7 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
                 </div>
               )}
               {connection.kind === 'postgres' && !connection.serverMode && renderTables(connection)}
+              {connection.kind === 'mongodb' && renderMongoDatabases(connection)}
             </div>
           ))}
           {connections.length === 0 && <div className="db-empty-rail"><b>No connections</b><p>Add a PostgreSQL or MongoDB connection.</p></div>}
@@ -414,12 +676,37 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
       <div className="db-main">
         <div className="db-workspace-header">
           <div>
-            <span className="db-overline">{activeConnection?.serverMode ? 'SERVER BROWSER' : 'QUERY WORKSPACE'}</span>
+            <span className="db-overline">{activeConnection?.serverMode || activeConnection?.kind === 'mongodb' ? 'SERVER BROWSER' : 'QUERY WORKSPACE'}</span>
             <h1>{activeConnection?.name ?? 'No connection selected'}</h1>
-            <p>{activeConnection ? `${activeConnection.kind === 'postgres' ? 'PostgreSQL' : 'MongoDB'} · ${activeConnection.host}:${activeConnection.port} · ${activeConnection.serverMode ? 'browse databases available to this user' : activeConnection.database}` : 'Connect a database to run queries.'}</p>
+            <p>{activeConnection ? `${activeConnection.kind === 'postgres' ? 'PostgreSQL' : 'MongoDB'} · ${activeConnection.host}:${activeConnection.port} · ${activeConnection.kind === 'mongodb' ? `browse accessible databases · ${selectedMongoDatabase || activeConnection.database}` : activeConnection.serverMode ? 'browse databases available to this user' : activeConnection.database}` : 'Connect a database to run queries.'}</p>
           </div>
           {activeConnection && <button className="db-quiet-button" onClick={() => void disconnect(activeConnection)}>Disconnect</button>}
         </div>
+
+        {activeConnection?.kind === 'mongodb' && selectedMongoCollection && selectedMongoDatabase && (
+          <section className="db-mongo-details" aria-label="MongoDB collection details">
+            <div className="db-mongo-details-copy">
+              <span className="db-overline">COLLECTION DETAILS</span>
+              <strong>{selectedMongoDatabase}.{selectedMongoCollection.name}</strong>
+              <span>{selectedMongoCollection.type}{selectedMongoCollection.estimatedDocuments !== undefined ? ` · approximately ${selectedMongoCollection.estimatedDocuments.toLocaleString()} documents` : ''} · {(selectedMongoCollection.indexes ?? []).length} indexes</span>
+            </div>
+            <div className="db-mongo-actions">
+              <button className="db-quiet-button" disabled={runState !== 'idle' || mongoOperationBusy} onClick={() => openMongoOperation('insert')}>＋ Insert</button>
+              <button className="db-quiet-button" disabled={runState !== 'idle' || mongoOperationBusy} onClick={() => openMongoOperation('update')}>Update</button>
+              <button className="db-quiet-button danger" disabled={runState !== 'idle' || mongoOperationBusy} onClick={() => openMongoOperation('delete')}>Delete</button>
+              <button className="db-quiet-button" disabled={mongoOperationBusy} onClick={() => openMongoOperation('create-index')}>＋ Index</button>
+              <button className="db-quiet-button danger" disabled={mongoOperationBusy} onClick={() => openMongoOperation('drop-collection')}>Drop collection</button>
+            </div>
+            {(selectedMongoCollection.indexes?.length ?? 0) > 0 && <div className="db-mongo-indexes">
+              {selectedMongoCollection.indexes?.map((index) => <div className="db-mongo-index" key={index.name}>
+                <span><b>{index.name}</b>{index.unique ? ' · unique' : ''}{index.expireAfterSeconds !== undefined ? ` · TTL ${index.expireAfterSeconds}s` : ''}<code>{index.keys}</code></span>
+                {index.name !== '_id_' && <button className="db-inline-add danger" title={`Drop index ${index.name}`} aria-label={`Drop index ${index.name}`} onClick={() => { openMongoOperation('drop-index'); setMongoIndexName(index.name) }}>×</button>}
+              </div>)}
+            </div>}
+            {selectedMongoCollection.validator && <details className="db-mongo-validator"><summary>Collection validator</summary><code>{selectedMongoCollection.validator}</code></details>}
+            {selectedMongoCollection.options && <details className="db-mongo-validator"><summary>Collection options</summary><code>{selectedMongoCollection.options}</code></details>}
+          </section>
+        )}
 
         {activeConnection?.serverMode ? (
           <div className="db-empty-workspace db-server-welcome">
@@ -430,14 +717,15 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
           <>
             <div className="db-editor-card">
               <div className="db-editor-topline">
-                <div className="db-editor-tabs"><span className="db-editor-tab active">{activeConnection.kind === 'postgres' ? 'SQL query' : 'Find filter'}</span><span className="db-editor-language">{activeConnection.kind === 'postgres' ? 'POSTGRESQL' : 'MONGODB JSON'}</span></div>
+                <div className="db-editor-tabs"><span className="db-editor-tab active">{activeConnection.kind === 'postgres' ? 'SQL query' : mongoQueryMode === 'find' ? 'Find filter' : 'Aggregation pipeline'}</span><span className="db-editor-language">{activeConnection.kind === 'postgres' ? 'POSTGRESQL' : 'MONGODB JSON'}</span></div>
                 <div className="db-editor-controls">
+                  {activeConnection.kind === 'mongodb' && <label className="db-limit-field"><span>Mode</span><select value={mongoQueryMode} onChange={(event) => { const mode = event.target.value as 'find' | 'aggregate'; setMongoQueryMode(mode); setQueryText(mode === 'find' ? '{}' : '[]') }} aria-label="MongoDB query mode"><option value="find">Find</option><option value="aggregate">Aggregate</option></select></label>}
                   {activeConnection.kind === 'mongodb' && <label className="db-collection-field"><span>Collection</span><input value={collection} onChange={(event) => setCollection(event.target.value)} aria-label="MongoDB collection name" maxLength={128} /></label>}
                   <label className="db-limit-field"><span>Max rows</span><select value={maxRows} onChange={(event) => setMaxRows(Number(event.target.value))}><option value={500}>500</option><option value={1000}>1,000</option><option value={5000}>5,000</option><option value={10000}>10,000</option></select></label>
                   {runState === 'idle' ? <button className="db-run-button" onClick={() => void runQuery()} disabled={!queryText.trim()}><span>▶</span> Run query</button> : <button className="db-cancel-button" onClick={() => void cancelQuery()} disabled={runState === 'cancelling'}>{runState === 'cancelling' ? 'Cancelling…' : '■ Cancel'}</button>}
                 </div>
               </div>
-              <label className="db-query-label" htmlFor="db-query-editor">{activeConnection.kind === 'postgres' ? 'SQL' : 'Filter document'}</label>
+              <label className="db-query-label" htmlFor="db-query-editor">{activeConnection.kind === 'postgres' ? 'SQL' : mongoQueryMode === 'find' ? 'Filter document' : 'Aggregation stages'}</label>
               <textarea
                 id="db-query-editor"
                 className="db-query-editor"
@@ -445,10 +733,10 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
                 onChange={(event) => setQueryText(event.target.value)}
                 onKeyDown={(event) => { if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); void runQuery() } }}
                 spellCheck={false}
-                aria-label={activeConnection.kind === 'postgres' ? 'SQL query editor' : 'MongoDB JSON filter editor'}
-                placeholder={activeConnection.kind === 'postgres' ? 'SELECT * FROM your_table LIMIT 100;' : '{"status":"active"}'}
+                aria-label={activeConnection.kind === 'postgres' ? 'SQL query editor' : mongoQueryMode === 'find' ? 'MongoDB JSON filter editor' : 'MongoDB aggregation pipeline editor'}
+                placeholder={activeConnection.kind === 'postgres' ? 'SELECT * FROM your_table LIMIT 100;' : mongoQueryMode === 'find' ? '{"status":"active"}' : '[{"$match":{"status":"active"}}]'}
               />
-              <div className="db-editor-footer"><span>{activeConnection.kind === 'postgres' ? '⌘ Enter to run · statement timeout 120 seconds' : '⌘ Enter to run · $where is disabled · maxTimeMS 120 seconds'}</span><span>Results capped at {maxRows.toLocaleString()} rows / 16 MB</span></div>
+              <div className="db-editor-footer"><span>{activeConnection.kind === 'postgres' ? '⌘ Enter to run · statement timeout 120 seconds' : mongoQueryMode === 'find' ? '⌘ Enter to run · $where is disabled · maxTimeMS 120 seconds' : '⌘ Enter to run · read-only pipeline · $out, $merge and server-side JavaScript disabled'}</span><span>Results capped at {maxRows.toLocaleString()} rows / 16 MB</span></div>
             </div>
 
             <div className="db-results-card">
@@ -510,6 +798,54 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
             <label className="db-tls-toggle"><input type="checkbox" checked={saveProfile} onChange={(event) => setSaveProfile(event.target.checked)} /><span><b>Save this connection</b><small>Keep it available between app sessions</small></span></label>
             {connectionError && <div className="db-query-error" role="alert">{connectionError}</div>}
             <div className="db-modal-actions"><button className="db-quiet-button" disabled={connecting} onClick={() => { setShowConnect(false); setForm(DEFAULT_FORM); setConnectionError('') }}>Cancel</button><button className="db-run-button" disabled={connecting} onClick={() => void connect()}>{connecting ? <><span className="db-spinner small" /> Connecting…</> : 'Connect'}</button></div>
+          </div>
+        </div>
+      )}
+      {mongoOperation && activeConnection?.kind === 'mongodb' && (
+        <div className="db-modal-backdrop" onClick={() => { if (!mongoOperationBusy) setMongoOperation(null) }}>
+          <div className="db-connect-modal db-mongo-operation-modal" role="dialog" aria-modal="true" aria-labelledby="mongo-operation-title" onClick={(event) => event.stopPropagation()}>
+            <div className="db-modal-head">
+              <div><span className="db-overline">MONGODB OPERATION</span><h2 id="mongo-operation-title">{{
+                insert: 'Insert document', update: 'Update documents', delete: 'Delete documents',
+                'create-collection': 'Create collection', 'drop-collection': 'Drop collection',
+                'create-index': 'Create index', 'drop-index': 'Drop index', 'drop-database': 'Drop database'
+              }[mongoOperation]}</h2></div>
+              <button className="db-icon-button" aria-label="Close" disabled={mongoOperationBusy} onClick={() => setMongoOperation(null)}>×</button>
+            </div>
+            <div className="db-mongo-operation-context">
+              {mongoOperation === 'create-collection' ? (
+                <label className="db-form-field"><span>Database</span><input value={mongoDatabaseName} onChange={(event) => setMongoDatabaseName(event.target.value)} maxLength={128} /></label>
+              ) : <div><span>Database</span><b>{mongoDatabaseName || selectedMongoDatabase || activeConnection.database}</b></div>}
+              {mongoOperation === 'create-collection' || mongoOperation === 'drop-collection' ? (
+                <label className="db-form-field"><span>Collection name</span><input value={mongoCollectionName} onChange={(event) => setMongoCollectionName(event.target.value)} maxLength={128} autoFocus /></label>
+              ) : mongoOperation !== 'drop-database' && <div><span>Collection</span><b>{selectedMongoCollection?.name ?? collection}</b></div>}
+            </div>
+            {mongoOperation === 'create-collection' && <p className="db-modal-copy">A new database is created automatically when its first collection is created.</p>}
+            {mongoOperation === 'insert' && <label className="db-form-field"><span>Document (JSON / Extended JSON)</span><textarea className="db-operation-json" rows={10} value={mongoDocument} onChange={(event) => setMongoDocument(event.target.value)} spellCheck={false} /></label>}
+            {(mongoOperation === 'update' || mongoOperation === 'delete') && <>
+              <label className="db-form-field"><span>Match filter (JSON)</span><textarea className="db-operation-json" rows={5} value={mongoFilter} onChange={(event) => setMongoFilter(event.target.value)} spellCheck={false} placeholder={'{ "_id": { "$oid": "..." } }'} /></label>
+              {mongoOperation === 'update' && <label className="db-form-field"><span>Update operators (JSON)</span><textarea className="db-operation-json" rows={5} value={mongoUpdate} onChange={(event) => setMongoUpdate(event.target.value)} spellCheck={false} placeholder={'{ "$set": { "status": "ready" } }'} /></label>}
+              <div className="db-mongo-option-row">
+                <label className="db-tls-toggle"><input type="checkbox" checked={mongoMany} onChange={(event) => setMongoMany(event.target.checked)} /><span><b>{mongoOperation === 'delete' ? 'Delete all matches' : 'Update all matches'}</b></span></label>
+                {mongoOperation === 'update' && <label className="db-tls-toggle"><input type="checkbox" checked={mongoUpsert} onChange={(event) => setMongoUpsert(event.target.checked)} /><span><b>Upsert if none match</b></span></label>}
+              </div>
+              {mongoOperation === 'delete' && <label className="db-tls-toggle db-destructive-confirm"><input type="checkbox" checked={mongoDeleteConfirmed} onChange={(event) => setMongoDeleteConfirmed(event.target.checked)} /><span><b>I reviewed the filter and want to delete matching documents.</b></span></label>}
+            </>}
+            {mongoOperation === 'create-index' && <>
+              <label className="db-form-field"><span>Index keys (JSON)</span><textarea className="db-operation-json" rows={4} value={mongoIndexKeys} onChange={(event) => setMongoIndexKeys(event.target.value)} spellCheck={false} placeholder={'{ "createdAt": -1 }'} /></label>
+              <label className="db-tls-toggle"><input type="checkbox" checked={mongoUniqueIndex} onChange={(event) => setMongoUniqueIndex(event.target.checked)} /><span><b>Unique index</b></span></label>
+            </>}
+            {mongoOperation === 'drop-index' && <label className="db-form-field"><span>Index name</span><input value={mongoIndexName} onChange={(event) => setMongoIndexName(event.target.value)} maxLength={128} autoFocus /></label>}
+            {(mongoOperation === 'drop-collection' || mongoOperation === 'drop-database') && <>
+              <p className="db-query-error">This permanently drops {mongoOperation === 'drop-database' ? 'the database and all its collections' : 'the collection and all its documents'}.</p>
+              <label className="db-form-field"><span>Type {mongoOperation === 'drop-database' ? (mongoDatabaseName || selectedMongoDatabase || activeConnection.database) : mongoCollectionName} to confirm</span><input value={mongoConfirmName} onChange={(event) => setMongoConfirmName(event.target.value)} autoComplete="off" /></label>
+            </>}
+            {mongoOperationError && <div className="db-query-error" role="alert">{mongoOperationError}</div>}
+            {mongoOperationSummary && <p className="db-results-summary">{mongoOperationSummary}</p>}
+            <div className="db-modal-actions">
+              <button className="db-quiet-button" disabled={mongoOperationBusy} onClick={() => setMongoOperation(null)}>Cancel</button>
+              <button className={mongoOperation === 'delete' || mongoOperation === 'drop-collection' || mongoOperation === 'drop-database' ? 'db-cancel-button' : 'db-run-button'} disabled={mongoOperationBusy || (mongoOperation === 'create-collection' && (!mongoCollectionName.trim() || (mongoCreateNewDatabase && !mongoDatabaseName.trim()))) || (mongoOperation === 'delete' && (!mongoFilter.trim() || mongoFilter.trim() === '{}' || !mongoDeleteConfirmed)) || (mongoOperation === 'update' && (!mongoFilter.trim() || mongoFilter.trim() === '{}')) || (mongoOperation === 'create-index' && !mongoIndexKeys.trim()) || (mongoOperation === 'drop-index' && !mongoIndexName.trim()) || (mongoOperation === 'drop-collection' && mongoConfirmName !== mongoCollectionName) || (mongoOperation === 'drop-database' && mongoConfirmName !== (mongoDatabaseName || selectedMongoDatabase || activeConnection.database))} onClick={() => void submitMongoOperation()}>{mongoOperationBusy ? 'Working…' : mongoOperation === 'delete' || mongoOperation === 'drop-collection' || mongoOperation === 'drop-database' ? 'Confirm destructive action' : 'Run operation'}</button>
+            </div>
           </div>
         </div>
       )}

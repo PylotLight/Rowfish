@@ -18,6 +18,12 @@ To browse multiple databases on one PostgreSQL server, choose **Browse all datab
 
 This mode does not grant database access or bypass PostgreSQL permissions. It depends on being able to connect to the server's `postgres` maintenance database; if that is unavailable, connect directly to a database you can access instead. A direct PostgreSQL connection also shows its tables and views in the sidebar. Select a table to place a schema-qualified `SELECT * ... LIMIT 100` starter query in the editor; review it before running.
 
+## MongoDB server browser
+
+Every live MongoDB connection lists the databases visible to its credentials and lets you expand a database to browse its collections and views. Selecting a collection loads its documents and shows its type, estimated document count, validator (when present), and index definitions. The browser respects the MongoDB user's permissions; server-side authorization remains authoritative.
+
+From a selected collection you can insert a document, update one or many documents with update operators, delete one or many matching documents, create/drop indexes, and create/drop collections. Creating a database creates its first collection. Dropping a collection or database requires typing its exact name; dropping a database also drops all of its collections. Built-in `admin`, `config` and `local` databases cannot be dropped from Rowfish. Delete and update operations require a non-empty filter.
+
 ## Run a query
 
 ### PostgreSQL
@@ -38,7 +44,7 @@ Rowfish executes the SQL you submit, including write statements. Review a statem
 
 ### MongoDB
 
-Enter a collection name and a JSON document filter. Rowfish runs `find` and reads documents in batches; the query editor does not expose aggregation pipelines or write operations. The `$where` JavaScript filter operator is disabled.
+Choose a collection in the sidebar, then enter a JSON filter for `find` or switch the query mode to **Aggregate** and enter a JSON array of pipeline stages. Rowfish reads documents in batches and keeps the configured row and byte limits. `$where`, `$function`, `$accumulator`, `$out` and `$merge` are blocked; aggregation pipelines cannot write data or invoke server-side JavaScript.
 
 For the included demo collection, enter `orders` as the collection and use:
 
@@ -46,7 +52,7 @@ For the included demo collection, enter `orders` as the collection and use:
 { "status": "ready" }
 ```
 
-The MongoDB driver returns the matching documents as-is, including each document's `_id` field.
+The MongoDB driver returns matching documents, including each document's `_id` field. Insert, update, delete, index and collection operations are available through the collection toolbar; updates use MongoDB update operators such as `$set` or `$inc`.
 
 ## Results, search and cancellation
 
@@ -58,7 +64,7 @@ Choosing **Cancel** terminates the worker to interrupt server-side work. Rowfish
 
 ## Current scope
 
-Saved-profile sync, SSH tunnels, a custom CA-file picker, result export, PostgreSQL query parameters and multi-statement execution are not included. MongoDB aggregation, update and delete operations are not exposed. The row cap is not a full export workflow.
+Saved-profile sync, SSH tunnels, a custom CA-file picker, result export, PostgreSQL query parameters and multi-statement execution are not included. The row cap is not a full export workflow.
 
 The checked-in [PostgreSQL seed script](examples/postgres.sql) and [MongoDB seed script](examples/mongodb.js) create matching fictional order examples for local demos. The screenshots in the [README](../README.md) use these same synthetic records; they are interface previews, not live database sessions.
 

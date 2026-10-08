@@ -207,6 +207,7 @@ select option { background: #161a1f; }
 .db-browser-database > span:first-child { width: 10px; color: rgba(242, 244, 246, 0.4); }
 .db-browser-database > span:nth-child(2),
 .db-browser-object > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; }
+.db-browser-size { flex: 0 0 auto; margin-left: auto; color: rgba(242, 244, 246, 0.36); font-size: 8px; }
 .db-browser-schema { display: flex; flex-direction: column; gap: 1px; }
 .db-browser-schema-name { padding: 6px 7px 3px; color: rgba(242, 244, 246, 0.4); font-size: 8.5px; font-weight: 650; }
 .db-browser-object { min-height: 25px; padding-left: 12px; color: rgba(242, 244, 246, 0.62); }
@@ -214,6 +215,13 @@ select option { background: #161a1f; }
 .db-browser-hint { display: flex; align-items: center; gap: 7px; padding: 6px 8px; color: var(--muted); font-size: 9px; line-height: 1.45; }
 .db-browser-indent { margin-left: 16px; }
 .db-browser-error { padding: 6px 8px; color: #ffb4bb; font-size: 9px; line-height: 1.4; overflow-wrap: anywhere; }
+.db-browser-mongo-collections { position: relative; padding: 0 3px 5px 14px; }
+.db-browser-database.active { color: var(--mint); background: rgba(141, 224, 193, 0.07); }
+.db-browser-object.active { color: var(--mint); background: rgba(141, 224, 193, 0.08); }
+.db-browser-collection-actions { display: flex; align-items: center; justify-content: space-between; min-height: 24px; padding: 0 8px; color: rgba(242, 244, 246, 0.38); font-size: 8.5px; }
+.db-inline-add { display: inline-grid; place-items: center; width: 19px; height: 19px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: rgba(242, 244, 246, 0.48); font: inherit; font-size: 14px; line-height: 1; cursor: pointer; }
+.db-inline-add:hover { background: rgba(255, 255, 255, 0.08); color: var(--mint); }
+.db-inline-add.danger:hover { color: #ff9ca5; }
 .db-saved-connections { margin-top: 8px; padding-top: 5px; border-top: 1px solid rgba(255, 255, 255, 0.06); }
 .db-saved-profile { position: relative; display: flex; align-items: center; border: 1px solid transparent; border-radius: 10px; }
 .db-saved-profile.active { border-color: rgba(126, 226, 168, 0.11); background: rgba(126, 226, 168, 0.04); }
@@ -264,6 +272,22 @@ select option { background: #161a1f; }
 .db-results-summary { margin: 4px 0 0; color: var(--muted); font-size: 10.5px; }
 .db-row-count { color: var(--muted); font-size: 10.5px; font-variant-numeric: tabular-nums; }
 .db-query-error { margin: 10px 14px 0; padding: 9px 11px; border: 1px solid rgba(229, 99, 111, 0.25); border-radius: 9px; background: rgba(229, 99, 111, 0.09); color: #ffb4bb; font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+.db-mongo-details { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 14px; background: rgba(17, 20, 25, 0.46); }
+.db-mongo-details-copy { display: flex; flex: 1 1 210px; min-width: 150px; flex-direction: column; gap: 4px; }
+.db-mongo-details-copy strong { font-size: 12px; font-weight: 650; overflow-wrap: anywhere; }
+.db-mongo-details-copy > span:last-child { color: var(--muted); font-size: 9.5px; }
+.db-mongo-actions { display: flex; flex: 0 1 auto; flex-wrap: wrap; gap: 5px; }
+.db-mongo-actions .db-quiet-button { padding: 6px 9px; font-size: 9.5px; }
+.db-quiet-button.danger { border-color: rgba(229, 99, 111, 0.18); color: #e78b94; }
+.db-quiet-button.danger:hover { background: rgba(229, 99, 111, 0.1); color: #ffb4bb; }
+.db-mongo-indexes { display: grid; flex: 1 1 100%; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 5px; }
+.db-mongo-index { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding: 6px 8px; border: 1px solid rgba(255, 255, 255, 0.055); border-radius: 8px; color: var(--muted); font-size: 9px; }
+.db-mongo-index > span { display: flex; min-width: 0; flex-wrap: wrap; gap: 3px 6px; }
+.db-mongo-index b { color: rgba(242, 244, 246, 0.8); font-weight: 620; }
+.db-mongo-index code { flex-basis: 100%; overflow: hidden; color: rgba(141, 224, 193, 0.72); text-overflow: ellipsis; white-space: nowrap; font-size: 8.5px; }
+.db-mongo-validator { flex: 1 1 100%; color: var(--muted); font-size: 9.5px; }
+.db-mongo-validator summary { cursor: pointer; }
+.db-mongo-validator code { display: block; max-height: 110px; margin-top: 7px; overflow: auto; color: rgba(141, 224, 193, 0.72); white-space: pre-wrap; overflow-wrap: anywhere; }
 .db-progress-track { height: 2px; overflow: hidden; background: rgba(126, 226, 168, 0.1); }
 .db-progress-track span { display: block; width: 35%; height: 100%; border-radius: 99px; background: var(--mint); animation: db-progress 1.4s ease-in-out infinite; }
 @keyframes db-progress { 0% { transform: translateX(-110%); } 100% { transform: translateX(310%); } }
@@ -301,6 +325,16 @@ select option { background: #161a1f; }
 .db-form-field small { color: rgba(242, 244, 246, 0.38); font-size: 9px; font-weight: 400; }
 .db-form-field input,
 .db-form-field select { width: 100%; min-height: 36px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px; outline: none; background: rgba(0, 0, 0, 0.22); color: var(--text); font: inherit; font-size: 11px; }
+.db-mongo-operation-modal { width: min(100%, 680px); }
+.db-mongo-operation-context { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0 0 14px; }
+.db-mongo-operation-context > div:not(.db-form-field) { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 10.5px; }
+.db-mongo-operation-context b { overflow-wrap: anywhere; color: var(--text); font-size: 11px; font-weight: 600; }
+.db-mongo-operation-modal .db-form-field { margin-top: 12px; }
+.db-operation-json { width: 100%; resize: vertical; min-height: 74px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 9px; outline: none; background: rgba(0, 0, 0, 0.28); color: #c9e7d6; font: 11px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 2; }
+.db-operation-json:focus { border-color: rgba(126, 226, 168, 0.42); }
+.db-mongo-option-row { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 10px; }
+.db-mongo-option-row .db-tls-toggle { margin-top: 0; }
+.db-destructive-confirm { margin-top: 10px; padding: 8px 10px; border: 1px solid rgba(229, 99, 111, 0.2); border-radius: 8px; background: rgba(229, 99, 111, 0.07); }
 .db-form-field input:focus,
 .db-form-field select:focus { border-color: rgba(126, 226, 168, 0.42); }
 .db-tls-toggle { display: flex; align-items: center; gap: 9px; margin-top: 16px; cursor: pointer; }

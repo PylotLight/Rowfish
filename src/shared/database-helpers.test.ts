@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { DATABASE_LIMITS, getVirtualRowRange, isValidRowLimit, parseMongoConnectionString, parseMongoFilter, quotePostgresIdentifier } from './database-helpers'
+import { DATABASE_LIMITS, getVirtualRowRange, isValidRowLimit, parseMongoConnectionString, parseMongoFilter, parseMongoPipeline, quotePostgresIdentifier } from './database-helpers'
 
 describe('database query guards', () => {
   test('quotes table-browser identifiers without allowing SQL injection', () => {
@@ -41,6 +41,16 @@ describe('database query guards', () => {
     expect(() => parseMongoFilter('[]')).toThrow('must be a JSON object')
     expect(() => parseMongoFilter('"active"')).toThrow('must be a JSON object')
     expect(() => parseMongoFilter('{"$or":[{"status":"active"},{"$where":"return true"}]}')).toThrow('$where')
+  })
+
+  test('accepts read-only MongoDB aggregation pipelines and blocks writes or server-side JavaScript', () => {
+    expect(parseMongoPipeline('[{"$match":{"status":"active"}},{"$limit":20}]')).toEqual([
+      { $match: { status: 'active' } }, { $limit: 20 }
+    ])
+    expect(() => parseMongoPipeline('{}')).toThrow('array of pipeline stage objects')
+    expect(() => parseMongoPipeline('[{"$out":"archive"}]')).toThrow('$out')
+    expect(() => parseMongoPipeline('[{"$facet":{"items":[{"$merge":"archive"}]}}]')).toThrow('$merge')
+    expect(() => parseMongoPipeline('[{"$project":{"computed":{"$function":{"body":"return 1"}}}}]')).toThrow('server-side JavaScript')
   })
 })
 

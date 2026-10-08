@@ -1,5 +1,5 @@
 import { parentPort, workerData } from 'node:worker_threads'
-import { MongoClient, type Db } from 'mongodb'
+import { BSON, MongoClient, type Db } from 'mongodb'
 import { Client as PostgresClient } from 'pg'
 import Cursor from 'pg-cursor'
 import type {
@@ -8,25 +8,32 @@ import type {
   DatabaseBrowserTable,
   DatabaseConnectionInput,
   DatabaseQueryRequest,
-  DatabaseRow
+  DatabaseRow,
+  MongoBrowserCollection,
+  MongoMutationRequest,
+  MongoMutationResult
 } from '../shared/database'
-import { DATABASE_LIMITS, parseMongoFilter } from '../shared/database-helpers'
+import { DATABASE_LIMITS, parseMongoFilter, parseMongoPipeline } from '../shared/database-helpers'
 
 const { batchSize: BATCH_SIZE, maxColumns: MAX_COLUMNS, maxCellChars: MAX_CELL_CHARS, maxResultBytes: MAX_RESULT_BYTES, timeoutMs: QUERY_TIMEOUT_MS } = DATABASE_LIMITS
+const { EJSON } = BSON
 
 interface WorkerConfig extends DatabaseConnectionInput {}
 
 type WorkerRequest =
   | { type: 'run'; request: DatabaseQueryRequest }
-  | { type: 'inspect-databases'; requestId: string }
-  | { type: 'inspect-tables'; requestId: string }
+  | { type: 'inspect-databases' | 'inspect-tables' | 'inspect-mongo-databases'; requestId: string }
+  | { type: 'inspect-mongo-collections' | 'inspect-mongo-collection'; requestId: string; database: string; collection?: string }
+  | { type: 'mongo-operation'; requestId: string; request: MongoMutationRequest }
   | { type: 'close' }
 
 type WorkerEvent =
   | { type: 'ready' }
   | { type: 'connect-error'; message: string }
-  | { type: 'inspection-result'; requestId: string; databases?: DatabaseBrowserDatabase[]; tables?: DatabaseBrowserTable[] }
+  | { type: 'inspection-result'; requestId: string; databases?: DatabaseBrowserDatabase[]; tables?: DatabaseBrowserTable[]; mongoDatabases?: { name: string; sizeOnDisk?: number; empty?: boolean }[]; mongoCollections?: MongoBrowserCollection[]; mongoCollection?: MongoBrowserCollection }
   | { type: 'inspection-error'; requestId: string; message: string }
+  | { type: 'mongo-operation-result'; requestId: string; result: MongoMutationResult }
+  | { type: 'mongo-operation-error'; requestId: string; message: string }
   | { type: 'rows'; queryId: string; columns: string[]; rows: DatabaseRow[]; receivedRows: number }
   | { type: 'complete'; queryId: string; receivedRows: number; elapsedMs: number; truncated: boolean }
   | { type: 'error'; queryId: string; message: string }
@@ -203,20 +210,27 @@ async function readPostgres(request: DatabaseQueryRequest): Promise<void> {
 }
 
 async function readMongo(request: DatabaseQueryRequest): Promise<void> {
-  if (!mongoDb) throw new Error('MongoDB connection is unavailable.')
+  if (!mongo) throw new Error('MongoDB connection is unavailable.')
   const collectionName = request.collection?.trim() ?? ''
   if (!collectionName || collectionName.length > 128 || /[\0-\x1f]/.test(collectionName)) {
     throw new Error('Enter a valid MongoDB collection name (up to 128 characters).')
   }
 
-  const parsed = parseMongoFilter(request.query)
+  const selectedCollection = mongo.db(request.database || config.database || 'admin').collection(collectionName)
+  let cursor
+  if (request.mongoMode === 'aggregate') {
+    parseMongoPipeline(request.query)
+    const pipeline = EJSON.parse(request.query)
+    cursor = selectedCollection.aggregate(pipeline as never, { maxTimeMS: QUERY_TIMEOUT_MS }).batchSize(BATCH_SIZE).limit(request.maxRows + 1)
+  } else {
+    const parsed = parseMongoFilter(request.query)
+    cursor = selectedCollection.find(parsed as Record<string, unknown>)
+      .maxTimeMS(QUERY_TIMEOUT_MS)
+      .batchSize(BATCH_SIZE)
+      .limit(request.maxRows + 1)
+  }
 
   const startedAt = Date.now()
-  const cursor = mongoDb.collection(collectionName)
-    .find(parsed as Record<string, unknown>)
-    .maxTimeMS(QUERY_TIMEOUT_MS)
-    .batchSize(BATCH_SIZE)
-    .limit(request.maxRows + 1)
   const columns = new Set<string>()
   const outgoing: DatabaseRow[] = []
   let receivedRows = 0
@@ -260,8 +274,54 @@ async function readMongo(request: DatabaseQueryRequest): Promise<void> {
   })
 }
 
-async function inspect(request: Extract<WorkerRequest, { type: 'inspect-databases' | 'inspect-tables' }>): Promise<void> {
+async function inspect(request: Extract<WorkerRequest, { type: 'inspect-databases' | 'inspect-tables' | 'inspect-mongo-databases' | 'inspect-mongo-collections' | 'inspect-mongo-collection' }>): Promise<void> {
   try {
+    if (request.type === 'inspect-mongo-databases') {
+      if (!mongo) throw new Error('MongoDB connection is unavailable.')
+      const result = await mongo.db('admin').admin().listDatabases({ nameOnly: false, authorizedDatabases: true })
+      post({
+        type: 'inspection-result', requestId: request.requestId,
+        mongoDatabases: result.databases.map((database) => ({
+          name: database.name,
+          ...(typeof database.sizeOnDisk === 'number' ? { sizeOnDisk: database.sizeOnDisk } : {}),
+          ...(typeof database.empty === 'boolean' ? { empty: database.empty } : {})
+        }))
+      })
+      return
+    }
+    if (request.type === 'inspect-mongo-collections' || request.type === 'inspect-mongo-collection') {
+      if (!mongo) throw new Error('MongoDB connection is unavailable.')
+      const db = mongo.db(request.database)
+      if (request.type === 'inspect-mongo-collections') {
+        const collections = await db.listCollections({}, { nameOnly: false }).toArray()
+        post({ type: 'inspection-result', requestId: request.requestId, mongoCollections: collections
+          .filter((item) => !item.name.startsWith('system.'))
+          .map((item) => ({ name: item.name, type: item.type ?? 'collection' })) })
+        return
+      }
+      const name = request.collection ?? ''
+      const listing = await db.listCollections({ name }, { nameOnly: false }).toArray()
+      const definition = listing[0]
+      if (!definition) throw new Error(`Collection “${name}” no longer exists.`)
+      const collection = db.collection(name)
+      const indexes = definition.type === 'view' ? [] : await collection.listIndexes().toArray().catch(() => [])
+      const estimatedDocuments = definition.type === 'view' ? undefined : await collection.estimatedDocumentCount().catch(() => undefined)
+      const validator = definition.options?.validator
+      post({ type: 'inspection-result', requestId: request.requestId, mongoCollection: {
+        name,
+        type: definition.type ?? 'collection',
+        ...(estimatedDocuments !== undefined ? { estimatedDocuments } : {}),
+        ...(validator ? { validator: EJSON.stringify(validator, { relaxed: false }) } : {}),
+        ...(definition.options ? { options: EJSON.stringify(definition.options, { relaxed: false }) } : {}),
+        indexes: indexes.map((index) => ({
+          name: index.name ?? 'unnamed',
+          keys: EJSON.stringify(index.key, { relaxed: true }),
+          unique: Boolean(index.unique),
+          ...(typeof index.expireAfterSeconds === 'number' ? { expireAfterSeconds: index.expireAfterSeconds } : {})
+        }))
+      } })
+      return
+    }
     if (!postgres || config.kind !== 'postgres') throw new Error('The PostgreSQL browser is only available for PostgreSQL connections.')
     if (request.type === 'inspect-databases') {
       const result = await postgres.query<{ name: string; canConnect: boolean }>(`
@@ -298,6 +358,66 @@ async function inspect(request: Extract<WorkerRequest, { type: 'inspect-database
   }
 }
 
+function parseMongoObject(source: string, label: string): Record<string, unknown> {
+  const parsed: unknown = EJSON.parse(source)
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(`${label} must be a JSON object.`)
+  return parsed as Record<string, unknown>
+}
+
+async function mutateMongo(requestId: string, request: MongoMutationRequest): Promise<void> {
+  try {
+    if (!mongo) throw new Error('MongoDB connection is unavailable.')
+    const db = mongo.db(request.database)
+    let result: MongoMutationResult
+    if (request.operation === 'drop-database') {
+      await db.dropDatabase()
+      result = { message: `Dropped database ${request.database}.` }
+    } else if (request.operation === 'create-collection') {
+      await db.createCollection(request.collection)
+      result = { message: `Created collection ${request.collection}.` }
+    } else if (request.operation === 'drop-collection') {
+      const dropped = await db.collection(request.collection).drop()
+      result = { message: dropped ? `Dropped collection ${request.collection}.` : 'Collection was not found.' }
+    } else if (request.operation === 'insert') {
+      const document = parseMongoObject(request.document, 'Document')
+      const inserted = await db.collection(request.collection).insertOne(document)
+      result = { message: 'Document inserted.', insertedId: EJSON.stringify(inserted.insertedId, { relaxed: true }) }
+    } else if (request.operation === 'update') {
+      parseMongoFilter(request.filter)
+      const filter = parseMongoObject(request.filter, 'Filter')
+      if (Object.keys(filter).length === 0) throw new Error('Update filters cannot be empty.')
+      const update = parseMongoObject(request.update, 'Update')
+      if (!Object.keys(update).length || Object.keys(update).some((key) => !key.startsWith('$'))) {
+        throw new Error('Use MongoDB update operators such as $set or $inc.')
+      }
+      const collection = db.collection(request.collection)
+      const updated = request.many
+        ? await collection.updateMany(filter, update, { upsert: request.upsert })
+        : await collection.updateOne(filter, update, { upsert: request.upsert })
+      result = { message: request.many ? 'Matching documents updated.' : 'Document updated.', affectedCount: updated.modifiedCount + (updated.upsertedCount ?? 0) }
+    } else if (request.operation === 'delete') {
+      parseMongoFilter(request.filter)
+      const filter = parseMongoObject(request.filter, 'Filter')
+      if (Object.keys(filter).length === 0) throw new Error('Delete filters cannot be empty.')
+      const deleted = request.many
+        ? await db.collection(request.collection).deleteMany(filter)
+        : await db.collection(request.collection).deleteOne(filter)
+      result = { message: request.many ? 'Matching documents deleted.' : 'Document deleted.', affectedCount: deleted.deletedCount }
+    } else if (request.operation === 'create-index') {
+      const keys = parseMongoObject(request.keys, 'Index keys')
+      if (!Object.keys(keys).length) throw new Error('Index keys cannot be empty.')
+      const name = await db.collection(request.collection).createIndex(keys as never, { unique: request.unique })
+      result = { message: `Created index ${name}.` }
+    } else {
+      const dropped = await db.collection(request.collection).dropIndex(request.indexName)
+      result = { message: `Dropped index ${request.indexName}.`, affectedCount: dropped ? 1 : 0 }
+    }
+    post({ type: 'mongo-operation-result', requestId, result })
+  } catch (error) {
+    post({ type: 'mongo-operation-error', requestId, message: safeError(error) })
+  }
+}
+
 async function run(request: DatabaseQueryRequest): Promise<void> {
   try {
     if (config.kind === 'postgres') await readPostgres(request)
@@ -321,11 +441,15 @@ parentPort?.on('message', (message: WorkerRequest) => {
     })()
     return
   }
-  if (message.type === 'inspect-databases' || message.type === 'inspect-tables') {
+  if (message.type === 'inspect-databases' || message.type === 'inspect-tables' || message.type === 'inspect-mongo-databases' || message.type === 'inspect-mongo-collections' || message.type === 'inspect-mongo-collection') {
     void inspect(message)
     return
   }
-  void run(message.request)
+  if (message.type === 'mongo-operation') {
+    void mutateMongo(message.requestId, message.request)
+    return
+  }
+  if (message.type === 'run') void run(message.request)
 })
 
 void openConnection().catch((error: unknown) => {

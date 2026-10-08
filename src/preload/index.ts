@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { DatabaseBrowserDatabase, DatabaseBrowserTable, DatabaseConnectionInput, DatabaseConnectionSummary, DatabaseEvent, DatabaseQueryRequest, SavedConnectionProfile } from '../shared/database'
+import type { DatabaseBrowserDatabase, DatabaseBrowserTable, DatabaseConnectionInput, DatabaseConnectionSummary, DatabaseEvent, DatabaseQueryRequest, MongoBrowserCollection, MongoBrowserDatabase, MongoMutationRequest, MongoMutationResult, SavedConnectionProfile } from '../shared/database'
 
 const api = {
   database: {
@@ -10,7 +10,11 @@ const api = {
     deleteSaved: (profileId: string): Promise<boolean> => ipcRenderer.invoke('database:delete-saved', profileId),
     listDatabases: (connectionId: string): Promise<DatabaseBrowserDatabase[]> => ipcRenderer.invoke('database:list-databases', connectionId),
     listTables: (connectionId: string): Promise<DatabaseBrowserTable[]> => ipcRenderer.invoke('database:list-tables', connectionId),
+    listMongoDatabases: (connectionId: string): Promise<MongoBrowserDatabase[]> => ipcRenderer.invoke('database:mongo-databases', connectionId),
+    listMongoCollections: (connectionId: string, database: string): Promise<MongoBrowserCollection[]> => ipcRenderer.invoke('database:mongo-collections', connectionId, database),
+    getMongoCollectionDetails: (connectionId: string, database: string, collection: string): Promise<MongoBrowserCollection> => ipcRenderer.invoke('database:mongo-collection-details', connectionId, database, collection),
     openDatabase: (connectionId: string, database: string): Promise<DatabaseConnectionSummary> => ipcRenderer.invoke('database:open-database', connectionId, database),
+    mutateMongo: (request: MongoMutationRequest): Promise<MongoMutationResult> => ipcRenderer.invoke('database:mongo-mutate', request),
     run: (request: DatabaseQueryRequest): Promise<{ queryId: string }> =>
       ipcRenderer.invoke('database:run', request),
     cancel: (connectionId: string, queryId: string): Promise<boolean> =>

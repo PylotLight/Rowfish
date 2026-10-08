@@ -17,11 +17,12 @@ These previews show the real Rowfish interface with synthetic order data. Their 
 - Save PostgreSQL or MongoDB connection profiles between sessions; passwords and MongoDB URI secrets are encrypted with the operating system credential store.
 - Quickly connect to MongoDB by pasting a `mongodb://` or `mongodb+srv://` URI and choosing a display name.
 - Browse accessible PostgreSQL databases on a server, inspect schemas and tables in the sidebar, and load a table query with one click.
-- Run one PostgreSQL statement at a time, or query a MongoDB collection with a JSON `find` filter.
+- Browse accessible MongoDB databases and collections, inspect collection estimates, validators and indexes, and open a collection with one click.
+- Run one PostgreSQL statement at a time, or query MongoDB with `find` filters and read-only aggregation pipelines. Insert documents, update or delete matching documents, manage collections and indexes, and drop databases with explicit confirmation.
 - Stream query results into a virtualized grid, filter received rows locally, choose a result limit and cancel a running query.
 - Keep query work off the UI thread. Results are bounded to 10,000 rows and 16 MB; queries time out after 120 seconds. Rowfish supports up to eight active connections.
 
-MongoDB aggregation, writes and deletes are not exposed. PostgreSQL accepts the SQL statement you enter, including write statements, so take care when running queries.
+MongoDB aggregation is read-only: `$out`, `$merge` and server-side JavaScript operators are blocked. Updates and deletes require non-empty filters; destructive collection/database drops require typing the exact target name. PostgreSQL accepts the SQL statement you enter, including write statements, so take care when running queries.
 
 ## Run locally
 
