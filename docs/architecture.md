@@ -1,28 +1,27 @@
 # Architecture
 
-The renderer communicates with the Electron main process through a narrow typed preload bridge. Database work runs in one Node worker per connection.
+The React renderer communicates with Electron through a narrow typed preload bridge. Database driver work runs in a Node worker thread for each live connection.
 
 ```text
-renderer (React) ──invoke──▶ preload (contextBridge) ──IPC──▶ main (Electron)
-                                                           └──▶ database worker ──▶ PostgreSQL / MongoDB
+React renderer → preload bridge → Electron IPC → connection manager → Node worker → PostgreSQL or MongoDB
 ```
 
-- `src/renderer/` — database workspace, connection list, query editor, and results grid.
-- `src/preload/index.ts` — typed renderer bridge for database operations and app visibility.
-- `src/main/ipc.ts` — validates the renderer/main boundary and dispatches database operations.
-- `src/main/database.ts` — owns live connections and enforces sender ownership, connection/query limits, and cancellation.
-- `src/main/database-worker.ts` — performs driver connection and cursor work off the Electron main thread. Workers have a 256 MB old-generation heap cap.
-- `src/shared/` — database types, validation helpers, and app configuration.
+- `src/renderer/` contains the query workspace, connection list, editor and virtualized result grid.
+- `src/preload/index.ts` exposes the typed database bridge with `contextBridge`.
+- `src/main/ipc.ts` validates and dispatches renderer requests.
+- `src/main/database.ts` owns active connections and enforces sender ownership, connection/query limits and cancellation.
+- `src/main/database-worker.ts` opens driver connections, reads cursors and normalizes result rows off the UI thread.
+- `src/shared/` contains database types, validation helpers and app configuration.
 
-## Database query path
+## Query path
 
-Each connection owns one worker, with at most eight active connections. PostgreSQL uses `pg-cursor`; MongoDB uses a `find` cursor. Results are sent in batches of 100 and stop at the requested row limit or a 16 MB normalized-result cap. Each query has a 120-second server timeout. The renderer keeps at most 10,000 rows and virtualizes the visible table window.
+Each connection owns one worker; the app supports up to eight concurrent connections. PostgreSQL uses `pg-cursor`, and MongoDB uses a `find` cursor. Workers send rows in batches of 100 and stop at the requested row limit or the 16 MB normalized-result cap. Each query has a 120-second server timeout. The renderer retains at most 10,000 rows and virtualizes the visible table window.
 
-Cancelling a query terminates its worker and closes that connection; reconnect before running another query on it. Closing the app also terminates active workers. Credentials are held in memory only and are not persisted.
+Workers have a 256 MB old-generation heap cap. If a query is cancelled, Rowfish terminates its worker and closes that connection to interrupt server-side work. Closing the app also terminates active workers. Credentials remain in memory and are not persisted.
 
-## Boundaries
+## Process boundaries
 
 1. Renderer code does not import main-process modules. Type-only imports from `src/shared/` are erased at build time.
-2. Database inputs are validated in the main process before driver work starts.
-3. Driver work and large result normalization/rendering stay off the UI thread.
+2. The main process validates database inputs before starting driver work.
+3. Driver work and result normalization stay off the Electron main thread.
 4. Renderer capabilities are limited to methods exposed through `src/preload/index.ts`.
