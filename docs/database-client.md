@@ -1,6 +1,6 @@
 # Database client
 
-The **Database client** section opens live PostgreSQL and MongoDB connections. No connection is attempted until you enter its details and choose **Connect**.
+Rowfish opens live PostgreSQL and MongoDB connections only after you enter connection details and choose **Connect**.
 
 ## Connect
 
@@ -30,9 +30,8 @@ PostgreSQL connections set a 120-second `statement_timeout`. MongoDB queries use
 ## Test locally
 
 1. Start the app with `bun run dev`.
-2. Open **Database client** and add a PostgreSQL or MongoDB server that is reachable from this computer.
+2. Open Rowfish and add a PostgreSQL or MongoDB server that is reachable from this computer.
 3. Choose **Connect**, run a small query/filter, and check that results appear in batches.
-4. Try a result limit, local result search, and **Cancel**. Cancellation closes that database connection; reconnect before running another query.
-5. Switch to another app section while a query runs. The workspace stays mounted and the app remains interactive.
+4. Try a result limit and local result search, then choose **Cancel**. Cancellation closes that connection; reconnect before running another query.
 
 See [Architecture](architecture.md) for the renderer/main/worker boundary and [Mac testing](mac-testing.md) for the platform checklist.

@@ -1,9 +1,8 @@
-import { Menu, shell, type MenuItemConstructorOptions } from 'electron'
+import { Menu, type MenuItemConstructorOptions } from 'electron'
 import { APP_NAME } from '../shared/config'
 
 const isMac = process.platform === 'darwin'
 
-/** Keep the native app menu predictable on macOS and useful on other platforms. */
 export function createAppMenu(): void {
   const macTemplate: MenuItemConstructorOptions[] = [
     {
@@ -49,15 +48,6 @@ export function createAppMenu(): void {
     {
       label: 'Window',
       submenu: [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }]
-    },
-    {
-      label: 'Help',
-      submenu: [
-        {
-          label: 'Rowfish on GitHub',
-          click: () => void shell.openExternal('https://github.com/PylotLight/rowfish')
-        }
-      ]
     }
   ]
 
@@ -75,16 +65,7 @@ export function createAppMenu(): void {
         { role: 'selectAll' }
       ]
     },
-    { label: 'View', submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }] },
-    {
-      label: 'Help',
-      submenu: [
-        {
-          label: 'Rowfish on GitHub',
-          click: () => void shell.openExternal('https://github.com/PylotLight/rowfish')
-        }
-      ]
-    }
+    { label: 'View', submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }] }
   ]
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(isMac ? macTemplate : otherTemplate))

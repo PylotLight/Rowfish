@@ -3,8 +3,7 @@ import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { APP_ID } from '../shared/config'
 import { registerIpc } from './ipc'
 import { createAppMenu } from './menu'
-import { createAppTray, destroyTray } from './tray'
-import { createWindow, hideWindow, resolveAppIcon, showWindow } from './window'
+import { createWindow, resolveAppIcon, showWindow } from './window'
 import { closeDatabaseConnections } from './database'
 
 // Single instance: a second launch focuses the existing window instead of forking.
@@ -28,11 +27,6 @@ app.whenReady().then(() => {
   registerIpc()
   createAppMenu()
   createWindow()
-  createAppTray({
-    onShow: showWindow,
-    onHide: hideWindow,
-    onQuit: () => app.quit()
-  })
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -41,12 +35,11 @@ app.whenReady().then(() => {
 
 app.on('second-instance', () => showWindow())
 
-// On macOS the app stays alive in the tray after the window closes.
+// On macOS the app remains available from the Dock after the window closes.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('will-quit', () => destroyTray())
 app.on('will-quit', () => {
   void closeDatabaseConnections()
 })

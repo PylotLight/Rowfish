@@ -28,14 +28,14 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
   const [form, setForm] = useState<DatabaseConnectionInput>(DEFAULT_FORM)
   const [connecting, setConnecting] = useState(false)
   const [connectionError, setConnectionError] = useState('')
-  const [queryText, setQueryText] = useState('SELECT now() AS server_time;')
+  const [queryText, setQueryText] = useState('')
   const [collection, setCollection] = useState('documents')
   const [maxRows, setMaxRows] = useState(1_000)
   const [runState, setRunState] = useState<RunState>('idle')
   const [rows, setRows] = useState<DatabaseRow[]>([])
   const [columns, setColumns] = useState<string[]>([])
   const [queryError, setQueryError] = useState('')
-  const [querySummary, setQuerySummary] = useState('Connect to a database to begin.')
+  const [querySummary, setQuerySummary] = useState('No query run.')
   const [viewport, setViewport] = useState({ top: 0, height: 480 })
   const scrollElement = useRef<HTMLDivElement>(null)
   const activeQuery = useRef<{ id: string; connectionId: string } | null>(null)
@@ -99,15 +99,15 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
 
   useEffect(() => {
     if (activeConnection?.kind === 'mongodb') {
-      setQueryText('{}')
+      setQueryText('')
       setCollection('documents')
     } else if (activeConnection?.kind === 'postgres') {
-      setQueryText('SELECT now() AS server_time;')
+      setQueryText('')
     }
     setRows([])
     setColumns([])
     setQueryError('')
-    setQuerySummary(activeConnection ? `${activeConnection.kind === 'postgres' ? 'PostgreSQL' : 'MongoDB'} · ${activeConnection.database}` : 'Connect to a database to begin.')
+    setQuerySummary(activeConnection ? `${activeConnection.kind === 'postgres' ? 'PostgreSQL' : 'MongoDB'} · ${activeConnection.database}` : 'No query run.')
     if (scrollElement.current) scrollElement.current.scrollTop = 0
   }, [activeConnection?.id, activeConnection?.kind, activeConnection?.database])
 
@@ -138,7 +138,7 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
   }
 
   async function runQuery(): Promise<void> {
-    if (!activeConnection || runState !== 'idle') return
+    if (!activeConnection || runState !== 'idle' || !queryText.trim()) return
     const queryId = window.crypto.randomUUID()
     activeQuery.current = { id: queryId, connectionId: activeConnection.id }
     setRows([])
@@ -193,7 +193,7 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
     <section className="db-workspace">
       <aside className="db-rail">
         <div className="db-rail-heading">
-          <div><span className="db-overline">CONNECTIONS</span><h2>Data sources</h2></div>
+          <div><span className="db-overline">CONNECTIONS</span><h2>Connections</h2></div>
           <button className="db-icon-button" aria-label="Add connection" title="Add connection" onClick={() => { setShowConnect(true); setConnectionError('') }}>＋</button>
         </div>
         <button className="db-connect-button" onClick={() => { setShowConnect(true); setConnectionError('') }}><span>＋</span> New connection</button>
@@ -208,17 +208,17 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
               <button className="db-disconnect" title={`Disconnect ${connection.name}`} aria-label={`Disconnect ${connection.name}`} onClick={() => void disconnect(connection)}>×</button>
             </div>
           ))}
-          {connections.length === 0 && <div className="db-empty-rail"><span className="db-empty-symbol">◌</span><b>No connections yet</b><p>Add a PostgreSQL or MongoDB server to get started.</p></div>}
+          {connections.length === 0 && <div className="db-empty-rail"><b>No connections</b><p>Add a PostgreSQL or MongoDB connection.</p></div>}
         </div>
-        <div className="db-rail-footer"><span className="db-security-mark">⌑</span><span>Credentials stay in memory<br />and are never saved to disk.</span></div>
+        <div className="db-rail-footer"><span className="db-security-mark">⌑</span><span>Credentials stay in memory.</span></div>
       </aside>
 
       <div className="db-main">
         <div className="db-workspace-header">
           <div>
             <span className="db-overline">QUERY WORKSPACE</span>
-            <h1>{activeConnection?.name ?? 'Connect to your data'}</h1>
-            <p>{activeConnection ? `${activeConnection.kind === 'postgres' ? 'PostgreSQL' : 'MongoDB'} · ${activeConnection.host}:${activeConnection.port} · ${activeConnection.database}` : 'Run queries in an isolated worker with bounded results.'}</p>
+            <h1>{activeConnection?.name ?? 'No connection selected'}</h1>
+            <p>{activeConnection ? `${activeConnection.kind === 'postgres' ? 'PostgreSQL' : 'MongoDB'} · ${activeConnection.host}:${activeConnection.port} · ${activeConnection.database}` : 'Connect a database to run queries.'}</p>
           </div>
           {activeConnection && <button className="db-quiet-button" onClick={() => void disconnect(activeConnection)}>Disconnect</button>}
         </div>
@@ -231,7 +231,7 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
                 <div className="db-editor-controls">
                   {activeConnection.kind === 'mongodb' && <label className="db-collection-field"><span>Collection</span><input value={collection} onChange={(event) => setCollection(event.target.value)} aria-label="MongoDB collection name" maxLength={128} /></label>}
                   <label className="db-limit-field"><span>Max rows</span><select value={maxRows} onChange={(event) => setMaxRows(Number(event.target.value))}><option value={500}>500</option><option value={1000}>1,000</option><option value={5000}>5,000</option><option value={10000}>10,000</option></select></label>
-                  {runState === 'idle' ? <button className="db-run-button" onClick={() => void runQuery()}><span>▶</span> Run query</button> : <button className="db-cancel-button" onClick={() => void cancelQuery()} disabled={runState === 'cancelling'}>{runState === 'cancelling' ? 'Cancelling…' : '■ Cancel'}</button>}
+                  {runState === 'idle' ? <button className="db-run-button" onClick={() => void runQuery()} disabled={!queryText.trim()}><span>▶</span> Run query</button> : <button className="db-cancel-button" onClick={() => void cancelQuery()} disabled={runState === 'cancelling'}>{runState === 'cancelling' ? 'Cancelling…' : '■ Cancel'}</button>}
                 </div>
               </div>
               <label className="db-query-label" htmlFor="db-query-editor">{activeConnection.kind === 'postgres' ? 'SQL' : 'Filter document'}</label>
@@ -270,19 +270,14 @@ export default function DatabaseWorkspace({ search }: { search: string }): React
                   </table>
                 </div>
               ) : <div className={`db-results-empty${runState !== 'idle' ? ' loading' : ''}`}>
-                {runState !== 'idle' ? <><span className="db-spinner" /><b>Query is running in the background</b><p>You can keep using the rest of the app while rows stream in.</p></> : queryError ? <><b>Query stopped</b><p>Check the message above, then adjust your query and try again.</p></> : <><span className="db-results-glyph">▤</span><b>No results yet</b><p>Run a query to stream a bounded result set into this grid.</p></>}
+                {runState !== 'idle' ? <><span className="db-spinner" /><b>Query running</b></> : queryError ? <><b>Query stopped</b><p>Check the error above.</p></> : <><span className="db-results-glyph">▤</span><b>No results</b><p>Run a query to view rows.</p></>}
               </div>}
-              {columns.length > 0 && <div className="db-grid-footer"><span>Virtualized grid · {rows.length.toLocaleString()} rows held in memory</span><span>Search results with the top-bar field</span></div>}
+              {columns.length > 0 && <div className="db-grid-footer"><span>{rows.length.toLocaleString()} rows</span><span>Search with the top-bar field</span></div>}
             </div>
           </>
         ) : (
-          <div className="db-welcome-card">
-            <div className="db-welcome-art"><span className="db-welcome-ring ring-one" /><span className="db-welcome-ring ring-two" /><span className="db-welcome-core">r</span></div>
-            <span className="db-overline">POSTGRESQL + MONGODB</span>
-            <h2>Connect, query, stay responsive.</h2>
-            <p>Database work runs outside the UI thread. Results stream in small batches, stay within a memory budget, and render only the rows you can see.</p>
-            <button className="db-run-button welcome-button" onClick={() => { setShowConnect(true); setConnectionError('') }}>＋ Add a connection</button>
-            <div className="db-safety-points"><span>Worker-isolated</span><span>Cancel any query</span><span>Credentials not persisted</span></div>
+          <div className="db-empty-workspace">
+            <button className="db-run-button" onClick={() => { setShowConnect(true); setConnectionError('') }}>＋ Connect database</button>
           </div>
         )}
       </div>

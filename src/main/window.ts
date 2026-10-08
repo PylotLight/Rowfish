@@ -3,14 +3,10 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { is } from '@electron-toolkit/utils'
 import { WINDOW } from '../shared/config'
-import type { GlassState, VibrancyName } from '../shared/types'
 
 const isMac = process.platform === 'darwin'
 
 let mainWindow: BrowserWindow | null = null
-
-const DEFAULT_VIBRANCY: VibrancyName = 'fullscreen-ui'
-let currentVibrancy: VibrancyName | null = isMac ? DEFAULT_VIBRANCY : null
 
 export function getMainWindow(): BrowserWindow | null {
   return mainWindow
@@ -43,7 +39,7 @@ export function createWindow(): BrowserWindow {
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
     transparent: isMac,
-    vibrancy: currentVibrancy ?? undefined,
+    vibrancy: isMac ? 'fullscreen-ui' : undefined,
     visualEffectState: isMac ? 'active' : undefined,
     backgroundColor: isMac ? '#00000000' : '#101418',
     webPreferences: {
@@ -75,7 +71,7 @@ export function createWindow(): BrowserWindow {
 }
 
 export function showWindow(): void {
-  // app.hide()/dock.hide() on macOS also require re-showing the app itself.
+  // app.hide() on macOS also requires re-showing the application.
   if (isMac) app.show()
   const win = mainWindow
   if (!win) {
@@ -85,18 +81,4 @@ export function showWindow(): void {
   if (win.isMinimized()) win.restore()
   win.show()
   win.focus()
-}
-
-export function hideWindow(): void {
-  mainWindow?.hide()
-}
-
-export function getGlassState(): GlassState {
-  return { platform: process.platform, vibrancy: currentVibrancy, transparent: isMac }
-}
-
-export function setGlassVibrancy(name: VibrancyName | null): GlassState {
-  currentVibrancy = isMac ? name : null
-  mainWindow?.setVibrancy(currentVibrancy)
-  return getGlassState()
 }
