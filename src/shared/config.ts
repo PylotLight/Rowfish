@@ -3,7 +3,7 @@
 /** Display name shown in the UI, tray, and notifications. */
 export const APP_NAME = 'Rowfish'
 /** One-liner shown under the brand in the sidebar. */
-export const APP_TAGLINE = 'native desktop app starter'
+export const APP_TAGLINE = 'PostgreSQL & MongoDB client'
 /** Reverse-DNS id used by Electron and macOS bundle metadata. */
 export const APP_ID = 'com.pylotlight.rowfish'
 /** Default BrowserWindow geometry. */

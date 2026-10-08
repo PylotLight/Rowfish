@@ -2,6 +2,7 @@ import { app, ipcMain, Notification, shell, type IpcMainInvokeEvent } from 'elec
 import * as os from 'node:os'
 import { getGlassState, getMainWindow, setGlassVibrancy, showWindow } from './window'
 import type { GlassState, SysInfo, VibrancyName } from '../shared/types'
+import { cancelDatabaseQuery, connectDatabase, disconnectDatabase, runDatabaseQuery } from './database'
 
 const isMac = process.platform === 'darwin'
 
@@ -31,6 +32,12 @@ function notify(title: string, body: string): boolean {
  */
 export function registerIpc(): void {
   ipcMain.handle('ping', () => 'pong')
+  ipcMain.handle('database:connect', (event, input: unknown) => connectDatabase(event, input))
+  ipcMain.handle('database:run', (event, request: unknown) => runDatabaseQuery(event, request))
+  ipcMain.handle('database:cancel', (event, connectionId: unknown, queryId: unknown) =>
+    cancelDatabaseQuery(event, connectionId, queryId)
+  )
+  ipcMain.handle('database:disconnect', (event, connectionId: unknown) => disconnectDatabase(event, connectionId))
 
   ipcMain.handle('sys:info', (): SysInfo => {
     return {

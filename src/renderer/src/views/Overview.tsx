@@ -8,11 +8,11 @@ export default function Overview({ sys, onNavigate }: { sys: SysInfo | null; onN
     <section className="overview-page">
       <div className="overview-hero">
         <div className="hero-copy">
-          <span className="hero-eyebrow"><span className="hero-spark" /> MAC-FIRST DESKTOP FOUNDATION</span>
-          <h1>Start with a window<br />that feels at home.</h1>
-          <p>Rowfish brings the best reusable patterns from two real desktop clients into one clean, testable Electron base.</p>
+          <span className="hero-eyebrow"><span className="hero-spark" /> POSTGRESQL + MONGODB</span>
+          <h1>Connect to data.<br />Keep your flow.</h1>
+          <p>Rowfish is a desktop workspace for connecting to PostgreSQL and MongoDB, running queries, and exploring bounded results without blocking the interface.</p>
           <div className="hero-actions">
-            <button className="btn mint" onClick={() => onNavigate('explorer')}>Explore storage UI <span>→</span></button>
+            <button className="btn mint" onClick={() => onNavigate('explorer')}>Open database client <span>→</span></button>
             <button className="btn ghost" onClick={() => onNavigate('capture')}>Try quick capture</button>
           </div>
         </div>
@@ -20,12 +20,12 @@ export default function Overview({ sys, onNavigate }: { sys: SysInfo | null; onN
         <div className="hero-foot"><span>BUILD A REAL APP FROM HERE</span><span>01 <i /> 04</span></div>
       </div>
 
-      <div className="overview-heading"><div><span className="section-overline">YOUR STARTER KIT</span><h2>Two patterns. One native shell.</h2></div><span className="overview-note">All demo data stays in memory.</span></div>
+      <div className="overview-heading"><div><span className="section-overline">WORKSPACE</span><h2>Connect, query, explore.</h2></div><span className="overview-note">Credentials are session-only.</span></div>
       <div className="starter-grid">
         <button className="starter-card explorer-card" onClick={() => onNavigate('explorer')}>
-          <span className="starter-card-top"><span className="starter-icon explorer-icon">▤</span><span className="starter-number">01 / EXPLORER</span></span>
-          <h3>Blobfish</h3><p>Browse and search a storage workspace with quick access, a clear file table and connection flow.</p>
-          <span className="starter-card-link">Open explorer pattern <b>→</b></span>
+          <span className="starter-card-top"><span className="starter-icon explorer-icon">▤</span><span className="starter-number">01 / DATABASE</span></span>
+          <h3>Database client</h3><p>Connect PostgreSQL and MongoDB, stream query results in bounded batches, and cancel work that is taking too long.</p>
+          <span className="starter-card-link">Open database workspace <b>→</b></span>
         </button>
         <button className="starter-card capture-card" onClick={() => onNavigate('capture')}>
           <span className="starter-card-top"><span className="starter-icon capture-icon">✎</span><span className="starter-number">02 / CAPTURE</span></span>

@@ -3,6 +3,7 @@ import { APP_NAME, APP_TAGLINE } from '../../shared/config'
 import type { GlassState, SysInfo } from '../../shared/types'
 import Agent from './views/Agent'
 import ClientSamples from './views/ClientSamples'
+import DatabaseWorkspace from './views/DatabaseWorkspace'
 import Kitchen from './views/Kitchen'
 import NativeLab from './views/NativeLab'
 import Overview from './views/Overview'
@@ -10,7 +11,7 @@ import Overview from './views/Overview'
 type Tab = 'overview' | 'explorer' | 'capture' | 'native' | 'kitchen' | 'agent'
 const TABS: Array<{ id: Tab; label: string; mark: string }> = [
   { id: 'overview', label: 'Overview', mark: '⌂' },
-  { id: 'explorer', label: 'Storage explorer', mark: '▤' },
+  { id: 'explorer', label: 'Database client', mark: '▤' },
   { id: 'capture', label: 'Quick capture', mark: '✎' },
   { id: 'native', label: 'macOS & tray', mark: '◉' },
   { id: 'kitchen', label: 'UI components', mark: '▦' },
@@ -43,7 +44,7 @@ export default function App(): React.JSX.Element {
           </div>
         </div>
         <div className="nav-caption">WORKSPACE</div>
-        <nav className="nav" role="tablist" aria-label="Starter sections">
+        <nav className="nav" role="tablist" aria-label="Workspace sections">
           {TABS.map((item) => (
             <button
               key={item.id}
@@ -75,14 +76,14 @@ export default function App(): React.JSX.Element {
       <div className="content">
         <header className="topbar">
           <div className="page-context">
-            <span className="page-kicker">ROWFISH / STARTER</span>
+            <span className="page-kicker">ROWFISH / {tab === 'explorer' ? 'DATABASE' : 'WORKSPACE'}</span>
             <span className="page-title">{selected.label}</span>
           </div>
           <input
             className="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={tab === 'explorer' ? 'Search sample storage…' : tab === 'capture' ? 'Search captures…' : 'Search this view…'}
+            placeholder={tab === 'explorer' ? 'Search results locally…' : tab === 'capture' ? 'Search captures…' : 'Search this view…'}
             aria-label="Search this view"
           />
           <button className="btn ghost hide-button" title="Hide the app (⌘H on macOS)" onClick={() => void window.api.app.hide()}>
@@ -90,9 +91,10 @@ export default function App(): React.JSX.Element {
           </button>
         </header>
 
-        <main className="view" key={tab}>
+        <main className="view">
           {tab === 'overview' && <Overview sys={sys} onNavigate={setTab} />}
-          {(tab === 'explorer' || tab === 'capture') && <ClientSamples mode={tab} query={query} />}
+          <div className="workspace-pane" hidden={tab !== 'explorer'}><DatabaseWorkspace search={query} /></div>
+          {tab === 'capture' && <ClientSamples query={query} />}
           {tab === 'native' && <NativeLab platform={sys?.platform} glass={glass} onGlassChange={setGlass} query={query} />}
           {tab === 'kitchen' && <Kitchen />}
           {tab === 'agent' && <Agent />}

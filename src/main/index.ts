@@ -5,6 +5,7 @@ import { registerIpc } from './ipc'
 import { createAppMenu } from './menu'
 import { createAppTray, destroyTray } from './tray'
 import { createWindow, hideWindow, resolveAppIcon, showWindow } from './window'
+import { closeDatabaseConnections } from './database'
 
 // Single instance: a second launch focuses the existing window instead of forking.
 if (!app.requestSingleInstanceLock()) {
@@ -46,3 +47,6 @@ app.on('window-all-closed', () => {
 })
 
 app.on('will-quit', () => destroyTray())
+app.on('will-quit', () => {
+  void closeDatabaseConnections()
+})
