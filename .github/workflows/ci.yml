@@ -8,6 +8,7 @@ on:
 
 jobs:
   checks:
+    name: "Rowfish · CI · checks · ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.event_name == 'workflow_dispatch' && format('manual · {0}', github.ref_name) || github.ref_name || github.event_name }}"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
