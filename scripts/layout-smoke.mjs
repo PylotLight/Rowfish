@@ -108,7 +108,9 @@ try {
   await check(
     "editor/results splitter responds to drag and keyboard with persisted split",
     async () => {
-      await page.keyboard.press("Escape");
+      await page
+        .getByRole("button", { name: "Collapse explorer sidebar" })
+        .click();
       await expect(page.locator(".db-rail")).toBeHidden();
       const editorBefore = await page.locator(".db-editor-card").boundingBox();
       const resultsBefore = await page

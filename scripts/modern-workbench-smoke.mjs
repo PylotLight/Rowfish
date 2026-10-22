@@ -302,7 +302,12 @@ try {
     const gear = await appearance().boundingBox();
     expect(gear.x).toBeGreaterThanOrEqual(0);
     expect(gear.x + gear.width).toBeLessThanOrEqual(1000);
-    await page.keyboard.press("Escape");
+    const collapse = page.getByRole("button", {
+      name: "Collapse explorer sidebar",
+    });
+    if (await collapse.isVisible()) await collapse.click();
+    else await page.keyboard.press("Escape");
+    await page.mouse.move(800, 300);
     await expect(page.locator(".db-rail")).toBeHidden();
     for (const target of [
       page.getByTestId("explain-query"),
