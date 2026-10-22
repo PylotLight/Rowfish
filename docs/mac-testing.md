@@ -33,4 +33,4 @@ bun run dist:mac
 ls -lh release/Rowfish-*-mac-*.{dmg,zip}
 ```
 
-The targets are Apple Silicon (`arm64`) and Intel (`x64`). Packages are unsigned and not notarized; signing and notarization require the app owner's Apple Developer setup.
+The target is Apple Silicon (`arm64`) only. Packages are unsigned and not notarized; signing and notarization require the app owner's Apple Developer setup.

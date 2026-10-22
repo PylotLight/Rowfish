@@ -1,6 +1,6 @@
 name: mac-package
 
-# Manual smoke-package job: uploads arm64 and x64 DMG/ZIP artifacts, but never publishes a release.
+# Manual smoke-package job: uploads arm64 DMG/ZIP artifacts, but never publishes a release.
 on:
   workflow_dispatch:
 
@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   package:
-    name: "Rowfish · Mac package · arm64 + x64 · ${{ github.ref_name }}"
+    name: "Rowfish · Mac package · arm64 · ${{ github.ref_name }}"
     runs-on: macos-14
     timeout-minutes: 45
     steps:
@@ -35,7 +35,5 @@ jobs:
           path: |
             release/Rowfish-*-mac-arm64.dmg
             release/Rowfish-*-mac-arm64.zip
-            release/Rowfish-*-mac-x64.dmg
-            release/Rowfish-*-mac-x64.zip
           if-no-files-found: error
           retention-days: 14
