@@ -271,8 +271,9 @@ try {
     await ensureSidebar();
     await page.getByRole("button", { name: "orders", exact: true }).click();
     // Clicking a table runs its SELECT straight away.
-    await expect(page.locator(".db-results-summary")).toContainText(
-      /\d+ rows/,
+    // Wait for the finished summary, not "Query running · 0 rows received".
+    await expect(page.locator(".db-results-summary")).toHaveText(
+      /^\d+ rows · /,
       { timeout: 15000 },
     );
     await expect(page.getByRole("button", { name: /Run query/ })).toBeEnabled();
