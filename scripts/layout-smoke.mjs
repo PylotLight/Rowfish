@@ -12,6 +12,11 @@ const app = await electron.launch({
 });
 const page = await app.firstWindow();
 page.setDefaultTimeout(10000);
+const revealRail = async () => {
+  if (!(await page.locator(".db-rail").isVisible()))
+    await page.locator(".rail-reveal-edge").hover();
+  await expect(page.locator(".db-rail")).toBeVisible();
+};
 const check = async (name, fn) => {
   await fn();
   console.log("PASS", name);
@@ -22,8 +27,12 @@ try {
     "closed explorer preserves full query width and settings remains reachable",
     async () => {
       await expect(page.locator(".db-rail")).toBeHidden();
-      const main = await page.locator(".db-main").boundingBox();
+      let main = await page.locator(".db-main").boundingBox();
       const workspace = await page.locator(".db-workspace").boundingBox();
+      expect(main.width).toBeGreaterThan(workspace.width * 0.95);
+      // Hovering the left edge peeks the explorer out over the workspace.
+      await revealRail();
+      main = await page.locator(".db-main").boundingBox();
       expect(main.width).toBeGreaterThan(workspace.width * 0.95);
       await page.getByRole("button", { name: "Settings" }).click();
       await expect(
@@ -34,6 +43,10 @@ try {
         .first()
         .click();
       await expect(page.locator(".cm-content")).toBeVisible();
+      // Back from Settings leaves the rail peeked on the gear; moving away hides it.
+      await page.mouse.move(800, 300);
+      await page.mouse.move(820, 320);
+      await expect(page.locator(".db-rail")).toBeHidden();
     },
   );
   await check(

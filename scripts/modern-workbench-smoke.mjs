@@ -35,6 +35,11 @@ const inputQuery = async (query) => {
   await page.keyboard.press("Control+a");
   await page.keyboard.insertText(query);
 };
+const revealRail = async () => {
+  if (!(await page.locator(".db-rail").isVisible()))
+    await page.locator(".rail-reveal-edge").hover();
+  await expect(page.locator(".db-rail")).toBeVisible();
+};
 const appearance = () =>
   page.getByRole("button", { name: "Settings", exact: true });
 const runQuery = async () => {
@@ -57,6 +62,7 @@ try {
   await check(
     "AMOLED uses opaque black main surfaces and persists",
     async () => {
+      await revealRail();
       await appearance().click();
       await page
         .getByRole("radio", { name: "AMOLED black", exact: true })
@@ -90,6 +96,7 @@ try {
         "data-text-density",
         "compact",
       );
+      await revealRail();
       await appearance().click();
       await page
         .getByRole("radio", { name: "Comfortable", exact: true })
@@ -257,6 +264,7 @@ try {
     },
   );
   await check("Glass and minimum window retain usable tools", async () => {
+    await revealRail();
     await appearance().click();
     await page.getByRole("radio", { name: "Glass", exact: true }).click();
     await page.keyboard.press("Escape");
@@ -271,8 +279,14 @@ try {
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].setSize(1000, 640),
     );
+    // Settings lives in the explorer footer, which peeks out from the left edge.
+    await revealRail();
+    const gear = await appearance().boundingBox();
+    expect(gear.x).toBeGreaterThanOrEqual(0);
+    expect(gear.x + gear.width).toBeLessThanOrEqual(1000);
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".db-rail")).toBeHidden();
     for (const target of [
-      appearance(),
       page.getByTestId("explain-query"),
       page.getByRole("button", { name: /Run query/ }),
       page.getByLabel("PostgreSQL diagnostic query"),

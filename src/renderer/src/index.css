@@ -3233,3 +3233,181 @@ textarea:focus-visible,
 .query-split-layout .db-editor-footer {
   flex-shrink: 0;
 }
+
+/* Explorer hover peek: a thin strip on the left edge slides the explorer out
+   over the workspace (same overlay as the opened explorer), Surffish-style. */
+.rail-reveal-edge {
+  position: absolute;
+  z-index: 32;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 10px;
+  background: transparent;
+  transition: background 140ms ease;
+  -webkit-app-region: no-drag;
+}
+.rail-reveal-edge:hover {
+  background: color-mix(in srgb, var(--mint) 8%, transparent);
+}
+.db-workspace:not(.settings-open) > .db-rail {
+  animation: rail-slide-in 140ms ease-out;
+}
+@keyframes rail-slide-in {
+  from {
+    transform: translateX(-12px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .db-workspace:not(.settings-open) > .db-rail {
+    animation: none;
+  }
+}
+
+/* Rail footer: keychain note on the left, Settings + Quit on the right. */
+.db-rail > .db-rail-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  padding: 10px 2px 0;
+  border-top: 1px solid var(--border);
+  font-size: 10.5px;
+  line-height: 1;
+}
+.db-security-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+.db-rail-footer .app-sidebar-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 2px;
+  margin: 0 0 0 auto;
+  padding: 0;
+  border: 0;
+}
+.db-rail-footer .app-foot-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+}
+.db-rail-footer .app-foot-button svg {
+  display: block;
+}
+
+/* Explorer rail pass: one-line header, tabs that never clip, content scrolls
+   between a fixed top and the pinned footer, same width in Settings. */
+.db-rail {
+  container-type: inline-size;
+  min-width: 0;
+  overflow: hidden;
+}
+.db-rail > * {
+  min-width: 0;
+}
+.db-rail > .db-rail-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 2px 12px 4px;
+}
+.db-rail > .db-rail-heading h2 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+.db-rail-heading .rail-close {
+  display: inline-grid;
+  place-items: center;
+  margin-left: auto;
+  color: var(--muted);
+}
+.db-rail > .db-connect-button {
+  flex-shrink: 0;
+}
+.db-rail > .rail-tabs {
+  flex-shrink: 0;
+  margin-top: 12px;
+}
+.db-rail .rail-tabs button {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.db-rail .rail-tabs button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.db-rail .rail-tabs button svg {
+  flex-shrink: 0;
+}
+@container (max-width: 290px) {
+  .rail-tabs button svg {
+    display: none;
+  }
+}
+@container (max-width: 230px) {
+  .db-security-note {
+    display: none;
+  }
+}
+.db-rail > .object-search {
+  flex-shrink: 0;
+}
+.db-rail > .db-connection-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.db-rail > .db-rail-footer {
+  flex-shrink: 0;
+}
+.db-saved-connections,
+.db-browser-server,
+.db-connection {
+  min-width: 0;
+}
+.db-workspace.settings-open {
+  grid-template-columns:
+    clamp(240px, var(--sidebar-width, 292px), 340px)
+    minmax(0, 1fr);
+}
+@media (max-width: 1120px) {
+  .db-workspace.settings-open {
+    grid-template-columns: 240px minmax(0, 1fr);
+  }
+}
+.db-workspace.settings-open > .db-rail {
+  min-height: 0;
+  height: 100%;
+}
+.db-workspace.settings-open > .settings-page {
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.settings-page * {
+  min-width: 0;
+}
+.settings-page .settings-select-label select,
+.settings-page .settings-number-label input {
+  min-width: 0;
+  max-width: 100%;
+}
+.settings-page .settings-code-line {
+  min-width: max-content;
+}
