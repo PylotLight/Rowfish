@@ -15,6 +15,7 @@ export function getMainWindow(): BrowserWindow | null {
 /** electron-vite emits out/preload/index.js or index.mjs depending on config — accept both. */
 function resolvePreload(): string {
   const base = join(__dirname, '../preload/index')
+  if (existsSync(`${base}.cjs`)) return `${base}.cjs`
   if (existsSync(`${base}.js`)) return `${base}.js`
   return `${base}.mjs`
 }
@@ -44,8 +45,9 @@ export function createWindow(): BrowserWindow {
     backgroundColor: isMac ? '#00000000' : '#101418',
     webPreferences: {
       preload: resolvePreload(),
-      sandbox: false,
-      contextIsolation: true
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false
     }
   })
 

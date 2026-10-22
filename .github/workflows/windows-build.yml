@@ -1,0 +1,54 @@
+name: windows build
+# Ad-hoc unsigned ZIPs, not a release or a claim of native Windows QA.
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: Architecture to package
+        type: choice
+        options: [x64, arm64, both]
+        default: x64
+  pull_request:
+    paths:
+      - .github/workflows/windows-build.yml
+permissions:
+  contents: read
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  package:
+    name: Windows ZIP (${{ matrix.arch }})
+    runs-on: windows-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(github.event_name == 'pull_request' && '["x64"]' || (inputs.arch == 'both' && '["x64","arm64"]' || format('["{0}"]', inputs.arch))) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - name: Verify native Electron binary
+        shell: pwsh
+        run: |
+          if (!(Test-Path node_modules/electron/dist/electron.exe)) {
+            bun node_modules/electron/install.js
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path node_modules/electron/dist/electron.exe)) { throw 'Electron binary is missing' }
+      - run: bun test
+      - run: bun run typecheck
+      - run: bun run build
+      - name: Package unsigned ZIP
+        run: bun x electron-builder --win zip --${{ matrix.arch }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Rowfish-win-${{ matrix.arch }}
+          path: release/*.zip
+          if-no-files-found: error
+          retention-days: 14

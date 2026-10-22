@@ -4,17 +4,67 @@ on:
   push:
     branches: [main]
   pull_request:
-  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: rowfish_fixture
+          POSTGRES_USER: rowfish_test
+          POSTGRES_PASSWORD: rowfish_local_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rowfish_test -d rowfish_fixture"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
+      - name: Install PostgreSQL client and Electron runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libasound2t64 libgbm1 libnss3 xvfb xauth postgresql-client
       - run: bun install --frozen-lockfile
+      - name: Seed disposable PostgreSQL fixture
+        env:
+          PGPASSWORD: rowfish_local_fixture
+        run: psql -h 127.0.0.1 -U rowfish_test -d rowfish_fixture -v ON_ERROR_STOP=1 -f scripts/smoke-fixture.sql
       - run: bun run test
       - run: bun run typecheck
       - run: bun run build
+      - name: Live desktop PostgreSQL smoke test
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGDATABASE: rowfish_fixture
+          PGUSER: rowfish_test
+          PGPASSWORD: rowfish_local_fixture
+        run: xvfb-run -a node scripts/workbench-smoke.mjs
+      - name: Preserve smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rowfish-smoke-diagnostics-${{ github.sha }}
+          path: |
+            artifacts/**
+            screenshots/**
+            **/screenshots/**
+            smoke*.json
+            **/smoke*.json
+          if-no-files-found: ignore
+          retention-days: 7

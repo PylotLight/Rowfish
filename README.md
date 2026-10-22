@@ -1,8 +1,8 @@
 # Rowfish
 
-**A focused desktop query client for PostgreSQL and MongoDB.**
+**A PostgreSQL-first desktop query client, with MongoDB support available.**
 
-Rowfish brings a SQL editor, MongoDB `find` filters and a fast results grid into one lightweight desktop workspace. It is built with Electron, React and TypeScript.
+Rowfish brings persistent SQL tabs, a searchable server explorer, schema-aware autocomplete and a virtualized results grid into one compact workspace. It is built with Electron 45, React and TypeScript; existing MongoDB workflows remain available.
 
 ## See Rowfish
 
@@ -10,7 +10,7 @@ Rowfish brings a SQL editor, MongoDB `find` filters and a fast results grid into
 
 ![MongoDB workspace with a JSON filter and fictional order documents](docs/screenshots/mongodb.png)
 
-These previews show the real Rowfish interface with synthetic order data. Their connections and query results are fixtures—not live database sessions—and contain no real customer records or credentials.
+These previews show Rowfish with synthetic local order data, not production databases or customer records. The PostgreSQL workbench is exercised against a disposable PostgreSQL fixture by the desktop smoke test.
 
 ## What it does
 
@@ -18,11 +18,13 @@ These previews show the real Rowfish interface with synthetic order data. Their 
 - Quickly connect to MongoDB by pasting a `mongodb://` or `mongodb+srv://` URI and choosing a display name.
 - Browse accessible PostgreSQL databases on a server, inspect schemas and tables in the sidebar, and load a table query with one click.
 - Browse accessible MongoDB databases and collections, inspect collection estimates, validators and indexes, and open a collection with one click.
-- Run one PostgreSQL statement at a time, or query MongoDB with `find` filters and read-only aggregation pipelines. Insert documents, update or delete matching documents, manage collections and indexes, and drop databases with explicit confirmation.
-- Stream query results into a virtualized grid, filter received rows locally, choose a result limit and cancel a running query.
+- Keep SQL drafts in persistent in-app tabs; organize named queries in folders and search execution history. External SQL files are optional exports.
+- Run the current PostgreSQL statement, selected SQL or a multi-statement script. Use autocomplete, formatting, and columns/indexes/constraints inspection. Scripts stop at the first error and display the final result.
+- Existing MongoDB tools support `find`, read-only aggregation, document updates, collection/index operations and confirmed destructive actions.
+- Stream results into a virtualized grid; filter and sort received rows, inspect individual rows, export filtered CSV/JSON and cancel running queries.
 - Keep query work off the UI thread. Results are bounded to 10,000 rows and 16 MB; queries time out after 120 seconds. Rowfish supports up to eight active connections.
 
-MongoDB aggregation is read-only: `$out`, `$merge` and server-side JavaScript operators are blocked. Updates and deletes require non-empty filters; destructive collection/database drops require typing the exact target name. PostgreSQL accepts the SQL statement you enter, including write statements, so take care when running queries.
+MongoDB aggregation is read-only: `$out`, `$merge` and server-side JavaScript operators are blocked. Updates and deletes require non-empty filters; destructive collection/database drops require typing the exact target name. PostgreSQL executes submitted SQL, including writes; it is not automatically read-only or rolled back. Drafts, saved SQL and history are local data and are not encrypted. Avoid sensitive literals.
 
 ## Run locally
 
@@ -33,7 +35,7 @@ bun install
 bun run dev
 ```
 
-To try the same fictional dataset shown above, use a local PostgreSQL or MongoDB instance and follow [Getting started](docs/getting-started.md). The seed files are [PostgreSQL SQL](docs/examples/postgres.sql) and [MongoDB mongosh JavaScript](docs/examples/mongodb.js).
+To try the included fictional demo dataset, use a local PostgreSQL or MongoDB instance and follow [Getting started](docs/getting-started.md). The seed files are [PostgreSQL SQL](docs/examples/postgres.sql) and [MongoDB mongosh JavaScript](docs/examples/mongodb.js).
 
 ## Check and package
 
@@ -50,6 +52,7 @@ For macOS test builds, run `bun run dist:mac`. See [Mac testing](docs/mac-testin
 
 - [Getting started](docs/getting-started.md)
 - [Database client](docs/database-client.md)
+- [UI comparison and implemented improvements](docs/ui-review.md)
 - [Architecture](docs/architecture.md)
 - [Mac testing](docs/mac-testing.md)
 - [Releasing](docs/releasing.md)

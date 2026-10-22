@@ -26,7 +26,10 @@ export interface DatabaseConnectionSummary {
   parentConnectionId?: string
 }
 
-export interface SavedConnectionProfile extends Omit<DatabaseConnectionInput, 'password' | 'connectionString'> {
+export interface SavedConnectionProfile extends Omit<
+  DatabaseConnectionInput,
+  'password' | 'connectionString'
+> {
   id: string
   hasSecret: boolean
 }
@@ -39,7 +42,48 @@ export interface DatabaseBrowserDatabase {
 export interface DatabaseBrowserTable {
   schema: string
   name: string
-  kind: 'table' | 'view' | 'materialized view' | 'foreign table' | 'partitioned table'
+  kind:
+    | 'table'
+    | 'view'
+    | 'materialized view'
+    | 'foreign table'
+    | 'partitioned table'
+}
+
+export interface PostgresColumnDetails {
+  name: string
+  dataType: string
+  nullable: boolean
+  defaultValue: string | null
+  isPrimaryKey: boolean
+}
+
+export interface PostgresIndexDetails {
+  name: string
+  definition: string
+  unique: boolean
+  primary: boolean
+}
+
+export interface PostgresConstraintDetails {
+  name: string
+  type: string
+  definition: string
+}
+
+export interface PostgresTableDetails {
+  schema: string
+  name: string
+  kind: DatabaseBrowserTable['kind']
+  columns: PostgresColumnDetails[]
+  indexes: PostgresIndexDetails[]
+  constraints: PostgresConstraintDetails[]
+}
+
+export interface PostgresServerInfo {
+  version: string
+  user: string
+  database: string
 }
 
 export interface MongoBrowserDatabase {
@@ -65,13 +109,58 @@ export interface MongoBrowserCollection {
 }
 
 export type MongoMutationRequest =
-  | { connectionId: string; operation: 'insert'; database: string; collection: string; document: string }
-  | { connectionId: string; operation: 'update'; database: string; collection: string; filter: string; update: string; many: boolean; upsert: boolean }
-  | { connectionId: string; operation: 'delete'; database: string; collection: string; filter: string; many: boolean }
-  | { connectionId: string; operation: 'create-collection'; database: string; collection: string }
-  | { connectionId: string; operation: 'drop-collection'; database: string; collection: string }
-  | { connectionId: string; operation: 'create-index'; database: string; collection: string; keys: string; unique: boolean }
-  | { connectionId: string; operation: 'drop-index'; database: string; collection: string; indexName: string }
+  | {
+      connectionId: string
+      operation: 'insert'
+      database: string
+      collection: string
+      document: string
+    }
+  | {
+      connectionId: string
+      operation: 'update'
+      database: string
+      collection: string
+      filter: string
+      update: string
+      many: boolean
+      upsert: boolean
+    }
+  | {
+      connectionId: string
+      operation: 'delete'
+      database: string
+      collection: string
+      filter: string
+      many: boolean
+    }
+  | {
+      connectionId: string
+      operation: 'create-collection'
+      database: string
+      collection: string
+    }
+  | {
+      connectionId: string
+      operation: 'drop-collection'
+      database: string
+      collection: string
+    }
+  | {
+      connectionId: string
+      operation: 'create-index'
+      database: string
+      collection: string
+      keys: string
+      unique: boolean
+    }
+  | {
+      connectionId: string
+      operation: 'drop-index'
+      database: string
+      collection: string
+      indexName: string
+    }
   | { connectionId: string; operation: 'drop-database'; database: string }
 
 export interface MongoMutationResult {
@@ -94,8 +183,22 @@ export type DatabaseCell = string | number | boolean | null
 export type DatabaseRow = Record<string, DatabaseCell>
 
 export type DatabaseEvent =
-  | { type: 'query:rows'; queryId: string; columns: string[]; rows: DatabaseRow[]; receivedRows: number }
-  | { type: 'query:complete'; queryId: string; receivedRows: number; elapsedMs: number; truncated: boolean }
+  | {
+      type: 'query:rows'
+      queryId: string
+      columns: string[]
+      rows: DatabaseRow[]
+      receivedRows: number
+    }
+  | {
+      type: 'query:complete'
+      queryId: string
+      receivedRows: number
+      elapsedMs: number
+      truncated: boolean
+      affectedRows?: number
+      statementCount?: number
+    }
   | { type: 'query:error'; queryId: string; message: string }
   | { type: 'query:cancelled'; queryId: string; connectionId: string }
   | { type: 'connection:closed'; connectionId: string; message?: string }

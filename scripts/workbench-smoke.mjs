@@ -1,0 +1,277 @@
+import { _electron as electron, expect } from '@playwright/test'
+import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+const artifacts = join(process.cwd(), 'artifacts')
+await mkdir(artifacts, { recursive: true })
+const userData = await mkdtemp(join(tmpdir(), 'rowfish-smoke-'))
+const checks = []
+const app = await electron.launch({
+  executablePath: join(process.cwd(), 'node_modules/electron/dist/electron'),
+  args: ['--no-sandbox', `--user-data-dir=${userData}`, 'out/main/index.js'],
+  env: { ...process.env }
+})
+const page = await app.firstWindow()
+page.setDefaultTimeout(10000)
+page.on('pageerror', (error) => console.error('PAGE ERROR', error.message))
+const check = async (name, fn) => {
+  await fn()
+  checks.push(name)
+  console.log('PASS', name)
+}
+const editor = () => page.locator('.cm-content')
+const inputQuery = async (query) => {
+  await editor().click()
+  await page.keyboard.press('Control+a')
+  await page.keyboard.insertText(query)
+}
+try {
+  await page.waitForSelector('.cm-content')
+  await check('Electron 45 runtime', async () =>
+    expect(await app.evaluate(() => process.versions.electron)).toMatch(/^45\./)
+  )
+  await check('offline drafts autosave across reload', async () => {
+    await inputQuery('SELECT 42 AS answer;')
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            JSON.parse(
+              localStorage.getItem('rowfish.query-workspace.v1') ?? '{}'
+            )?.tabs?.[0]?.query
+        )
+      )
+      .toBe('SELECT 42 AS answer;')
+    await page.reload()
+    await expect(editor()).toHaveText('SELECT 42 AS answer;')
+  })
+  await check('named queries saved internally', async () => {
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await page.getByLabel('Query name').fill('Fixture answer')
+    await page.getByRole('button', { name: 'Save query', exact: true }).click()
+    await expect(page.locator('.library-item')).toContainText('Fixture answer')
+  })
+  await page.getByRole('tab', { name: 'Servers', exact: true }).click()
+  await page.getByRole('button', { name: /New connection/ }).click()
+  const modal = page.getByRole('dialog', { name: 'Connect a database' })
+  await modal
+    .getByLabel('Connection name', { exact: true })
+    .fill('Local development')
+  await modal.getByLabel('Host', { exact: true }).fill('localhost')
+  await modal.getByLabel('Database', { exact: true }).fill('rowfish_fixture')
+  await modal.getByLabel(/^Username/).fill('rowfish_test')
+  await modal.getByLabel(/^Password/).fill('rowfish_local_fixture')
+  const saveLabel = modal
+    .locator('label')
+    .filter({ hasText: 'Save this connection' })
+  if (await saveLabel.count()) await saveLabel.locator('input').uncheck()
+  await modal.getByRole('button', { name: /^Connect$/ }).click()
+  await check('real PostgreSQL connect and schema browser', async () => {
+    await expect(modal).not.toBeVisible({ timeout: 20000 })
+    await expect(
+      page.getByRole('button', { name: 'customers', exact: true })
+    ).toBeVisible({ timeout: 15000 })
+    await expect(
+      page.getByRole('button', { name: /^customer_totals/ })
+    ).toBeVisible()
+  })
+  await page.getByRole('button', { name: 'orders', exact: true }).click()
+  await check('PostgreSQL structure metadata', async () => {
+    await page.getByRole('button', { name: 'Structure', exact: true }).click()
+    await expect(page.locator('.metadata-table')).toContainText('customer_id', {
+      timeout: 15000
+    })
+    await expect(page.locator('.metadata-table')).toContainText('numeric(12,2)')
+  })
+  await check('PostgreSQL indexes and foreign keys', async () => {
+    await page
+      .getByRole('button', { name: 'Indexes & constraints', exact: true })
+      .click()
+    await expect(page.locator('.metadata-panel')).toContainText(
+      'orders_status_idx'
+    )
+    await expect(page.locator('.metadata-panel')).toContainText('FOREIGN KEY')
+  })
+  await page.getByRole('button', { name: 'Results', exact: true }).click()
+  await check('schema and column autocomplete', async () => {
+    await inputQuery('SELECT * FROM public.')
+    await page.keyboard.press('Control+Space')
+    await expect(page.locator('.cm-tooltip-autocomplete')).toContainText(
+      'customers'
+    )
+    await page.keyboard.press('Escape')
+    await inputQuery('SELECT * FROM public.orders WHERE orders.')
+    await page.keyboard.press('Control+Space')
+    await expect(page.locator('.cm-tooltip-autocomplete')).toContainText(
+      'customer_id'
+    )
+    await page.keyboard.press('Escape')
+  })
+  await check('multi-statement scripts and final result', async () => {
+    await inputQuery('SELECT 1 AS first; SELECT 2 AS final;')
+    await page.getByRole('button', { name: /Run query/ }).click()
+    await expect(page.locator('.db-results-summary')).toContainText(
+      '2 statements',
+      { timeout: 15000 }
+    )
+    await expect(page.locator('.db-result-table')).toContainText('final')
+  })
+  await check('empty results retain column headings', async () => {
+    await inputQuery('SELECT id, email FROM public.customers WHERE false;')
+    await page.getByRole('button', { name: /Run query/ }).click()
+    await expect(page.locator('.db-results-summary')).toContainText('0 rows', {
+      timeout: 15000
+    })
+    await expect(page.locator('.db-result-table thead')).toContainText('email')
+  })
+  await check('query streaming and result sorting', async () => {
+    await inputQuery(
+      'SELECT id, customer_id, total, status FROM public.orders ORDER BY id LIMIT 30;'
+    )
+    await page.getByRole('button', { name: /Run query/ }).click()
+    await expect(page.locator('.db-results-summary')).toContainText('30 rows', {
+      timeout: 15000
+    })
+    expect(
+      await page
+        .locator('.db-result-table tbody tr:not(.db-spacer-row)')
+        .count()
+    ).toBeGreaterThan(0)
+    expect(
+      await page
+        .locator('.db-result-table tbody tr:not(.db-spacer-row)')
+        .count()
+    ).toBeLessThanOrEqual(30)
+    await page
+      .locator('th')
+      .getByRole('button', { name: /^total/ })
+      .click()
+    await page
+      .locator('th')
+      .getByRole('button', { name: /^total/ })
+      .click()
+    await expect(
+      page.locator('.db-result-table tbody tr').first()
+    ).toContainText('375.00')
+  })
+  await check('history records actual query outcome', async () => {
+    await page.getByRole('tab', { name: 'History', exact: true }).click()
+    await expect(page.locator('.history-status.success').first()).toContainText(
+      'Local development'
+    )
+    await expect(page.locator('.library-item').first()).toContainText(
+      'SELECT id'
+    )
+  })
+  await check('filtered export and row inspector', async () => {
+    await page.getByLabel('Filter result rows').fill('complete')
+    await expect(page.locator('.db-row-count')).toContainText('20 / 30')
+    await app.evaluate(
+      ({ session }, path) => {
+        session.defaultSession.once('will-download', (_event, item) => {
+          item.setSavePath(path)
+          item.once('done', (_event, state) => {
+            globalThis.__rowfishDownload = state
+          })
+        })
+      },
+      join(artifacts, 'fixture-results.csv')
+    )
+    await page.getByRole('button', { name: 'CSV', exact: true }).click()
+    await expect
+      .poll(() => app.evaluate(() => globalThis.__rowfishDownload))
+      .toBe('completed')
+    await page.locator('.db-result-table tbody tr').first().dblclick()
+    await expect(
+      page.getByRole('dialog', { name: 'Row details' })
+    ).toContainText('customer_id')
+    await page
+      .getByRole('dialog', { name: 'Row details' })
+      .getByRole('button')
+      .click()
+    await page.getByLabel('Filter result rows').fill('')
+  })
+  await page.getByRole('tab', { name: 'Servers', exact: true }).click()
+  await check('server browser opens an accessible database', async () => {
+    await page.getByRole('button', { name: 'Disconnect', exact: true }).click()
+    await page.getByRole('button', { name: /New connection/ }).click()
+    const dialog = page.getByRole('dialog', { name: 'Connect a database' })
+    await dialog
+      .getByLabel('Connection name', { exact: true })
+      .fill('Development server')
+    await dialog.getByLabel('Host', { exact: true }).fill('localhost')
+    await dialog.getByLabel(/^Username/).fill('rowfish_test')
+    await dialog.getByLabel(/^Password/).fill('rowfish_local_fixture')
+    await dialog.getByRole('checkbox', { name: /Browse all databases/ }).check()
+    await dialog
+      .getByRole('checkbox', { name: /Save this connection/ })
+      .uncheck()
+    await dialog.getByRole('button', { name: 'Connect', exact: true }).click()
+    await expect(dialog).not.toBeVisible({ timeout: 20000 })
+    await page
+      .locator('.db-browser-database')
+      .filter({ hasText: 'rowfish_fixture' })
+      .click()
+    await expect(
+      page.getByRole('button', { name: 'orders', exact: true })
+    ).toBeVisible({ timeout: 15000 })
+  })
+  await check(
+    'cancel terminates active SQL and records cancellation',
+    async () => {
+      await inputQuery('SELECT pg_sleep(20);')
+      await page.getByRole('button', { name: /Run query/ }).click()
+      await page.locator('.db-cancel-button').click()
+      await page.getByRole('tab', { name: 'History', exact: true }).click()
+      await expect(
+        page.locator('.history-status.cancelled').first()
+      ).toBeVisible()
+      await page.getByRole('tab', { name: 'Servers', exact: true }).click()
+      await page
+        .locator('.db-browser-database')
+        .filter({ hasText: 'rowfish_fixture' })
+        .click()
+      await expect(
+        page.getByRole('button', { name: 'orders', exact: true })
+      ).toBeVisible({ timeout: 15000 })
+    }
+  )
+  await check('query result bounds truncate safely', async () => {
+    await page.getByLabel('Max rows', { exact: true }).selectOption('500')
+    await inputQuery('SELECT generate_series(1, 600) AS number;')
+    await page.getByRole('button', { name: /Run query/ }).click()
+    await expect(page.locator('.db-results-summary')).toContainText(
+      '500 rows',
+      { timeout: 15000 }
+    )
+    await expect(page.locator('.db-results-summary')).toContainText(
+      'result capped'
+    )
+  })
+  await page.getByRole('button', { name: 'orders', exact: true }).click()
+  await inputQuery(
+    'SELECT id, customer_id, total, status FROM public.orders ORDER BY id LIMIT 30;'
+  )
+  await page.getByRole('button', { name: /Run query/ }).click()
+  await expect(page.locator('.db-results-summary')).toContainText('30 rows', {
+    timeout: 15000
+  })
+  await page.screenshot({ path: join(artifacts, 'rowfish-workbench.png') })
+  await writeFile(
+    join(artifacts, 'smoke-results.json'),
+    JSON.stringify(
+      { runtime: await app.evaluate(() => process.versions.electron), checks },
+      null,
+      2
+    ) + '\n'
+  )
+  console.log('ALL CHECKS PASSED')
+} catch (error) {
+  await page
+    .screenshot({ path: join(artifacts, 'smoke-failure.png') })
+    .catch(() => {})
+  console.error(await page.locator('body').innerText())
+  throw error
+} finally {
+  await app.close()
+}

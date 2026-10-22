@@ -9,12 +9,17 @@ export default function App(): React.JSX.Element {
       <main className="content">
         <header className="topbar">
           <div className="app-brand">
-            <span className="brand-mark" aria-hidden="true">r</span>
+            <span className="brand-mark" aria-hidden="true">
+              r
+            </span>
             <div>
               <h1>Rowfish</h1>
-              <span>Database client</span>
+              <span>PostgreSQL workspace</span>
             </div>
           </div>
+          <span className="topbar-hint">
+            A little clarity for your databases.
+          </span>
           <input
             className="search"
             value={search}

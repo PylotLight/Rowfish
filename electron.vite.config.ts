@@ -6,6 +6,12 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()]
   },
   preload: {
+    build: {
+      rolldownOptions: {
+        external: ['electron'],
+        output: { format: 'cjs', entryFileNames: 'index.cjs' }
+      }
+    },
     plugins: [externalizeDepsPlugin()]
   },
   renderer: {

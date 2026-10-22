@@ -28,7 +28,7 @@ From a selected collection you can insert a document, update one or many documen
 
 ### PostgreSQL
 
-Enter one SQL statement. Rowfish fetches rows through a PostgreSQL cursor in batches of 100. The editor does not provide query parameters or multi-statement scripts.
+Use the SQL editor for one statement, a selected fragment, or a script. Ctrl/⌘ Enter runs the selection or current statement; Ctrl/⌘ Shift Enter and the Run query button run the whole editor. Statements execute sequentially on the same session and stop at the first error. Only the final statement’s result is displayed, fetched through a cursor in bounded batches. Earlier statements are not automatically rolled back: use explicit BEGIN/COMMIT/ROLLBACK when appropriate. Query parameters are not provided.
 
 For the included fictional dataset, run:
 
@@ -64,9 +64,16 @@ Choosing **Cancel** terminates the worker to interrupt server-side work. Rowfish
 
 ## Current scope
 
-Saved-profile sync, SSH tunnels, a custom CA-file picker, result export, PostgreSQL query parameters and multi-statement execution are not included. The row cap is not a full export workflow.
+The query workspace provides persistent in-app tabs, draft autosave, a named query library with folder labels, searchable execution history, formatting, and schema-aware table/column autocomplete. No external SQL file is needed. The [UI review](ui-review.md) summarizes the comparison and boundaries.
 
-The checked-in [PostgreSQL seed script](examples/postgres.sql) and [MongoDB seed script](examples/mongodb.js) create matching fictional order examples for local demos. The screenshots in the [README](../README.md) use these same synthetic records; they are interface previews, not live database sessions.
+Drafts, saved queries and history are stored in local application storage, not encrypted. Disable history recording in the History tab to stop recording subsequent query text; existing entries remain until cleared. Restoring a query never runs it automatically. Select a table to inspect its structure, indexes and constraints in the results pane.
+
+
+Result headings support local sorting; double-click a row to inspect full normalized values. CSV and JSON buttons export the currently filtered, already-fetched rows. CSV escapes spreadsheet formulas; JSON retains value types. Exports still obey row/cell/byte caps and are not full-database backups.
+
+Saved-profile sync, SSH tunnels, a custom CA-file picker, PostgreSQL query parameters, graphical data editing and transaction-control buttons are not included.
+
+The checked-in [PostgreSQL seed script](examples/postgres.sql) and [MongoDB seed script](examples/mongodb.js) create matching fictional order examples for local demos. The [README](../README.md) previews use synthetic local records. Its PostgreSQL screenshot comes from the live disposable smoke-test fixture; no production database is used.
 
 ## Test against a database
 
@@ -76,4 +83,10 @@ The checked-in [PostgreSQL seed script](examples/postgres.sql) and [MongoDB seed
 4. Quit and relaunch. Confirm the saved profile remains visible, reconnect works, and live sessions are not automatically reopened.
 5. Run a small read query or filter, change the row limit, try local result search, then choose **Cancel** and reconnect before another query.
 
-Unit tests and build checks cover query guards, identifier escaping, bounds and worker behavior. A successful live database session still requires a reachable server and valid credentials.
+Run `bun test`, `bun run typecheck` and `bun run build` for automated checks. `bun run test:smoke` launches the actual Electron app and expects the isolated local fixture described below. A successful live database session requires a reachable server and valid credentials.
+
+## Repeat the desktop smoke test
+
+The fixture must be a disposable **local** PostgreSQL database. Create login `rowfish_test` with password `rowfish_local_fixture`, and database `rowfish_fixture` owned by that login, then apply `scripts/smoke-fixture.sql` to that database. Do not use a production database.
+
+Run `bun run test:smoke` on a desktop, or `xvfb-run -a bun run test:smoke` on Linux CI with Xvfb. The test uses a fresh temporary app profile and does not read personal saved connections. Test output and screenshots go to ignored `artifacts/`. Native macOS/Windows packaging and live MongoDB operations need their own platform checks.

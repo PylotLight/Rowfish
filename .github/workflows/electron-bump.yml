@@ -1,0 +1,89 @@
+name: Electron bump
+
+on:
+  schedule:
+    - cron: '17 20 * * 1'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact stable Electron version (optional; defaults to npm latest)
+        type: string
+        default: ''
+      dry_run:
+        description: Calculate and report without changing files or remote branches
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: electron-bump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Resolve and validate target version
+        id: version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          args=()
+          if [ -n "$REQUESTED_VERSION" ]; then args+=(--version "$REQUESTED_VERSION"); fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then args+=(--dry-run); fi
+          result="$(node scripts/bump-electron.mjs "${args[@]}")"
+          echo "$result"
+          echo "$result" >> "$GITHUB_STEP_SUMMARY"
+          echo "changed=$(echo "$result" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).changed))')" >> "$GITHUB_OUTPUT"
+          echo "target=$(echo "$result" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).target))')" >> "$GITHUB_OUTPUT"
+      - name: Stop when already current or dry-run
+        if: steps.version.outputs.changed != 'true' || inputs.dry_run
+        run: echo 'No changes pushed. A dry run never changes remote state.'
+      - name: Update lockfile and commit
+        if: steps.version.outputs.changed == 'true' && !inputs.dry_run
+        run: |
+          bun install --ignore-scripts
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json bun.lock
+          git diff --cached --quiet && { echo 'No package/lockfile changes'; exit 1; }
+          git commit -m "chore(deps): bump Electron to ${{ steps.version.outputs.target }}"
+      - name: Push reusable bump branch
+        if: steps.version.outputs.changed == 'true' && !inputs.dry_run
+        run: git push --force-with-lease origin HEAD:refs/heads/chore/electron-bump
+      - name: Create or update pull request
+        if: steps.version.outputs.changed == 'true' && !inputs.dry_run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          existing="$(gh pr list --base main --head chore/electron-bump --state open --json number --jq '.[0].number // empty')"
+          title="chore(deps): bump Electron to ${{ steps.version.outputs.target }}"
+          body="Updates the exact Electron devDependency and bun.lock. This PR is not auto-merged; review and merge after checks pass."
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --title "$title" --body "$body"
+          else
+            gh pr create --base main --head chore/electron-bump --title "$title" --body "$body"
+          fi
+      # GITHUB_TOKEN pushes/PRs do not recursively trigger push/PR CI.
+      - name: Dispatch verification for the updated branch
+        if: steps.version.outputs.changed == 'true' && !inputs.dry_run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref chore/electron-bump
