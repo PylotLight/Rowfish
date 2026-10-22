@@ -6,6 +6,18 @@
 
 Rowfish brings persistent SQL tabs, a searchable server explorer, schema-aware autocomplete and a virtualized results grid into one compact workspace. It is built with Electron 45, React and TypeScript; existing MongoDB workflows remain available.
 
+## Install
+
+**Homebrew (macOS, Apple Silicon):**
+
+```bash
+brew tap pylotlight/rowfish https://github.com/PylotLight/Rowfish.git
+brew install --cask rowfish
+xattr -cr /Applications/Rowfish.app
+```
+
+Builds are unsigned for now, so macOS may say Rowfish is "damaged". That's the quarantine flag on an unsigned app, not a bad build; the `xattr` line clears it (Homebrew v6 dropped `--no-quarantine`). Or grab the arm64 DMG/ZIP from [Releases](https://github.com/PylotLight/Rowfish/releases).
+
 ## See Rowfish
 
 ![PostgreSQL workspace with a SQL query and fictional order rows](docs/screenshots/postgres.png)

@@ -24,7 +24,11 @@ Replace `0.1.0` with the version in `package.json`. The tag push is the publishi
 
 ## Signing and distribution
 
-The Mac targets already enable hardened runtime and use `build/entitlements.mac.plist`. They remain unsigned by default. Developer ID signing and notarization can be added later by configuring the app owner's signing credentials in GitHub Actions; Rowfish does not store or request signing secrets and does not update a Homebrew tap.
+The Mac targets already enable hardened runtime and use `build/entitlements.mac.plist`. They remain unsigned by default. Developer ID signing and notarization can be added later by configuring the app owner's signing credentials in GitHub Actions; Rowfish does not store or request signing secrets.
+
+## Homebrew
+
+This repo doubles as the Homebrew tap (`brew tap pylotlight/rowfish https://github.com/PylotLight/Rowfish.git`, then `brew install --cask rowfish`). After a stable release publishes, the `homebrew` job in `release.yml` renders `Casks/rowfish.rb` from `Casks/rowfish.rb.tmpl` with the new version and the arm64 zip SHA-256 and pushes it to main. Prereleases don't touch the cask. Edit the template, never the rendered file.
 
 ## Verification and preview workflows
 
