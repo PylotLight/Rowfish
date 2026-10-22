@@ -3007,3 +3007,239 @@ textarea:focus-visible,
     grid-template-columns: 240px minmax(0, 1fr);
   }
 }
+
+/* Resizable database workbench. Explorer floats over the content and never
+   participates in main-column sizing; separators are real keyboard controls. */
+.db-workspace {
+  position: relative;
+  display: block !important;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+.db-workspace > .db-main {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  resize: none !important;
+}
+.db-workspace > .db-main[hidden] {
+  display: none !important;
+}
+.db-workspace:not(.settings-open) > .db-rail {
+  position: absolute;
+  z-index: 30;
+  inset: 0 auto 0 0;
+  display: flex;
+  width: min(var(--sidebar-width, 292px), calc(100% - 360px));
+  min-width: 220px;
+  max-width: calc(100% - 360px);
+  box-sizing: border-box;
+  box-shadow: 18px 0 48px rgba(0, 0, 0, 0.34);
+}
+.db-workspace.sidebar-hidden:not(.settings-open) > .db-rail {
+  display: none !important;
+}
+.db-workspace.sidebar-hidden:not(.settings-open) > .db-main {
+  min-width: 0;
+}
+.db-workspace:not(.settings-open) > .explorer-resizer {
+  position: absolute;
+  z-index: 31;
+  left: min(var(--sidebar-width, 292px), calc(100% - 360px));
+  top: 0;
+  bottom: 0;
+}
+.db-workspace.has-row-panel:not(.settings-open) > .db-main {
+  width: calc(
+    100% - min(var(--row-panel-width, 390px), calc(100% - 360px)) - 8px
+  );
+}
+.db-workspace.has-row-panel:not(.settings-open) > .row-side-panel {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: min(var(--row-panel-width, 390px), calc(100% - 360px));
+  min-width: 0;
+}
+.db-workspace.has-row-panel:not(.settings-open) > .row-details-resizer {
+  position: absolute;
+  z-index: 20;
+  right: min(var(--row-panel-width, 390px), calc(100% - 360px));
+  top: 0;
+  bottom: 0;
+}
+.db-editor-card {
+  height: var(--editor-height, 42%);
+  max-height: 78%;
+  min-height: 140px;
+  flex: 0 0 var(--editor-height, 42%);
+  resize: none !important;
+  overflow: hidden;
+}
+.db-workspace > .db-main > .layout-resizer.horizontal {
+  flex: 0 0 8px;
+}
+.db-workspace > .db-main > .db-results-card {
+  min-height: 100px;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+.db-workspace {
+  --editor-height: var(--editor-percent, 42%);
+}
+.layout-resizer {
+  touch-action: none;
+  user-select: none;
+  position: relative;
+  flex: 0 0 8px;
+  z-index: 5;
+  outline: none;
+}
+.layout-resizer::after {
+  content: '';
+  position: absolute;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  transition:
+    background 0.12s,
+    transform 0.12s;
+}
+.layout-resizer.vertical {
+  width: 8px;
+  cursor: col-resize;
+}
+.layout-resizer.vertical::after {
+  width: 2px;
+  height: 100%;
+  left: 3px;
+  top: 0;
+}
+.layout-resizer.horizontal {
+  height: 8px;
+  cursor: row-resize;
+}
+.layout-resizer.horizontal::after {
+  height: 2px;
+  width: 100%;
+  top: 3px;
+  left: 0;
+}
+.layout-resizer:hover::after,
+.layout-resizer:focus-visible::after {
+  background: var(--mint);
+  transform: scale(1.35);
+}
+.layout-resizer:focus-visible {
+  outline: 2px solid var(--mint);
+  outline-offset: -2px;
+}
+.db-workspace .db-editor-card {
+  height: var(--editor-percent, 42%);
+  flex-basis: var(--editor-percent, 42%);
+}
+.db-rail-heading {
+  position: relative;
+}
+.db-rail-heading .rail-close {
+  margin-left: auto;
+}
+.sidebar-toggle {
+  z-index: 1;
+}
+.sidebar-toggle:focus-visible,
+.db-icon-button:focus-visible {
+  outline: 2px solid var(--mint);
+  outline-offset: 2px;
+}
+[role='dialog'],
+.db-modal {
+  resize: both;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+}
+.db-modal-backdrop {
+  align-items: center;
+}
+@media (max-width: 700px) {
+  .db-workspace:not(.settings-open) > .db-rail {
+    width: min(var(--sidebar-width, 292px), 86vw);
+    max-width: 86vw;
+  }
+  .db-workspace.has-row-panel:not(.settings-open) > .db-main {
+    width: 100%;
+  }
+  .db-workspace.has-row-panel:not(.settings-open) > .row-side-panel {
+    z-index: 15;
+    width: min(var(--row-panel-width, 390px), 90vw);
+  }
+}
+
+/* Global app actions stay reachable even while the explorer is dismissed. */
+.db-workspace > .app-sidebar-actions {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 40;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+}
+.db-workspace > .app-sidebar-actions > span {
+  display: none;
+}
+
+/* Split ratios apply only to the remaining query/results canvas, not the toolbar. */
+.query-split-layout {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.db-workspace .query-split-layout > .db-editor-card {
+  height: clamp(210px, var(--editor-percent, 42%), calc(100% - 108px));
+  flex: 0 0 auto;
+  min-height: 210px;
+  max-height: calc(100% - 108px);
+}
+.query-split-layout > .db-results-card {
+  min-height: 100px;
+  flex: 1 1 0;
+  overflow: hidden;
+}
+.db-workspace.settings-open {
+  display: grid !important;
+  grid-template-columns: 240px minmax(0, 1fr);
+}
+.db-workspace.settings-open > .db-rail {
+  grid-column: 1;
+  grid-row: 1;
+}
+.db-workspace.settings-open > .settings-page {
+  grid-column: 2;
+  grid-row: 1;
+}
+.db-workspace > .app-sidebar-actions {
+  flex-direction: row;
+}
+
+/* A narrow query pane keeps its controls/footer; only the editor body scrolls. */
+.query-split-layout .sql-editor {
+  min-height: 48px !important;
+}
+.query-split-layout .db-editor-topline,
+.query-split-layout .query-actions,
+.query-split-layout .pg-tools-bar,
+.query-split-layout .db-editor-footer {
+  flex-shrink: 0;
+}

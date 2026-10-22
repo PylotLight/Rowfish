@@ -21,7 +21,18 @@ const check = async (name, fn) => {
   console.log('PASS', name)
 }
 const editor = () => page.locator('.cm-content')
+const ensureSidebar = async () => {
+  const rail = page.locator('.db-rail')
+  if (!(await rail.isVisible())) await page.locator('.sidebar-toggle').click()
+  await expect(rail).toBeVisible()
+}
+const sidebarTab = async (name) => {
+  await ensureSidebar()
+  await page.getByRole('tab', { name, exact: true }).click()
+}
 const inputQuery = async (query) => {
+  if (await page.locator('.db-rail').isVisible())
+    await page.keyboard.press('Escape')
   await editor().click()
   await page.keyboard.press('Control+a')
   await page.keyboard.insertText(query)
@@ -76,7 +87,7 @@ try {
     await page.getByRole('button', { name: 'Save query', exact: true }).click()
     await expect(page.locator('.library-item')).toContainText('Fixture answer')
   })
-  await page.getByRole('tab', { name: 'Servers', exact: true }).click()
+  await sidebarTab('Servers')
   await page.getByRole('button', { name: /New connection/ }).click()
   const modal = page.getByRole('dialog', { name: 'Connect a database' })
   await modal
@@ -93,6 +104,7 @@ try {
   await modal.getByRole('button', { name: /^Connect$/ }).click()
   await check('real PostgreSQL connect and schema browser', async () => {
     await expect(modal).not.toBeVisible({ timeout: 20000 })
+    await ensureSidebar()
     await expect(
       page.getByRole('button', { name: 'customers', exact: true })
     ).toBeVisible({ timeout: 15000 })
@@ -100,6 +112,7 @@ try {
       page.getByRole('button', { name: /^customer_totals/ })
     ).toBeVisible()
   })
+  await ensureSidebar()
   await page.getByRole('button', { name: 'orders', exact: true }).click()
   await check('PostgreSQL structure metadata', async () => {
     await page.getByRole('button', { name: 'Structure', exact: true }).click()
@@ -140,6 +153,32 @@ try {
       await expect(panel).toContainText('public.orders')
       await expect(panel).toContainText('numeric(12,2)')
       await expect(panel).toContainText('Primary key')
+      const rowResize = page.getByRole('separator', {
+        name: 'Resize row details panel'
+      })
+      const panelBefore = await panel.boundingBox()
+      const handle = await rowResize.boundingBox()
+      await page.mouse.move(handle.x + 4, handle.y + 100)
+      await page.mouse.down()
+      await page.mouse.move(handle.x - 56, handle.y + 100, { steps: 5 })
+      await page.mouse.up()
+      await expect
+        .poll(async () => (await panel.boundingBox()).width)
+        .toBeGreaterThan(panelBefore.width + 40)
+      const mainAfterResize = await page.locator('.db-main').boundingBox()
+      const panelAfterResize = await panel.boundingBox()
+      expect(mainAfterResize.x + mainAfterResize.width).toBeLessThanOrEqual(
+        panelAfterResize.x
+      )
+      const draggedWidth = Number(await rowResize.getAttribute('aria-valuenow'))
+      await rowResize.focus()
+      await page.keyboard.press('ArrowRight')
+      await expect(rowResize).toHaveAttribute(
+        'aria-valuenow',
+        String(draggedWidth - 10)
+      )
+      await page.keyboard.press('Home')
+
       await expect(
         panel.getByLabel('Value for id', { exact: true })
       ).toHaveCount(0)
@@ -339,7 +378,7 @@ try {
     ).toContainText('375.00')
   })
   await check('history records actual query outcome', async () => {
-    await page.getByRole('tab', { name: 'History', exact: true }).click()
+    await sidebarTab('History')
     await expect(page.locator('.history-status.success').first()).toContainText(
       'Local development'
     )
@@ -383,9 +422,10 @@ try {
       .click()
     await page.getByLabel('Filter result rows').fill('')
   })
-  await page.getByRole('tab', { name: 'Servers', exact: true }).click()
+  await sidebarTab('Servers')
   await check('server browser opens an accessible database', async () => {
     await page.getByRole('button', { name: 'Disconnect', exact: true }).click()
+    await ensureSidebar()
     await page.getByRole('button', { name: /New connection/ }).click()
     const dialog = page.getByRole('dialog', { name: 'Connect a database' })
     await dialog
@@ -400,6 +440,7 @@ try {
       .uncheck()
     await dialog.getByRole('button', { name: 'Connect', exact: true }).click()
     await expect(dialog).not.toBeVisible({ timeout: 20000 })
+    await ensureSidebar()
     await page
       .locator('.db-browser-database')
       .filter({ hasText: 'rowfish_fixture' })
@@ -414,11 +455,12 @@ try {
       await inputQuery('SELECT pg_sleep(20);')
       await page.getByRole('button', { name: /Run query/ }).click()
       await page.locator('.db-cancel-button').click()
-      await page.getByRole('tab', { name: 'History', exact: true }).click()
+      await sidebarTab('History')
       await expect(
         page.locator('.history-status.cancelled').first()
       ).toBeVisible()
-      await page.getByRole('tab', { name: 'Servers', exact: true }).click()
+      await sidebarTab('Servers')
+      await ensureSidebar()
       await page
         .locator('.db-browser-database')
         .filter({ hasText: 'rowfish_fixture' })
@@ -440,6 +482,7 @@ try {
       'result capped'
     )
   })
+  await ensureSidebar()
   await page.getByRole('button', { name: 'orders', exact: true }).click()
   await inputQuery(
     'SELECT id, customer_id, total, status FROM public.orders ORDER BY id LIMIT 30;'

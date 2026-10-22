@@ -1,0 +1,41 @@
+.query-connection-modal {
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+}
+.query-connection-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+}
+.query-connection-options > button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  color: var(--text);
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.query-connection-options > button:hover:not(:disabled),
+.query-connection-options > button:focus-visible {
+  border-color: var(--mint);
+  outline: 1px solid var(--mint);
+}
+.query-connection-options > button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.query-connection-options svg {
+  flex: 0 0 auto;
+}
+.query-connection-options p {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}

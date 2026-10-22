@@ -23,7 +23,14 @@ const check = async (name, run) => {
   console.log('PASS', name)
 }
 const editor = () => page.locator('.cm-content')
+const ensureSidebar = async () => {
+  const rail = page.locator('.db-rail')
+  if (!(await rail.isVisible())) await page.locator('.sidebar-toggle').click()
+  await expect(rail).toBeVisible()
+}
 const inputQuery = async (query) => {
+  if (await page.locator('.db-rail').isVisible())
+    await page.keyboard.press('Escape')
   await editor().click()
   await page.keyboard.press('Control+a')
   await page.keyboard.insertText(query)
@@ -93,6 +100,7 @@ try {
       ).not.toBeVisible()
     }
   )
+  await ensureSidebar()
   await page.getByRole('button', { name: /New connection/ }).click()
   const modal = page.getByRole('dialog', { name: 'Connect a database' })
   await modal
@@ -105,6 +113,7 @@ try {
   await modal.getByRole('checkbox', { name: /Save this connection/ }).uncheck()
   await modal.getByRole('button', { name: /^Connect$/ }).click()
   await expect(modal).not.toBeVisible({ timeout: 20000 })
+  await ensureSidebar()
   await expect(
     page.getByRole('button', { name: 'orders', exact: true })
   ).toBeVisible()
@@ -245,6 +254,7 @@ try {
     await appearance().click()
     await page.getByRole('radio', { name: 'Glass', exact: true }).click()
     await page.keyboard.press('Escape')
+    await ensureSidebar()
     await page.getByRole('button', { name: 'orders', exact: true }).click()
     await inputQuery(
       'SELECT id, customer_id, total, status FROM public.orders ORDER BY id LIMIT 30;'

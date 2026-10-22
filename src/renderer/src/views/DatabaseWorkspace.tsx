@@ -22,11 +22,14 @@ import {
   CircleHelp
 } from 'lucide-react'
 import type { ReactNode } from 'react'
+import '../components/query-connection.css'
 import type { UiPreferences } from '../lib/ui-preferences'
 import SqlEditor from '../components/SqlEditor'
 import QueryPlan from '../components/QueryPlan'
 import { buildExplainQuery, postgresDiagnostics } from '../lib/postgres-tools'
 import RowSidePanel, { type RowSource } from '../components/RowSidePanel'
+import ResizeSeparator from '../components/ResizeSeparator'
+import { clampLayout, loadLayout, saveLayout } from '../lib/layout-preferences'
 import { isSameRow } from '../lib/row-editor'
 import {
   loadQueryWorkspace,
@@ -121,6 +124,15 @@ export default function DatabaseWorkspace({
   >([])
   const [activeId, setActiveId] = useState('')
   const [showConnect, setShowConnect] = useState(false)
+  const [showQueryConnection, setShowQueryConnection] = useState(false)
+  const queryConnectionTabId = useRef<string | null>(null)
+  const [queryConnectionBusy, setQueryConnectionBusy] = useState(false)
+  const [queryConnectionError, setQueryConnectionError] = useState('')
+  const [queryConnectionServer, setQueryConnectionServer] =
+    useState<DatabaseConnectionSummary | null>(null)
+  const [queryConnectionDatabases, setQueryConnectionDatabases] = useState<
+    DatabaseBrowserDatabase[]
+  >([])
   const [form, setForm] = useState<DatabaseConnectionInput>(DEFAULT_FORM)
   const [saveProfile, setSaveProfile] = useState(true)
   const [mongoUriMode, setMongoUriMode] = useState(false)
@@ -156,7 +168,71 @@ export default function DatabaseWorkspace({
   const [collapsedSchemas, setCollapsedSchemas] = useState<
     Record<string, boolean>
   >({})
-  const [sidebarHidden, setSidebarHidden] = useState(false)
+  const [sidebarHidden, setSidebarHidden] = useState(() => {
+    try {
+      return localStorage.getItem('rowfish.sidebar-hidden') !== 'false'
+    } catch {
+      return true
+    }
+  })
+  const [layout, setLayout] = useState(loadLayout)
+  const resizeLayout = (
+    key: 'sidebar' | 'split' | 'rowPanel',
+    value: number
+  ): void => {
+    setLayout((current) => {
+      const next = {
+        ...current,
+        [key]: clampLayout(
+          value,
+          key,
+          key === 'sidebar' || key === 'rowPanel'
+            ? window.innerWidth
+            : undefined
+        )
+      }
+      saveLayout(next)
+      return next
+    })
+  }
+  const workspaceRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    try {
+      localStorage.setItem('rowfish.sidebar-hidden', String(sidebarHidden))
+    } catch {
+      /* storage may be unavailable */
+    }
+  }, [sidebarHidden])
+  useEffect(() => {
+    if (settingsView) return
+    const dismiss = (event: KeyboardEvent): void => {
+      if (
+        event.key === 'Escape' &&
+        !sidebarHidden &&
+        !document.querySelector('[role="dialog"]')
+      )
+        setSidebarHidden(true)
+    }
+    const outside = (event: PointerEvent): void => {
+      const target = event.target as Node
+      if (
+        !sidebarHidden &&
+        workspaceRef.current &&
+        !workspaceRef.current.querySelector('.db-rail')?.contains(target) &&
+        !workspaceRef.current
+          .querySelector('.sidebar-toggle')
+          ?.contains(target) &&
+        !(target instanceof Element && target.closest('.layout-resizer'))
+      )
+        setSidebarHidden(true)
+    }
+    document.addEventListener('keydown', dismiss)
+    document.addEventListener('pointerdown', outside)
+    return () => {
+      document.removeEventListener('keydown', dismiss)
+      document.removeEventListener('pointerdown', outside)
+    }
+  }, [sidebarHidden, settingsView])
   const [selectedTable, setSelectedTable] = useState<{
     connectionId: string
     schema: string
@@ -369,16 +445,18 @@ export default function DatabaseWorkspace({
   function newTab(
     query = '',
     title?: string,
-    connection = activeConnection
+    connection = activeConnection,
+    stored?: Pick<SavedQuery, 'kind' | 'connectionKey'>
   ): void {
     if (runState !== 'idle' || !closeRowPanel()) return
     if (workspace.tabs.length >= 100) {
       setNotice('Close an existing tab before opening more (100 tab limit).')
       return
     }
+    if (stored) setSidebarHidden(true)
     const tab = makeQueryTab(
-      connection?.kind ?? 'postgres',
-      queryConnectionKey(connection),
+      stored?.kind ?? connection?.kind ?? 'postgres',
+      stored?.connectionKey ?? queryConnectionKey(connection),
       query,
       title
     )
@@ -475,7 +553,8 @@ export default function DatabaseWorkspace({
     rowDirty,
     rowBusy,
     selectedTable,
-    tableDetails
+    tableDetails,
+    runState
   ])
   useEffect(() => {
     setServerInfo(null)
@@ -494,14 +573,29 @@ export default function DatabaseWorkspace({
   }, [activeConnection?.id])
 
   useEffect(() => {
-    if (!(showConnect || saveDialog || showHelp || mongoOperation)) return
+    if (!(
+      showConnect ||
+      showQueryConnection ||
+      saveDialog ||
+      showHelp ||
+      mongoOperation
+    ))
+      return
     const previous =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null
     const modal = document.querySelector<HTMLElement>('[role="dialog"]')
+    if (showQueryConnection && !queryConnectionBusy)
+      modal?.querySelector<HTMLElement>('button:not(:disabled)')?.focus()
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape' && !connecting && !mongoOperationBusy) {
+      if (
+        event.key === 'Escape' &&
+        !connecting &&
+        !queryConnectionBusy &&
+        !mongoOperationBusy
+      ) {
+        cancelQueryConnection()
         setShowConnect(false)
         setSaveDialog(false)
         setShowHelp(false)
@@ -532,6 +626,8 @@ export default function DatabaseWorkspace({
     }
   }, [
     showConnect,
+    showQueryConnection,
+    queryConnectionBusy,
     saveDialog,
     showHelp,
     mongoOperation,
@@ -770,6 +866,17 @@ export default function DatabaseWorkspace({
           selected.kind === activeConnection.kind
         )
           return current
+        if (
+          selected &&
+          !selected.connectionKey &&
+          selected.kind === activeConnection.kind
+        )
+          return {
+            ...current,
+            tabs: current.tabs.map((tab) =>
+              tab.id === selected.id ? { ...tab, connectionKey: key } : tab
+            )
+          }
         const existing = current.tabs.find(
           (tab) =>
             tab.connectionKey === key && tab.kind === activeConnection?.kind
@@ -834,7 +941,96 @@ export default function DatabaseWorkspace({
     return () => observer.disconnect()
   }, [columns.length > 0])
 
+  function cancelQueryConnection(): void {
+    queryConnectionTabId.current = null
+    setShowQueryConnection(false)
+    setQueryConnectionServer(null)
+    setQueryConnectionError('')
+  }
+
+  function chooseQueryConnection(): void {
+    if (runState !== 'idle' || !activeTab || !closeRowPanel()) return
+    queryConnectionTabId.current = activeTab.id
+    setQueryConnectionServer(null)
+    setQueryConnectionDatabases([])
+    setQueryConnectionError('')
+    setShowQueryConnection(true)
+  }
+
+  function bindQueryConnection(connection: DatabaseConnectionSummary): void {
+    const tabId = queryConnectionTabId.current
+    if (!tabId || connection.serverMode) return
+    setWorkspace((current) => ({
+      ...current,
+      activeTabId: tabId,
+      tabs: current.tabs.map((tab) =>
+        tab.id === tabId
+          ? {
+              ...tab,
+              connectionKey: queryConnectionKey(connection),
+              updatedAt: Date.now()
+            }
+          : tab
+      )
+    }))
+    cancelQueryConnection()
+    setRows([])
+    setColumns([])
+    setQueryError('')
+    setQueryPlan(null)
+    setNotice(
+      'Query connected. Review the selected database, then run when ready.'
+    )
+  }
+
+  async function selectQueryConnection(
+    source: DatabaseConnectionSummary | SavedConnectionProfile,
+    saved = false,
+    database?: string
+  ): Promise<void> {
+    if (queryConnectionBusy || !queryConnectionTabId.current) return
+    setQueryConnectionBusy(true)
+    setQueryConnectionError('')
+    try {
+      let connected = saved
+        ? (connections.find(
+            (item) =>
+              item.savedConnectionId === source.id && !item.parentConnectionId
+          ) ?? (await window.api.database.connectSaved(source.id)))
+        : (source as DatabaseConnectionSummary)
+      if (database) {
+        connected = await window.api.database.openDatabase(
+          connected.id,
+          database
+        )
+      }
+      if (connected.serverMode) {
+        // Keep the original draft active until an actual database is selected.
+        setConnections((current) => [
+          ...current.filter((item) => item.id !== connected.id),
+          connected
+        ])
+        setQueryConnectionServer(connected)
+        setQueryConnectionDatabases(
+          await window.api.database.listDatabases(connected.id)
+        )
+        setShowQueryConnection(true)
+      } else {
+        addConnectedConnection(connected)
+      }
+    } catch (error) {
+      setQueryConnectionError(
+        error instanceof Error
+          ? error.message
+          : 'Could not connect. Try again or choose another connection.'
+      )
+    } finally {
+      setQueryConnectionBusy(false)
+    }
+  }
+
   function addConnectedConnection(connection: DatabaseConnectionSummary): void {
+    bindQueryConnection(connection)
     setConnections((current) => {
       const withoutDuplicate = current.filter(
         (item) =>
@@ -853,6 +1049,12 @@ export default function DatabaseWorkspace({
 
   async function connect(): Promise<void> {
     if (runState !== 'idle' || !closeRowPanel()) return
+    if (queryConnectionTabId.current && form.kind !== activeTab?.kind) {
+      setConnectionError(
+        'Choose a connection matching this query’s database type.'
+      )
+      return
+    }
     setConnecting(true)
     setConnectionError('')
     try {
@@ -861,7 +1063,9 @@ export default function DatabaseWorkspace({
         database: form.serverMode ? '' : form.database
       }
       const connected = await window.api.database.connect(input, saveProfile)
-      addConnectedConnection(connected)
+      if (queryConnectionTabId.current && connected.serverMode) {
+        await selectQueryConnection(connected)
+      } else addConnectedConnection(connected)
       if (saveProfile) await refreshSavedConnections()
       setForm(DEFAULT_FORM)
       setSaveProfile(true)
@@ -979,19 +1183,20 @@ export default function DatabaseWorkspace({
     const target = overrides.connection ?? activeConnection
     const query = overrides.query ?? queryText
     const targetCollection = overrides.collection ?? collection
-    if (!target || target.serverMode || runState !== 'idle' || !query.trim())
-      return
+    if (runState !== 'idle' || !query.trim()) return
     if (
-      !overrides.connection &&
-      activeTab?.connectionKey &&
-      activeTab.connectionKey !== queryConnectionKey(target)
+      !target ||
+      target.serverMode ||
+      (!overrides.connection &&
+        (activeTab?.kind !== target.kind ||
+          (activeTab?.connectionKey &&
+            activeTab.connectionKey !== queryConnectionKey(target))))
     ) {
-      setQueryError(
-        'This tab belongs to a different database. Open it on the matching connection or create a new tab.'
-      )
+      chooseQueryConnection()
       return
     }
     if (!closeRowPanel()) return
+    setSidebarHidden(true)
     const tableQuery = selectedTable
       ? `SELECT * FROM ${quotePostgresIdentifier(selectedTable.schema)}.${quotePostgresIdentifier(selectedTable.name)} LIMIT 100;`
       : ''
@@ -1114,6 +1319,7 @@ export default function DatabaseWorkspace({
     item: MongoBrowserCollection
   ): Promise<void> {
     if (runState !== 'idle' || !closeRowPanel()) return
+    setSidebarHidden(true)
     const mode =
       activeConnection?.id === connection.id ? mongoQueryMode : 'find'
     setActiveId(connection.id)
@@ -1455,6 +1661,7 @@ export default function DatabaseWorkspace({
     table: DatabaseBrowserTable
   ): void {
     if (runState !== 'idle' || !closeRowPanel()) return
+    setSidebarHidden(true)
     setActiveId(connection.id)
     newTab(
       `SELECT * FROM ${quotePostgresIdentifier(table.schema)}.${quotePostgresIdentifier(table.name)} LIMIT 100;`,
@@ -1705,10 +1912,30 @@ export default function DatabaseWorkspace({
 
   return (
     <section
+      ref={workspaceRef}
+      style={
+        {
+          ['--sidebar-width']: `${layout.sidebar}px`,
+          ['--editor-percent']: `${layout.split}%`,
+          ['--row-panel-width']: `${layout.rowPanel}px`
+        } as React.CSSProperties
+      }
       className={`db-workspace${sidebarHidden && !settingsView ? ' sidebar-hidden' : ''}${settingsView ? ' settings-open' : ''}${inspectedRow && !settingsView ? ' has-row-panel' : ''}`}
     >
-      <aside className="db-rail">
+      <aside
+        id="db-explorer-sidebar"
+        className="db-rail"
+        aria-label="Database explorer"
+        aria-hidden={sidebarHidden && !settingsView}
+      >
         <div className="db-rail-heading">
+          <button
+            className="db-icon-button rail-close"
+            aria-label="Close explorer sidebar"
+            onClick={() => setSidebarHidden(true)}
+          >
+            <PanelLeftClose size={16} />
+          </button>
           <div>
             <span className="db-overline">WORKSPACE</span>
             <h2>Explorer</h2>
@@ -1816,15 +2043,7 @@ export default function DatabaseWorkspace({
                     <div className="library-item" key={item.id}>
                       <button
                         onClick={() => {
-                          if (
-                            item.kind !== (activeConnection?.kind ?? 'postgres')
-                          ) {
-                            setNotice(
-                              'Select a matching database engine before opening this query.'
-                            )
-                            return
-                          }
-                          newTab(item.query, item.title)
+                          newTab(item.query, item.title, null, item)
                         }}
                       >
                         <span className="library-folder">{item.folder}</span>
@@ -1859,17 +2078,7 @@ export default function DatabaseWorkspace({
                     <div className="library-item" key={item.id}>
                       <button
                         onClick={() => {
-                          if (
-                            activeConnection &&
-                            item.connectionKey !==
-                              queryConnectionKey(activeConnection)
-                          ) {
-                            setNotice(
-                              'Select the original database connection before restoring this query.'
-                            )
-                            return
-                          }
-                          newTab(item.query, 'From history')
+                          newTab(item.query, 'From history', null, item)
                         }}
                       >
                         <span className={`history-status ${item.status}`}>
@@ -2100,15 +2309,29 @@ export default function DatabaseWorkspace({
           <KeyRound size={16} className="db-security-mark" />
           <span>Saved passwords are encrypted by your operating system.</span>
         </div>
-        {sidebarActions}
       </aside>
-
+      {sidebarActions}
       {settingsView}
+      {!sidebarHidden && !settingsView && (
+        <ResizeSeparator
+          className="explorer-resizer"
+          label="Resize explorer sidebar"
+          orientation="vertical"
+          value={layout.sidebar}
+          min={220}
+          max={Math.min(520, window.innerWidth - 360)}
+          onChange={(v) => resizeLayout('sidebar', v)}
+        />
+      )}
       <div className="db-main" hidden={!!settingsView}>
         <div className="db-workspace-header">
           <button
             className="sidebar-toggle"
-            aria-label="Toggle sidebar"
+            aria-label={
+              sidebarHidden ? 'Open explorer sidebar' : 'Close explorer sidebar'
+            }
+            aria-expanded={!sidebarHidden}
+            aria-controls="db-explorer-sidebar"
             onClick={() => setSidebarHidden((value) => !value)}
           >
             {sidebarHidden ? (
@@ -2324,25 +2547,25 @@ export default function DatabaseWorkspace({
             </p>
           </div>
         ) : (
-          <>
+          <div className="query-split-layout">
             <div className="db-editor-card">
               <div className="db-editor-topline">
                 <div className="db-editor-tabs">
                   <span className="db-editor-tab active">
-                    {activeConnection?.kind !== 'mongodb'
+                    {(activeTab?.kind ?? activeConnection?.kind) !== 'mongodb'
                       ? 'SQL editor'
                       : mongoQueryMode === 'find'
                         ? 'Find filter'
                         : 'Aggregation pipeline'}
                   </span>
                   <span className="db-editor-language">
-                    {activeConnection?.kind !== 'mongodb'
+                    {(activeTab?.kind ?? activeConnection?.kind) !== 'mongodb'
                       ? 'POSTGRESQL'
                       : 'MONGODB JSON'}
                   </span>
                 </div>
                 <div className="db-editor-controls">
-                  {activeConnection?.kind === 'mongodb' && (
+                  {activeTab?.kind === 'mongodb' && (
                     <label className="db-limit-field">
                       <span>Mode</span>
                       <select
@@ -2360,7 +2583,7 @@ export default function DatabaseWorkspace({
                       </select>
                     </label>
                   )}
-                  {activeConnection?.kind === 'mongodb' && (
+                  {activeTab?.kind === 'mongodb' && (
                     <label className="db-collection-field">
                       <span>Collection</span>
                       <input
@@ -2390,11 +2613,7 @@ export default function DatabaseWorkspace({
                     <button
                       className="db-run-button"
                       onClick={() => void runQuery()}
-                      disabled={
-                        !activeConnection ||
-                        !queryText.trim() ||
-                        activeTab?.kind !== activeConnection.kind
-                      }
+                      disabled={!queryText.trim()}
                     >
                       <span>▶</span> Run query
                     </button>
@@ -2416,32 +2635,17 @@ export default function DatabaseWorkspace({
                     : 'OFFLINE DRAFT · connect a server to execute'}
                 </span>
                 <button
-                  onClick={() => {
-                    if (activeConnection)
-                      setWorkspace((current) => ({
-                        ...current,
-                        tabs: current.tabs.map((tab) =>
-                          tab.id === current.activeTabId
-                            ? {
-                                ...tab,
-                                connectionKey:
-                                  queryConnectionKey(activeConnection),
-                                kind: activeConnection.kind
-                              }
-                            : tab
-                        )
-                      }))
-                  }}
-                  disabled={!activeConnection}
-                  title="Bind this tab to the selected connection"
+                  onClick={chooseQueryConnection}
+                  disabled={runState !== 'idle'}
+                  title="Select or reconnect a database for this query"
                 >
-                  Use selected database
+                  {activeConnection
+                    ? 'Change query connection'
+                    : 'Select connection'}
                 </button>
                 <button
                   onClick={formatQuery}
-                  disabled={
-                    activeConnection?.kind === 'mongodb' || !queryText.trim()
-                  }
+                  disabled={activeTab?.kind === 'mongodb' || !queryText.trim()}
                 >
                   Format SQL
                 </button>
@@ -2454,7 +2658,7 @@ export default function DatabaseWorkspace({
                   aria-label="Export query"
                   onClick={() =>
                     downloadText(
-                      `${activeTab?.title ?? 'query'}.${activeConnection?.kind === 'mongodb' ? 'json' : 'sql'}`,
+                      `${activeTab?.title ?? 'query'}.${activeTab?.kind === 'mongodb' ? 'json' : 'sql'}`,
                       queryText,
                       'text/plain'
                     )
@@ -2463,62 +2667,63 @@ export default function DatabaseWorkspace({
                   <Download size={13} />
                 </button>
               </div>
-              {activeConnection?.kind === 'postgres' && (
-                <div className="pg-tools-bar">
-                  <button
-                    type="button"
-                    data-testid="explain-query"
-                    disabled={
-                      !queryText.trim() ||
-                      runState !== 'idle' ||
-                      activeConnection.serverMode
-                    }
-                    title="Estimate the selected SQL or single-statement draft without ANALYZE"
-                    onClick={() => {
-                      try {
-                        const explain = buildExplainQuery(
-                          sqlSelection.trim() || queryText
-                        )
-                        void runQuery({ query: explain, explain: true })
-                      } catch (error) {
-                        setQueryError(
-                          error instanceof Error
-                            ? error.message
-                            : 'Could not build EXPLAIN query.'
-                        )
-                      }
-                    }}
-                  >
-                    Explain (estimated)
-                  </button>
-                  <label>
-                    <span className="pg-tools-label">PostgreSQL tools</span>
-                    <select
-                      aria-label="PostgreSQL diagnostic query"
-                      value=""
+              {activeConnection?.kind === 'postgres' &&
+                activeTab?.kind === 'postgres' && (
+                  <div className="pg-tools-bar">
+                    <button
+                      type="button"
+                      data-testid="explain-query"
                       disabled={
-                        runState !== 'idle' || activeConnection.serverMode
+                        !queryText.trim() ||
+                        runState !== 'idle' ||
+                        activeConnection.serverMode
                       }
-                      onChange={(event) => {
-                        const item = postgresDiagnostics.find(
-                          (entry) => entry.id === event.target.value
-                        )
-                        if (item) newTab(item.sql, item.label)
+                      title="Estimate the selected SQL or single-statement draft without ANALYZE"
+                      onClick={() => {
+                        try {
+                          const explain = buildExplainQuery(
+                            sqlSelection.trim() || queryText
+                          )
+                          void runQuery({ query: explain, explain: true })
+                        } catch (error) {
+                          setQueryError(
+                            error instanceof Error
+                              ? error.message
+                              : 'Could not build EXPLAIN query.'
+                          )
+                        }
                       }}
                     >
-                      <option value="">Open diagnostic…</option>
-                      {postgresDiagnostics.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <span className="pg-tools-hint">
-                    Opens a draft · run when ready
-                  </span>
-                </div>
-              )}
+                      Explain (estimated)
+                    </button>
+                    <label>
+                      <span className="pg-tools-label">PostgreSQL tools</span>
+                      <select
+                        aria-label="PostgreSQL diagnostic query"
+                        value=""
+                        disabled={
+                          runState !== 'idle' || activeConnection.serverMode
+                        }
+                        onChange={(event) => {
+                          const item = postgresDiagnostics.find(
+                            (entry) => entry.id === event.target.value
+                          )
+                          if (item) newTab(item.sql, item.label)
+                        }}
+                      >
+                        <option value="">Open diagnostic…</option>
+                        {postgresDiagnostics.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <span className="pg-tools-hint">
+                      Opens a draft · run when ready
+                    </span>
+                  </div>
+                )}
               <SqlEditor
                 lineWrapping={preferences.lineWrapping}
                 lineNumbers={preferences.lineNumbers}
@@ -2528,13 +2733,13 @@ export default function DatabaseWorkspace({
                 onRun={(selection) =>
                   void runQuery({ query: selection ?? queryText })
                 }
-                kind={activeConnection?.kind ?? activeTab?.kind ?? 'postgres'}
+                kind={activeTab?.kind ?? activeConnection?.kind ?? 'postgres'}
                 tables={autocompleteTables}
                 disabled={runState !== 'idle'}
               />
               <div className="db-editor-footer">
                 <span>
-                  {activeConnection?.kind !== 'mongodb'
+                  {(activeTab?.kind ?? activeConnection?.kind) !== 'mongodb'
                     ? 'Ctrl/⌘ Enter: selection or statement · Shift: run all · 120s timeout'
                     : mongoQueryMode === 'find'
                       ? '⌘ Enter to run · $where is disabled · maxTimeMS 120 seconds'
@@ -2547,6 +2752,14 @@ export default function DatabaseWorkspace({
               </div>
             </div>
 
+            <ResizeSeparator
+              label="Resize editor and results split"
+              orientation="horizontal"
+              value={layout.split}
+              min={20}
+              max={78}
+              onChange={(v) => resizeLayout('split', v)}
+            />
             <div className="db-results-card">
               <div className="db-results-header">
                 <div>
@@ -2830,33 +3043,50 @@ export default function DatabaseWorkspace({
                 </div>
               )}
             </div>
-          </>
+          </div>
         )}
       </div>
 
       {inspectedRow && (
-        <RowSidePanel
-          row={inspectedRow}
-          source={rowSource}
-          onClose={() => {
-            closeRowPanel()
-          }}
-          onDirtyChange={setRowDirty}
-          onBusyChange={setRowBusy}
-          onSaved={(updated) => {
-            setRows((current) =>
-              current.map((row) =>
-                rowSource && isSameRow(rowSource.details, row, inspectedRow)
-                  ? updated
-                  : row
+        <>
+          <ResizeSeparator
+            reverse
+            className="row-details-resizer"
+            label="Resize row details panel"
+            orientation="vertical"
+            value={layout.rowPanel}
+            min={300}
+            max={Math.min(560, window.innerWidth - 360)}
+            onChange={(v) => resizeLayout('rowPanel', v)}
+          />
+          <RowSidePanel
+            row={inspectedRow}
+            source={rowSource}
+            onClose={() => {
+              closeRowPanel()
+            }}
+            onDirtyChange={setRowDirty}
+            onBusyChange={setRowBusy}
+            onSaved={(updated) => {
+              setRows((current) =>
+                current.map((row) =>
+                  rowSource && isSameRow(rowSource.details, row, inspectedRow)
+                    ? updated
+                    : row
+                )
               )
-            )
-          }}
-        />
+            }}
+          />
+        </>
       )}
 
       {saveDialog && (
-        <div className="db-modal-backdrop" onClick={() => setSaveDialog(false)}>
+        <div
+          className="db-modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSaveDialog(false)
+          }}
+        >
           <form
             className="db-modal compact-modal"
             onClick={(event) => event.stopPropagation()}
@@ -2868,8 +3098,8 @@ export default function DatabaseWorkspace({
                 id: crypto.randomUUID(),
                 title,
                 query: queryText,
-                kind: activeConnection?.kind ?? activeTab?.kind ?? 'postgres',
-                connectionKey: queryConnectionKey(activeConnection),
+                kind: activeTab?.kind ?? 'postgres',
+                connectionKey: activeTab?.connectionKey ?? '',
                 folder: queryFolder.trim() || 'General',
                 updatedAt: Date.now()
               }
@@ -2933,7 +3163,12 @@ export default function DatabaseWorkspace({
         </div>
       )}
       {showHelp && (
-        <div className="db-modal-backdrop" onClick={() => setShowHelp(false)}>
+        <div
+          className="db-modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setShowHelp(false)
+          }}
+        >
           <section
             className="db-modal compact-modal"
             role="dialog"
@@ -2974,12 +3209,173 @@ export default function DatabaseWorkspace({
           </section>
         </div>
       )}
+      {showQueryConnection && (
+        <div
+          className="db-modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target !== event.currentTarget) return
+            if (!queryConnectionBusy) cancelQueryConnection()
+          }}
+        >
+          <section
+            className="db-modal compact-modal query-connection-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Choose a query connection"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="db-modal-head">
+              <h2>Choose a query connection</h2>
+              <button
+                className="db-icon-button"
+                aria-label="Close"
+                disabled={queryConnectionBusy}
+                onClick={cancelQueryConnection}
+              >
+                ×
+              </button>
+            </div>
+            <p className="db-modal-copy">
+              Select a{' '}
+              {activeTab?.kind === 'mongodb' ? 'MongoDB' : 'PostgreSQL'}{' '}
+              connection for {activeTab?.title ?? 'this query'}. Your draft
+              stays intact. Connecting does not run the query.
+            </p>
+            <div className="query-connection-options">
+              {queryConnectionServer ? (
+                <>
+                  <b>{queryConnectionServer.name} · choose a database</b>
+                  {queryConnectionDatabases
+                    .filter((database) => database.canConnect)
+                    .map((database) => (
+                      <button
+                        key={database.name}
+                        disabled={queryConnectionBusy}
+                        aria-label={`Use database ${database.name}`}
+                        onClick={() =>
+                          void selectQueryConnection(
+                            queryConnectionServer,
+                            false,
+                            database.name
+                          )
+                        }
+                      >
+                        <Database size={15} /> {database.name}
+                      </button>
+                    ))}
+                  {!queryConnectionDatabases.some(
+                    (database) => database.canConnect
+                  ) &&
+                    !queryConnectionBusy && (
+                      <p>
+                        No accessible databases found. Choose another connection
+                        or retry.
+                      </p>
+                    )}
+                  <button
+                    disabled={queryConnectionBusy}
+                    onClick={() =>
+                      void selectQueryConnection(queryConnectionServer)
+                    }
+                  >
+                    Refresh databases
+                  </button>
+                  <button
+                    disabled={queryConnectionBusy}
+                    onClick={() => setQueryConnectionServer(null)}
+                  >
+                    Other connections
+                  </button>
+                </>
+              ) : (
+                <>
+                  {connections
+                    .filter((connection) => connection.kind === activeTab?.kind)
+                    .map((connection) => (
+                      <button
+                        key={connection.id}
+                        disabled={queryConnectionBusy}
+                        aria-label={`Use ${connection.name}`}
+                        onClick={() => void selectQueryConnection(connection)}
+                      >
+                        <Database size={15} /> {connection.name} ·{' '}
+                        {connection.database || 'choose database'} · connected
+                      </button>
+                    ))}
+                  {savedConnections
+                    .filter((profile) => profile.kind === activeTab?.kind)
+                    .map((profile) => (
+                      <button
+                        key={profile.id}
+                        disabled={queryConnectionBusy}
+                        aria-label={`Reconnect ${profile.name}`}
+                        onClick={() =>
+                          void selectQueryConnection(profile, true)
+                        }
+                      >
+                        <RefreshCw size={15} /> {profile.name} ·{' '}
+                        {profile.database || 'choose database'} · saved
+                      </button>
+                    ))}
+                  {!connections.some(
+                    (connection) => connection.kind === activeTab?.kind
+                  ) &&
+                    !savedConnections.some(
+                      (profile) => profile.kind === activeTab?.kind
+                    ) && (
+                      <p>
+                        No matching connections yet. Add a connection to use
+                        this draft.
+                      </p>
+                    )}
+                </>
+              )}
+            </div>
+            {queryConnectionBusy && <p role="status">Connecting…</p>}
+            {queryConnectionError && (
+              <div className="db-query-error" role="alert">
+                {queryConnectionError}
+              </div>
+            )}
+            <div className="db-modal-actions">
+              <button
+                className="db-quiet-button"
+                disabled={queryConnectionBusy}
+                onClick={cancelQueryConnection}
+              >
+                Cancel
+              </button>
+              <button
+                className="db-run-button"
+                disabled={queryConnectionBusy}
+                onClick={() => {
+                  setShowQueryConnection(false)
+                  setConnectionError('')
+                  setMongoUriMode(false)
+                  setForm({
+                    ...DEFAULT_FORM,
+                    kind: activeTab?.kind ?? 'postgres',
+                    port: activeTab?.kind === 'mongodb' ? 27017 : 5432,
+                    database:
+                      activeTab?.kind === 'mongodb' ? 'admin' : 'postgres'
+                  })
+                  setShowConnect(true)
+                }}
+              >
+                New connection
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
       {showConnect && (
         <div
           className="db-modal-backdrop"
-          onClick={() => {
+          onMouseDown={(event) => {
+            if (event.target !== event.currentTarget) return
             if (!connecting) {
               setShowConnect(false)
+              cancelQueryConnection()
               setForm(DEFAULT_FORM)
               setConnectionError('')
             }
@@ -3003,6 +3399,7 @@ export default function DatabaseWorkspace({
                 disabled={connecting}
                 onClick={() => {
                   setShowConnect(false)
+                  cancelQueryConnection()
                   setForm(DEFAULT_FORM)
                   setConnectionError('')
                 }}
@@ -3224,6 +3621,7 @@ export default function DatabaseWorkspace({
                 disabled={connecting}
                 onClick={() => {
                   setShowConnect(false)
+                  cancelQueryConnection()
                   setForm(DEFAULT_FORM)
                   setConnectionError('')
                 }}
@@ -3250,7 +3648,8 @@ export default function DatabaseWorkspace({
       {mongoOperation && activeConnection?.kind === 'mongodb' && (
         <div
           className="db-modal-backdrop"
-          onClick={() => {
+          onMouseDown={(event) => {
+            if (event.target !== event.currentTarget) return
             if (!mongoOperationBusy) setMongoOperation(null)
           }}
         >

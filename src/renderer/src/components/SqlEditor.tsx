@@ -2,7 +2,7 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
 import { useEffect, useRef } from 'react'
 import { basicSetup } from 'codemirror'
-import { EditorState, Compartment } from '@codemirror/state'
+import { EditorState, Compartment, Prec } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import {
   sql,
@@ -179,7 +179,8 @@ export default function SqlEditor({
               })
         ),
         editableCompartment.of(EditorView.editable.of(!disabled)),
-        runKeymap,
+        // basicSetup binds Mod-Enter to insertBlankLine; execution must win.
+        Prec.high(runKeymap),
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap,

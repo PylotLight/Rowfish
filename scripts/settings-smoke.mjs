@@ -28,9 +28,14 @@ try {
   const quitBox = await page
     .getByRole('button', { name: 'Quit Rowfish' })
     .boundingBox()
-  const railBox = await page.locator('.db-rail').boundingBox()
-  expect(settingsBox.x).toBeLessThan(railBox.x + railBox.width)
-  expect(settingsBox.y).toBeGreaterThan(railBox.y + railBox.height - 70)
+  const workspaceBox = await page.locator('.db-workspace').boundingBox()
+  expect(settingsBox.x).toBeGreaterThanOrEqual(workspaceBox.x)
+  expect(settingsBox.x + settingsBox.width).toBeLessThanOrEqual(
+    workspaceBox.x + workspaceBox.width
+  )
+  expect(settingsBox.y).toBeGreaterThan(
+    workspaceBox.y + workspaceBox.height - 70
+  )
   expect(quitBox.x).toBeGreaterThan(settingsBox.x)
   expect(quitBox.y).toBe(settingsBox.y)
   await settings().click()
@@ -112,7 +117,12 @@ try {
     path: join(artifacts, 'rowfish-settings-minimum.png')
   })
   await panel().getByRole('button', { name: 'Back', exact: false }).click()
-  await page.getByRole('button', { name: 'Toggle sidebar' }).click()
+  const sidebarToggle = page.locator('.sidebar-toggle')
+  await expect(sidebarToggle).toHaveAccessibleName(
+    /^(Open|Close) explorer sidebar$/
+  )
+  if (await page.locator('.db-rail').isVisible()) await sidebarToggle.click()
+  await expect(page.locator('.db-rail')).not.toBeVisible()
   // The collapsed workspace keeps a compact, reachable Settings/Quit footer.
   await expect(settings()).toBeVisible()
   await settings().click()
