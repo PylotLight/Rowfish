@@ -16,7 +16,7 @@ These previews show Rowfish with synthetic local order data, not production data
 
 ## What it does
 
-- Choose translucent **Glass** or true-black **AMOLED** appearance, with persistent Comfortable/Compact text sizes and readable editor/grid typography.
+- Open **Settings** from the gear at the bottom of the left sidebar (or **⌘/, Ctrl/,**). Choose Glass, AMOLED black, Deep, Forest, Plum or Paper themes, preset/custom accents, interface font, density, blur and motion. Configure editor font/size, line numbers and wrapping with a live preview. Preferences save locally without closing connections or discarding query drafts. The adjacent power icon quits Rowfish.
 - Inspect PostgreSQL estimated execution plans in an expandable **Plan** tab, review raw JSON, and export the plan. Explain uses one selected statement or a single-statement draft, never adds `ANALYZE`, and rejects scripts and unsupported commands.
 - Open ready-to-review PostgreSQL diagnostic drafts for active sessions, table/index sizes, index usage, and blocking locks. Diagnostics never run automatically.
 - Save PostgreSQL or MongoDB connection profiles between sessions; passwords and MongoDB URI secrets are encrypted with the operating system credential store.

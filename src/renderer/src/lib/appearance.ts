@@ -1,4 +1,5 @@
-export type AppearanceTheme = 'glass' | 'amoled'
+export type AppearanceTheme =
+  'glass' | 'amoled' | 'deep' | 'forest' | 'plum' | 'paper'
 export type TextDensity = 'comfortable' | 'compact'
 export type StorageLike = Pick<Storage, 'getItem' | 'setItem'>
 
@@ -42,7 +43,7 @@ function writePreference(
 export function loadAppearance(storage?: StorageLike): AppearanceTheme {
   return readPreference(
     THEME_KEY,
-    ['glass', 'amoled'] as const,
+    ['glass', 'amoled', 'deep', 'forest', 'plum', 'paper'] as const,
     DEFAULT_THEME,
     storage
   )

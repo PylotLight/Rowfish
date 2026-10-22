@@ -19,6 +19,11 @@ import type {
 } from '../shared/database'
 
 const api = {
+  app: {
+    quit: (): Promise<void> => ipcRenderer.invoke('app:quit'),
+    setBlur: (enabled: boolean): Promise<void> =>
+      ipcRenderer.invoke('app:set-blur', enabled)
+  },
   database: {
     connect: (
       input: DatabaseConnectionInput,

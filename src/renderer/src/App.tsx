@@ -1,60 +1,73 @@
 import { useEffect, useRef, useState } from 'react'
+import { Power, Settings as SettingsIcon } from 'lucide-react'
 import DatabaseWorkspace from './views/DatabaseWorkspace'
+import Settings from './views/Settings'
 import {
-  loadAppearance,
-  saveAppearance,
-  loadTextDensity,
-  saveTextDensity,
-  type AppearanceTheme,
-  type TextDensity
-} from './lib/appearance'
+  applyUiPreferences,
+  loadUiPreferences,
+  saveUiPreferences,
+  type UiPreferences
+} from './lib/ui-preferences'
 
 export default function App(): React.JSX.Element {
   const [search, setSearch] = useState('')
-  const [theme, setTheme] = useState<AppearanceTheme>(() => loadAppearance())
-  const [density, setDensity] = useState<TextDensity>(() => loadTextDensity())
-  const [appearanceOpen, setAppearanceOpen] = useState(false)
-  const controlRef = useRef<HTMLDivElement>(null)
+  const [prefs, setPrefs] = useState(loadUiPreferences)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [saveError, setSaveError] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
-
   useEffect(() => {
-    document.documentElement.dataset.appearance = theme
-    document.documentElement.dataset.textDensity = density
-  }, [theme, density])
+    applyUiPreferences(prefs)
+    void window.api.app
+      .setBlur(prefs.blur && prefs.theme === 'glass')
+      .catch(() => undefined)
+  }, [prefs])
+  const closeSettings = () => {
+    setSettingsOpen(false)
+    requestAnimationFrame(() => triggerRef.current?.focus())
+  }
   useEffect(() => {
-    if (!appearanceOpen) return
-    controlRef.current?.querySelector('select')?.focus()
-    const outside = (event: MouseEvent) => {
-      if (
-        event.target instanceof Node &&
-        !controlRef.current?.contains(event.target)
-      )
-        setAppearanceOpen(false)
-    }
+    if (settingsOpen)
+      document.querySelector<HTMLButtonElement>('.settings-back')?.focus()
     const keyboard = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setAppearanceOpen(false)
-        triggerRef.current?.focus()
-      }
+      if ((event.metaKey || event.ctrlKey) && event.key === ',') {
+        event.preventDefault()
+        setSettingsOpen((open) => !open)
+      } else if (event.key === 'Escape' && settingsOpen) closeSettings()
     }
-    document.addEventListener('mousedown', outside)
-    document.addEventListener('keydown', keyboard)
-    return () => {
-      document.removeEventListener('mousedown', outside)
-      document.removeEventListener('keydown', keyboard)
-    }
-  }, [appearanceOpen])
-  const chooseTheme = (next: AppearanceTheme) => {
-    setTheme(next)
-    saveAppearance(next)
+    window.addEventListener('keydown', keyboard)
+    return () => window.removeEventListener('keydown', keyboard)
+  }, [settingsOpen])
+  const changePreferences = (next: UiPreferences) => {
+    setPrefs(next)
+    setSaveError(!saveUiPreferences(next))
   }
-  const chooseDensity = (next: TextDensity) => {
-    setDensity(next)
-    saveTextDensity(next)
-  }
-
+  const actions = (
+    <div className="app-sidebar-actions" aria-label="Application actions">
+      <span>Rowfish</span>
+      <button
+        ref={triggerRef}
+        className={`app-foot-button${settingsOpen ? ' active' : ''}`}
+        type="button"
+        title="Settings"
+        aria-label="Settings"
+        aria-pressed={settingsOpen}
+        onClick={() => setSettingsOpen((open) => !open)}
+      >
+        <SettingsIcon size={16} aria-hidden="true" />
+      </button>
+      <button
+        className="app-foot-button quit"
+        type="button"
+        title="Quit Rowfish"
+        aria-label="Quit Rowfish"
+        onClick={() => void window.api.app.quit()}
+      >
+        <Power size={16} aria-hidden="true" />
+      </button>
+    </div>
+  )
   return (
-    <div className="shell" data-appearance={theme}>
+    <div className="shell" data-appearance={prefs.theme}>
       <main className="content">
         <header className="topbar">
           <div className="app-brand">
@@ -69,62 +82,36 @@ export default function App(): React.JSX.Element {
           <span className="topbar-hint">
             A little clarity for your databases.
           </span>
-          <div className="appearance-control" ref={controlRef}>
-            <button
-              ref={triggerRef}
-              className="appearance-trigger"
-              type="button"
-              aria-label="Appearance"
-              aria-haspopup="dialog"
-              aria-expanded={appearanceOpen}
-              onClick={() => setAppearanceOpen((open) => !open)}
-            >
-              <span aria-hidden="true">◐</span>
-              <span>Appearance</span>
-            </button>
-            {appearanceOpen && (
-              <section
-                className="appearance-menu"
-                role="dialog"
-                aria-label="Appearance preferences"
-              >
-                <label htmlFor="color-theme">Color theme</label>
-                <select
-                  id="color-theme"
-                  aria-label="Color theme"
-                  value={theme}
-                  onChange={(event) =>
-                    chooseTheme(event.target.value as AppearanceTheme)
-                  }
-                >
-                  <option value="glass">Glass</option>
-                  <option value="amoled">AMOLED black</option>
-                </select>
-                <label htmlFor="text-density">Text size</label>
-                <select
-                  id="text-density"
-                  aria-label="Text size"
-                  value={density}
-                  onChange={(event) =>
-                    chooseDensity(event.target.value as TextDensity)
-                  }
-                >
-                  <option value="comfortable">Comfortable</option>
-                  <option value="compact">Compact</option>
-                </select>
-              </section>
-            )}
-          </div>
-          <input
-            className="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Filter result rows…"
-            aria-label="Filter result rows"
-          />
+          {!settingsOpen && (
+            <input
+              className="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Filter result rows…"
+              aria-label="Filter result rows"
+            />
+          )}
         </header>
+        {saveError && (
+          <p className="preferences-save-error" role="alert">
+            Preferences apply now, but could not be saved on this device.
+          </p>
+        )}
         <div className="view">
-          <DatabaseWorkspace search={search} />
+          <DatabaseWorkspace
+            search={search}
+            preferences={prefs}
+            sidebarActions={actions}
+            settingsView={
+              settingsOpen ? (
+                <Settings
+                  prefs={prefs}
+                  onChange={changePreferences}
+                  onBack={closeSettings}
+                />
+              ) : undefined
+            }
+          />
         </div>
       </main>
     </div>

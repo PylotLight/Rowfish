@@ -1,4 +1,5 @@
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
+import { getMainWindow } from './window'
 import {
   cancelDatabaseQuery,
   connectDatabase,
@@ -22,6 +23,29 @@ import {
 } from './database'
 
 export function registerIpc(): void {
+  const assertAppSender = (event: Electron.IpcMainInvokeEvent): void => {
+    const win = getMainWindow()
+    if (
+      !win ||
+      event.sender.isDestroyed() ||
+      event.sender !== win.webContents ||
+      event.senderFrame !== win.webContents.mainFrame
+    )
+      throw new Error(
+        'Application controls are available only to the Rowfish window.'
+      )
+  }
+  ipcMain.handle('app:quit', (event) => {
+    assertAppSender(event)
+    app.quit()
+  })
+  ipcMain.handle('app:set-blur', (event, enabled: unknown) => {
+    assertAppSender(event)
+    if (typeof enabled !== 'boolean')
+      throw new Error('Invalid blur preference.')
+    if (process.platform === 'darwin')
+      getMainWindow()?.setVibrancy(enabled ? 'fullscreen-ui' : null)
+  })
   ipcMain.handle('database:connect', (event, input: unknown, save: unknown) =>
     connectDatabase(event, input, save as boolean)
   )

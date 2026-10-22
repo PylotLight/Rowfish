@@ -28,16 +28,22 @@ export interface SqlEditorProps {
   kind?: 'postgres' | 'mongodb'
   tables?: { schema: string; name: string; columns?: string[] }[]
   onSelectionChange?: (selection: string) => void
+  lineNumbers?: boolean
+  lineWrapping?: boolean
 }
 
 const syntaxColors = syntaxHighlighting(
   HighlightStyle.define([
-    { tag: tags.keyword, color: '#c4a2f5' },
-    { tag: tags.string, color: '#91d5b6' },
-    { tag: tags.number, color: '#ecc48b' },
-    { tag: tags.comment, color: '#72839c', fontStyle: 'italic' },
-    { tag: tags.operator, color: '#8dbbe9' },
-    { tag: tags.name, color: '#d6e4f3' }
+    { tag: tags.keyword, color: 'var(--syntax-keyword, #c4a2f5)' },
+    { tag: tags.string, color: 'var(--syntax-string, #91d5b6)' },
+    { tag: tags.number, color: 'var(--syntax-number, #ecc48b)' },
+    {
+      tag: tags.comment,
+      color: 'var(--syntax-comment, #72839c)',
+      fontStyle: 'italic'
+    },
+    { tag: tags.operator, color: 'var(--syntax-operator, #8dbbe9)' },
+    { tag: tags.name, color: 'var(--syntax-name, #d6e4f3)' }
   ])
 )
 
@@ -52,7 +58,8 @@ const theme = EditorView.theme(
     },
     '.cm-scroller': {
       overflow: 'auto',
-      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+      fontFamily:
+        'var(--editor-font, ui-monospace, SFMono-Regular, Menlo, monospace)',
       lineHeight: '1.6'
     },
     '.cm-gutters': {
@@ -85,6 +92,11 @@ const theme = EditorView.theme(
 const languageCompartment = new Compartment()
 const schemaCompartment = new Compartment()
 const editableCompartment = new Compartment()
+const lineNumbersCompartment = new Compartment()
+const lineWrappingCompartment = new Compartment()
+const hiddenLineNumbers = EditorView.theme({
+  '.cm-lineNumbers': { display: 'none !important' }
+})
 
 function schemaConfig(
   tables: SqlEditorProps['tables'],
@@ -108,7 +120,9 @@ export default function SqlEditor({
   disabled = false,
   kind = 'postgres',
   tables = [],
-  onSelectionChange
+  onSelectionChange,
+  lineNumbers = true,
+  lineWrapping = false
 }: SqlEditorProps): React.JSX.Element {
   const container = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
@@ -150,6 +164,8 @@ export default function SqlEditor({
       doc: value,
       extensions: [
         basicSetup,
+        lineNumbersCompartment.of(lineNumbers ? [] : hiddenLineNumbers),
+        lineWrappingCompartment.of(lineWrapping ? EditorView.lineWrapping : []),
         syntaxColors,
         languageCompartment.of(language),
         schemaCompartment.of(
@@ -171,7 +187,6 @@ export default function SqlEditor({
           indentWithTab
         ]),
         theme,
-        EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
           if (update.docChanged)
             latest.current.onChange(update.state.doc.toString())
@@ -238,6 +253,21 @@ export default function SqlEditor({
         )
       })
   }, [disabled])
+
+  useEffect(() => {
+    const editor = view.current
+    if (editor)
+      editor.dispatch({
+        effects: [
+          lineNumbersCompartment.reconfigure(
+            lineNumbers ? [] : hiddenLineNumbers
+          ),
+          lineWrappingCompartment.reconfigure(
+            lineWrapping ? EditorView.lineWrapping : []
+          )
+        ]
+      })
+  }, [lineNumbers, lineWrapping])
 
   useEffect(() => {
     const editor = view.current

@@ -29,7 +29,7 @@ const inputQuery = async (query) => {
   await page.keyboard.insertText(query)
 }
 const appearance = () =>
-  page.getByRole('button', { name: 'Appearance', exact: true })
+  page.getByRole('button', { name: 'Settings', exact: true })
 const runQuery = async () => {
   await page.getByRole('button', { name: /Run query/ }).click()
   await expect(page.getByRole('button', { name: /Run query/ })).toBeEnabled()
@@ -52,8 +52,8 @@ try {
     async () => {
       await appearance().click()
       await page
-        .getByLabel('Color theme', { exact: true })
-        .selectOption('amoled')
+        .getByRole('radio', { name: 'AMOLED black', exact: true })
+        .click()
       for (const selector of [
         '.shell',
         '.db-main',
@@ -64,14 +64,15 @@ try {
           'background-color',
           'rgb(0, 0, 0)'
         )
-      await page
-        .getByLabel('Text size', { exact: true })
-        .selectOption('compact')
-      await expect(page.locator('.cm-editor')).toHaveCSS('font-size', '13px')
+      await page.getByRole('radio', { name: 'Compact', exact: true }).click()
+      await expect(page.locator('html')).toHaveAttribute(
+        'data-text-density',
+        'compact'
+      )
       await page.keyboard.press('Escape')
       await expect(appearance()).toBeFocused()
       await expect(
-        page.getByRole('dialog', { name: 'Appearance preferences' })
+        page.getByRole('region', { name: 'Settings', exact: true })
       ).not.toBeVisible()
       await page.reload()
       await expect(page.locator('html')).toHaveAttribute(
@@ -84,11 +85,11 @@ try {
       )
       await appearance().click()
       await page
-        .getByLabel('Text size', { exact: true })
-        .selectOption('comfortable')
-      await editor().click()
+        .getByRole('radio', { name: 'Comfortable', exact: true })
+        .click()
+      await page.keyboard.press('Escape')
       await expect(
-        page.getByRole('dialog', { name: 'Appearance preferences' })
+        page.getByRole('region', { name: 'Settings', exact: true })
       ).not.toBeVisible()
     }
   )
@@ -242,7 +243,7 @@ try {
   )
   await check('Glass and minimum window retain usable tools', async () => {
     await appearance().click()
-    await page.getByLabel('Color theme', { exact: true }).selectOption('glass')
+    await page.getByRole('radio', { name: 'Glass', exact: true }).click()
     await page.keyboard.press('Escape')
     await page.getByRole('button', { name: 'orders', exact: true }).click()
     await inputQuery(

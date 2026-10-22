@@ -21,6 +21,8 @@ import {
   PanelLeftOpen,
   CircleHelp
 } from 'lucide-react'
+import type { ReactNode } from 'react'
+import type { UiPreferences } from '../lib/ui-preferences'
 import SqlEditor from '../components/SqlEditor'
 import QueryPlan from '../components/QueryPlan'
 import { buildExplainQuery, postgresDiagnostics } from '../lib/postgres-tools'
@@ -101,9 +103,15 @@ function connectionSubline(connection: DatabaseConnectionSummary): string {
 }
 
 export default function DatabaseWorkspace({
-  search
+  search,
+  preferences,
+  sidebarActions,
+  settingsView
 }: {
   search: string
+  preferences: UiPreferences
+  sidebarActions: ReactNode
+  settingsView?: ReactNode
 }): React.JSX.Element {
   const [connections, setConnections] = useState<DatabaseConnectionSummary[]>(
     []
@@ -1697,7 +1705,7 @@ export default function DatabaseWorkspace({
 
   return (
     <section
-      className={`db-workspace${sidebarHidden ? ' sidebar-hidden' : ''}${inspectedRow ? ' has-row-panel' : ''}`}
+      className={`db-workspace${sidebarHidden && !settingsView ? ' sidebar-hidden' : ''}${settingsView ? ' settings-open' : ''}${inspectedRow && !settingsView ? ' has-row-panel' : ''}`}
     >
       <aside className="db-rail">
         <div className="db-rail-heading">
@@ -2092,9 +2100,11 @@ export default function DatabaseWorkspace({
           <KeyRound size={16} className="db-security-mark" />
           <span>Saved passwords are encrypted by your operating system.</span>
         </div>
+        {sidebarActions}
       </aside>
 
-      <div className="db-main">
+      {settingsView}
+      <div className="db-main" hidden={!!settingsView}>
         <div className="db-workspace-header">
           <button
             className="sidebar-toggle"
@@ -2339,8 +2349,7 @@ export default function DatabaseWorkspace({
                         value={mongoQueryMode}
                         onChange={(event) => {
                           const mode = event.target.value as
-                            | 'find'
-                            | 'aggregate'
+                            'find' | 'aggregate'
                           setMongoQueryMode(mode)
                           setQueryText(mode === 'find' ? '{}' : '[]')
                         }}
@@ -2511,6 +2520,8 @@ export default function DatabaseWorkspace({
                 </div>
               )}
               <SqlEditor
+                lineWrapping={preferences.lineWrapping}
+                lineNumbers={preferences.lineNumbers}
                 value={queryText}
                 onChange={setQueryText}
                 onSelectionChange={setSqlSelection}

@@ -1,4 +1,4 @@
-import { BrowserWindow, app, shell } from 'electron'
+import { BrowserWindow, app, shell, dialog } from 'electron'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { is } from '@electron-toolkit/utils'
@@ -52,6 +52,20 @@ export function createWindow(): BrowserWindow {
   })
 
   win.on('ready-to-show', () => win.show())
+  win.webContents.on('will-prevent-unload', (event) => {
+    const choice = dialog.showMessageBoxSync(win, {
+      type: 'question',
+      buttons: ['Keep editing', 'Discard changes'],
+      defaultId: 0,
+      cancelId: 0,
+      title: 'Unsaved row changes',
+      message: 'Discard unsaved row changes and leave Rowfish?',
+      detail:
+        'Your query drafts are saved automatically. Unsaved row edits will be lost.'
+    })
+    // Electron uses preventDefault here to allow the unload to continue.
+    if (choice === 1) event.preventDefault()
+  })
 
   win.webContents.setWindowOpenHandler((details) => {
     if (details.url.startsWith('https://')) void shell.openExternal(details.url)
