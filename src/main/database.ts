@@ -12,6 +12,7 @@ import type {
   DatabaseRow,
   PostgresServerInfo,
   PostgresTableDetails,
+  PostgresRowDetails,
   MongoBrowserCollection,
   MongoMutationRequest,
   MongoMutationResult,
@@ -29,6 +30,11 @@ import {
   saveConnectionProfile
 } from './saved-connections'
 import { getMainWindow } from './window'
+import {
+  validateRowRequest,
+  type PostgresRowRequest,
+  type UpdatePostgresRowRequest
+} from './postgres-row-edit'
 
 const MAX_QUERY_LENGTH = DATABASE_LIMITS.maxQueryLength
 const MAX_CONNECTIONS = 8
@@ -44,6 +50,7 @@ interface WorkerMessage {
   databases?: DatabaseBrowserDatabase[]
   tables?: DatabaseBrowserTable[]
   postgresTable?: PostgresTableDetails
+  postgresRow?: PostgresRowDetails
   postgresServer?: PostgresServerInfo
   postgresColumns?: { schema: string; table: string; name: string }[]
   mongoDatabases?: { name: string; sizeOnDisk?: number; empty?: boolean }[]
@@ -75,6 +82,7 @@ interface ActiveConnection {
   ready: boolean
   closed: boolean
   activeQueryId: string | null
+  rowBusy: boolean
   pendingInspections: Map<string, PendingInspection>
   settleReady?: (error?: Error) => void
 }
@@ -449,6 +457,7 @@ async function openConnection(
     ready: false,
     closed: false,
     activeQueryId: null,
+    rowBusy: false,
     pendingInspections: new Map()
   }
   connections.set(id, connection)
@@ -580,6 +589,8 @@ type InspectionType =
   | 'inspect-postgres-table'
   | 'inspect-postgres-server'
   | 'inspect-postgres-columns'
+  | 'get-postgres-row'
+  | 'update-postgres-row'
 function inspectConnection(
   connection: ActiveConnection,
   type: InspectionType,
@@ -588,6 +599,12 @@ function inspectConnection(
   schema?: string,
   table?: string
 ): Promise<WorkerMessage> {
+  if (connection.rowBusy)
+    return Promise.reject(
+      new Error(
+        'Wait for the row operation to finish before inspecting this connection.'
+      )
+    )
   const requestId = randomUUID()
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -657,6 +674,74 @@ export async function getPostgresTableDetails(
   if (!message.postgresTable)
     throw new Error('Could not load PostgreSQL table details.')
   return message.postgresTable
+}
+
+async function rowOperation(
+  event: IpcMainInvokeEvent,
+  value: unknown,
+  update: boolean
+): Promise<PostgresRowDetails> {
+  assertAllowedSender(event.sender)
+  const request = validateRowRequest(value, update) as
+    PostgresRowRequest | UpdatePostgresRowRequest
+  const connection = getOwnedConnection(event, request.connectionId)
+  if (connection.config.kind !== 'postgres' || connection.config.serverMode)
+    throw new Error('Choose a PostgreSQL database session to edit a table row.')
+  if (
+    connection.activeQueryId ||
+    connection.rowBusy ||
+    connection.pendingInspections.size
+  )
+    throw new Error(
+      'Wait for the active database operation or inspection to finish before editing a row.'
+    )
+  connection.rowBusy = true
+  try {
+    const message = await new Promise<WorkerMessage>((resolve, reject) => {
+      const requestId = randomUUID()
+      const timeout = setTimeout(() => {
+        connection.pendingInspections.delete(requestId)
+        // Do not release the busy guard while a worker could still be writing.
+        // Terminating closes its socket and rolls back an unfinished transaction.
+        closeUnregistered(connection)
+        closeChildConnections(
+          connection.id,
+          'The database connection timed out.'
+        )
+        const message =
+          'Row operation timed out and the connection was closed. Reconnect and verify the row before retrying; the save may have completed.'
+        sendEvent(connection, {
+          type: 'connection:closed',
+          connectionId: connection.id,
+          message
+        })
+        reject(new Error(message))
+      }, DATABASE_LIMITS.timeoutMs)
+      connection.pendingInspections.set(requestId, { resolve, reject, timeout })
+      connection.worker.postMessage({
+        type: update ? 'update-postgres-row' : 'get-postgres-row',
+        requestId,
+        rowRequest: request
+      })
+    })
+    if (!message.postgresRow)
+      throw new Error('Could not load PostgreSQL row details.')
+    return message.postgresRow
+  } finally {
+    connection.rowBusy = false
+  }
+}
+export function getPostgresRow(
+  event: IpcMainInvokeEvent,
+  request: unknown
+): Promise<PostgresRowDetails> {
+  return rowOperation(event, request, false)
+}
+export function updatePostgresRow(
+  event: IpcMainInvokeEvent,
+  request: unknown
+): Promise<PostgresRowDetails> {
+  return rowOperation(event, request, true)
 }
 
 export async function listPostgresColumns(
@@ -971,9 +1056,9 @@ export function runDatabaseQuery(
       'This database connection is no longer available. Reconnect and try again.'
     )
   }
-  if (connection.activeQueryId)
+  if (connection.activeQueryId || connection.rowBusy)
     throw new Error(
-      'A query is already running on this connection. Cancel it or wait for it to finish.'
+      'A database operation is already running on this connection. Wait for it to finish.'
     )
   if (connection.config.kind === 'mongodb' && !collection)
     throw new Error('Enter a MongoDB collection name.')

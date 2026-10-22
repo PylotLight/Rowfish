@@ -11,6 +11,9 @@ import type {
   DatabaseRow,
   PostgresServerInfo,
   PostgresTableDetails,
+  PostgresRowDetails,
+  PostgresRowRequest,
+  UpdatePostgresRowRequest,
   MongoBrowserCollection,
   MongoMutationRequest,
   MongoMutationResult
@@ -21,6 +24,11 @@ import {
   parseMongoPipeline
 } from '../shared/database-helpers'
 import { splitPostgresStatements } from '../shared/sql-statements'
+import {
+  assertCompletePrimaryKey,
+  buildRowUpdate,
+  quoteIdentifier
+} from './postgres-row-edit'
 
 const {
   batchSize: BATCH_SIZE,
@@ -43,9 +51,12 @@ type WorkerRequest =
         | 'inspect-postgres-table'
         | 'inspect-postgres-server'
         | 'inspect-postgres-columns'
+        | 'get-postgres-row'
+        | 'update-postgres-row'
       requestId: string
       schema?: string
       table?: string
+      rowRequest?: PostgresRowRequest | UpdatePostgresRowRequest
     }
   | {
       type: 'inspect-mongo-collections' | 'inspect-mongo-collection'
@@ -71,6 +82,7 @@ type WorkerEvent =
       postgresTable?: PostgresTableDetails
       postgresServer?: PostgresServerInfo
       postgresColumns?: { schema: string; table: string; name: string }[]
+      postgresRow?: PostgresRowDetails
       mongoDatabases?: { name: string; sizeOnDisk?: number; empty?: boolean }[]
       mongoCollections?: MongoBrowserCollection[]
       mongoCollection?: MongoBrowserCollection
@@ -430,6 +442,161 @@ async function readMongo(request: DatabaseQueryRequest): Promise<void> {
   })
 }
 
+async function getOrUpdatePostgresRow(
+  requestId: string,
+  type: 'get-postgres-row' | 'update-postgres-row',
+  input: PostgresRowRequest | UpdatePostgresRowRequest
+): Promise<void> {
+  try {
+    if (!postgres) throw new Error('PostgreSQL connection is unavailable.')
+    const request = input as UpdatePostgresRowRequest
+    const rel = await postgres.query<{ kind: string }>(
+      `SELECT c.relkind AS kind FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2`,
+      [input.schema, input.table]
+    )
+    if (!rel.rows[0] || !['r', 'p'].includes(rel.rows[0].kind))
+      throw new Error(
+        'Only ordinary and partitioned tables can be edited; views are read-only.'
+      )
+    const meta = await postgres.query<{
+      name: string
+      dataType: string
+      nullable: boolean
+      defaultValue: string | null
+      isPrimaryKey: boolean
+      generated: string
+      identity: string
+      typeCategory: string
+      typeName: string
+    }>(
+      `SELECT a.attname AS name,format_type(a.atttypid,a.atttypmod) AS "dataType",NOT a.attnotnull AS nullable,pg_get_expr(d.adbin,d.adrelid) AS "defaultValue",a.attgenerated AS generated,a.attidentity AS identity,t.typcategory AS "typeCategory",t.typname AS "typeName",EXISTS(SELECT 1 FROM pg_constraint pk WHERE pk.conrelid=c.oid AND pk.contype='p' AND a.attnum=ANY(pk.conkey)) AS "isPrimaryKey" FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_attribute a ON a.attrelid=c.oid JOIN pg_type t ON t.oid=a.atttypid LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum WHERE n.nspname=$1 AND c.relname=$2 AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum`,
+      [input.schema, input.table]
+    )
+    const pks = meta.rows.filter((c) => c.isPrimaryKey).map((c) => c.name)
+    assertCompletePrimaryKey(input.key, pks)
+    if (
+      pks.some((name) => {
+        const column = meta.rows.find((c) => c.name === name)!
+        return (
+          !['S', 'N', 'B'].includes(column.typeCategory) &&
+          column.typeName !== 'uuid'
+        )
+      })
+    )
+      throw new Error(
+        'Editing requires primary-key columns with safely representable text, numeric, boolean, or UUID values.'
+      )
+    const params = pks.map((n) => input.key[n])
+    const where = pks
+      .map((n, i) => `${quoteIdentifier(n)} IS NOT DISTINCT FROM $${i + 1}`)
+      .join(' AND ')
+    let versionAlias = '__rowfish_xmin_internal'
+    while (meta.rows.some((c) => c.name === versionAlias))
+      versionAlias = `_${versionAlias}`
+    const select = `SELECT ${meta.rows.map((c) => `${quoteIdentifier(c.name)}::text AS ${quoteIdentifier(c.name)}`).join(', ')},xmin::text AS ${quoteIdentifier(versionAlias)} FROM ${quoteIdentifier(input.schema)}.${quoteIdentifier(input.table)} WHERE ${where}`
+    const validateResult = (result: Record<string, unknown>): void => {
+      const values = Object.values(result)
+      if (
+        values.some(
+          (value) => typeof value === 'string' && value.length > MAX_CELL_CHARS
+        )
+      )
+        throw new Error(
+          'This row contains a cell too large for safe editing; no value was truncated.'
+        )
+      const payload = JSON.stringify(result)
+      if (new TextEncoder().encode(payload).byteLength > MAX_RESULT_BYTES)
+        throw new Error(
+          'This row exceeds the safe result size limit; no value was truncated.'
+        )
+    }
+    let row: Record<string, unknown>
+    if (type === 'update-postgres-row') {
+      const names = Object.keys(request.changes),
+        byName = new Map(meta.rows.map((c) => [c.name, c]))
+      if (meta.rows.length > MAX_COLUMNS)
+        throw new Error('This table has too many columns for safe editing.')
+      if (
+        !names.length ||
+        names.some(
+          (n) =>
+            !byName.has(n) ||
+            byName.get(n)!.isPrimaryKey ||
+            byName.get(n)!.generated !== '' ||
+            byName.get(n)!.identity !== '' ||
+            ['U', 'P'].includes(byName.get(n)!.typeCategory)
+        )
+      )
+        throw new Error(
+          'Changes include an unsupported, generated, identity, or unknown column.'
+        )
+      // BEGIN inside a caller-owned transaction is not nested in PostgreSQL;
+      // committing it would commit the user's work. Refuse saves in that state.
+      const statusMethod = (
+        postgres as PostgresClient & { getTransactionStatus?: () => string }
+      ).getTransactionStatus
+      if (typeof statusMethod !== 'function')
+        throw new Error(
+          'Cannot verify PostgreSQL transaction status; refusing to save.'
+        )
+      const transactionStatus = statusMethod.call(postgres)
+      if (transactionStatus !== 'I')
+        throw new Error(
+          'Finish or roll back the active SQL transaction before saving a row.'
+        )
+      await postgres.query('BEGIN')
+      try {
+        const result = await postgres.query(
+          buildRowUpdate(input.schema, input.table, pks, names),
+          [...params, ...names.map((n) => request.changes[n]), request.version]
+        )
+        if (result.rowCount !== 1)
+          throw new Error(
+            'The row changed or was deleted; reload it before editing.'
+          )
+        const fresh = await postgres.query(select, params)
+        if (fresh.rowCount !== 1)
+          throw new Error('The updated row could not be read.')
+        row = fresh.rows[0]!
+        validateResult(row)
+        await postgres.query('COMMIT')
+      } catch (e) {
+        await postgres.query('ROLLBACK').catch(() => undefined)
+        throw e
+      }
+    } else {
+      const result = await postgres.query(select, params)
+      if (result.rowCount !== 1)
+        throw new Error('The row was not found or its key is ambiguous.')
+      row = result.rows[0]!
+      validateResult(row)
+    }
+    const version = String(row[versionAlias])
+    delete row[versionAlias]
+    const key: DatabaseRow = Object.create(null)
+    for (const n of pks) key[n] = row[n] as DatabaseRow[string]
+    const columns = meta.rows.map((c) => ({
+      name: c.name,
+      dataType: c.dataType,
+      nullable: c.nullable,
+      defaultValue: c.defaultValue,
+      isPrimaryKey: c.isPrimaryKey,
+      editable:
+        !c.isPrimaryKey &&
+        c.generated === '' &&
+        c.identity === '' &&
+        !['U', 'P'].includes(c.typeCategory)
+    }))
+    post({
+      type: 'inspection-result',
+      requestId,
+      postgresRow: { row: row as DatabaseRow, columns, key, version }
+    })
+  } catch (e) {
+    post({ type: 'inspection-error', requestId, message: safeError(e) })
+  }
+}
+
 async function inspect(
   request: Extract<
     WorkerRequest,
@@ -443,10 +610,24 @@ async function inspect(
         | 'inspect-postgres-table'
         | 'inspect-postgres-server'
         | 'inspect-postgres-columns'
+        | 'get-postgres-row'
+        | 'update-postgres-row'
     }
   >
 ): Promise<void> {
   try {
+    if (
+      request.type === 'get-postgres-row' ||
+      request.type === 'update-postgres-row'
+    ) {
+      if (!request.rowRequest) throw new Error('Missing row request.')
+      await getOrUpdatePostgresRow(
+        request.requestId,
+        request.type,
+        request.rowRequest
+      )
+      return
+    }
     if (request.type === 'inspect-mongo-databases') {
       if (!mongo) throw new Error('MongoDB connection is unavailable.')
       const result = await mongo
@@ -854,7 +1035,9 @@ parentPort?.on('message', (message: WorkerRequest) => {
     message.type === 'inspect-mongo-collection' ||
     message.type === 'inspect-postgres-table' ||
     message.type === 'inspect-postgres-server' ||
-    message.type === 'inspect-postgres-columns'
+    message.type === 'inspect-postgres-columns' ||
+    message.type === 'get-postgres-row' ||
+    message.type === 'update-postgres-row'
   ) {
     void inspect(message)
     return

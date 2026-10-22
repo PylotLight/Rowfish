@@ -22,6 +22,8 @@ import {
   CircleHelp
 } from 'lucide-react'
 import SqlEditor from '../components/SqlEditor'
+import RowSidePanel, { type RowSource } from '../components/RowSidePanel'
+import { isSameRow } from '../lib/row-editor'
 import {
   loadQueryWorkspace,
   saveQueryWorkspace,
@@ -170,6 +172,30 @@ export default function DatabaseWorkspace({
     direction: 1 | -1
   } | null>(null)
   const [inspectedRow, setInspectedRow] = useState<DatabaseRow | null>(null)
+  const [rowSource, setRowSource] = useState<RowSource | null>(null)
+  const [rowDirty, setRowDirty] = useState(false)
+  const [rowBusy, setRowBusy] = useState(false)
+  function closeRowPanel(): boolean {
+    if (rowBusy) return false
+    if (rowDirty && !window.confirm('Discard unsaved changes to this row?'))
+      return false
+    setInspectedRow(null)
+    setRowDirty(false)
+    return true
+  }
+  function inspectRow(row: DatabaseRow): void {
+    if (row === inspectedRow || !closeRowPanel()) return
+    setInspectedRow(row)
+  }
+  useEffect(() => {
+    if (!rowDirty) return
+    const prevent = (event: BeforeUnloadEvent): void => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', prevent)
+    return () => window.removeEventListener('beforeunload', prevent)
+  }, [rowDirty])
   const [rememberQueries, setRememberQueries] = useState(() => {
     try {
       return localStorage.getItem('rowfish.remember-query-history') !== 'false'
@@ -301,8 +327,9 @@ export default function DatabaseWorkspace({
       return (
         (typeof x === 'number' && typeof y === 'number'
           ? x - y
-          : String(x).localeCompare(String(y), undefined, { numeric: true })) *
-        sort.direction
+          : String(x).localeCompare(String(y), undefined, {
+              numeric: true
+            })) * sort.direction
       )
     })
   }, [deferredRows, deferredSearch, sort])
@@ -320,7 +347,7 @@ export default function DatabaseWorkspace({
     title?: string,
     connection = activeConnection
   ): void {
-    if (runState !== 'idle') return
+    if (runState !== 'idle' || !closeRowPanel()) return
     if (workspace.tabs.length >= 100) {
       setNotice('Close an existing tab before opening more (100 tab limit).')
       return
@@ -338,6 +365,7 @@ export default function DatabaseWorkspace({
     }))
   }
   function closeTab(id: string): void {
+    if (!closeRowPanel()) return
     setWorkspace((current) => {
       const tabs = current.tabs.filter((tab) => tab.id !== id)
       if (!tabs.length)
@@ -416,7 +444,15 @@ export default function DatabaseWorkspace({
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [queryText, activeTab, activeConnection])
+  }, [
+    queryText,
+    activeTab,
+    activeConnection,
+    rowDirty,
+    rowBusy,
+    selectedTable,
+    tableDetails
+  ])
   useEffect(() => {
     setServerInfo(null)
     if (activeConnection?.kind === 'postgres') {
@@ -434,14 +470,7 @@ export default function DatabaseWorkspace({
   }, [activeConnection?.id])
 
   useEffect(() => {
-    if (!(
-      showConnect ||
-      saveDialog ||
-      showHelp ||
-      inspectedRow ||
-      mongoOperation
-    ))
-      return
+    if (!(showConnect || saveDialog || showHelp || mongoOperation)) return
     const previous =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
@@ -452,7 +481,6 @@ export default function DatabaseWorkspace({
         setShowConnect(false)
         setSaveDialog(false)
         setShowHelp(false)
-        setInspectedRow(null)
         setMongoOperation(null)
       }
       if (event.key === 'Tab' && modal) {
@@ -482,7 +510,6 @@ export default function DatabaseWorkspace({
     showConnect,
     saveDialog,
     showHelp,
-    inspectedRow,
     mongoOperation,
     connecting,
     mongoOperationBusy
@@ -536,8 +563,14 @@ export default function DatabaseWorkspace({
             connection.id,
             preferred
           )
-          setMongoCollections((current) => ({ ...current, [key]: collections }))
-          setExpandedMongoDatabases((current) => ({ ...current, [key]: true }))
+          setMongoCollections((current) => ({
+            ...current,
+            [key]: collections
+          }))
+          setExpandedMongoDatabases((current) => ({
+            ...current,
+            [key]: true
+          }))
           setSelectedMongoDatabase(preferred)
         }
       } else if (connection.serverMode) {
@@ -674,7 +707,10 @@ export default function DatabaseWorkspace({
         return
       }
       if (event.type === 'query:error') {
-        updateHistory(event.queryId, { status: 'error', error: event.message })
+        updateHistory(event.queryId, {
+          status: 'error',
+          error: event.message
+        })
         activeQuery.current = null
         setRunState('idle')
         setQueryError(event.message)
@@ -685,6 +721,8 @@ export default function DatabaseWorkspace({
   }, [])
 
   useEffect(() => {
+    setInspectedRow(null)
+    setRowSource(null)
     setSelectedMongoCollection(null)
     if (selectedTable?.connectionId !== activeConnection?.id) {
       setSelectedTable(null)
@@ -723,7 +761,11 @@ export default function DatabaseWorkspace({
             )
           }
         const tab = makeQueryTab(activeConnection?.kind, key)
-        return { ...current, tabs: [...current.tabs, tab], activeTabId: tab.id }
+        return {
+          ...current,
+          tabs: [...current.tabs, tab],
+          activeTabId: tab.id
+        }
       })
     }
     if (activeConnection?.kind === 'mongodb') {
@@ -780,11 +822,14 @@ export default function DatabaseWorkspace({
   }
 
   async function connect(): Promise<void> {
-    if (runState !== 'idle') return
+    if (runState !== 'idle' || !closeRowPanel()) return
     setConnecting(true)
     setConnectionError('')
     try {
-      const input = { ...form, database: form.serverMode ? '' : form.database }
+      const input = {
+        ...form,
+        database: form.serverMode ? '' : form.database
+      }
       const connected = await window.api.database.connect(input, saveProfile)
       addConnectedConnection(connected)
       if (saveProfile) await refreshSavedConnections()
@@ -803,7 +848,7 @@ export default function DatabaseWorkspace({
   }
 
   async function connectSaved(profile: SavedConnectionProfile): Promise<void> {
-    if (runState !== 'idle') return
+    if (runState !== 'idle' || !closeRowPanel()) return
     setConnectionError('')
     const existing = connections.find(
       (connection) =>
@@ -854,7 +899,7 @@ export default function DatabaseWorkspace({
     server: DatabaseConnectionSummary,
     database: DatabaseBrowserDatabase
   ): Promise<void> {
-    if (runState !== 'idle') return
+    if (runState !== 'idle' || !closeRowPanel()) return
     if (!database.canConnect || browserLoading[`${server.id}:${database.name}`])
       return
     const loadingKey = `${server.id}:${database.name}`
@@ -915,6 +960,25 @@ export default function DatabaseWorkspace({
       )
       return
     }
+    if (!closeRowPanel()) return
+    const tableQuery = selectedTable
+      ? `SELECT * FROM ${quotePostgresIdentifier(selectedTable.schema)}.${quotePostgresIdentifier(selectedTable.name)} LIMIT 100;`
+      : ''
+    setRowSource(
+      target.kind === 'postgres' &&
+        selectedTable?.connectionId === target.id &&
+        tableDetails &&
+        tableDetails.schema === selectedTable.schema &&
+        tableDetails.name === selectedTable.name &&
+        query.trim() === tableQuery
+        ? {
+            connectionId: target.id,
+            schema: selectedTable.schema,
+            table: selectedTable.name,
+            details: tableDetails
+          }
+        : null
+    )
     const queryId = window.crypto.randomUUID()
     activeQuery.current = { id: queryId, connectionId: target.id }
     if (rememberQueries)
@@ -975,7 +1039,7 @@ export default function DatabaseWorkspace({
     connection: DatabaseConnectionSummary,
     database: MongoBrowserDatabase
   ): Promise<void> {
-    if (runState !== 'idle') return
+    if (runState !== 'idle' || !closeRowPanel()) return
     if (selectedMongoDatabase !== database.name) {
       setSelectedMongoCollection(null)
       setRows([])
@@ -1016,7 +1080,7 @@ export default function DatabaseWorkspace({
     database: string,
     item: MongoBrowserCollection
   ): Promise<void> {
-    if (runState !== 'idle') return
+    if (runState !== 'idle' || !closeRowPanel()) return
     const mode =
       activeConnection?.id === connection.id ? mongoQueryMode : 'find'
     setActiveId(connection.id)
@@ -1314,7 +1378,7 @@ export default function DatabaseWorkspace({
   async function disconnect(
     connection: DatabaseConnectionSummary
   ): Promise<void> {
-    if (runState !== 'idle') return
+    if (runState !== 'idle' || !closeRowPanel()) return
     try {
       await window.api.database.disconnect(connection.id)
       setConnections((current) =>
@@ -1357,7 +1421,7 @@ export default function DatabaseWorkspace({
     connection: DatabaseConnectionSummary,
     table: DatabaseBrowserTable
   ): void {
-    if (runState !== 'idle') return
+    if (runState !== 'idle' || !closeRowPanel()) return
     setActiveId(connection.id)
     newTab(
       `SELECT * FROM ${quotePostgresIdentifier(table.schema)}.${quotePostgresIdentifier(table.name)} LIMIT 100;`,
@@ -1479,6 +1543,7 @@ export default function DatabaseWorkspace({
             title="Create a database"
             aria-label="Create a database"
             onClick={() => {
+              if (!closeRowPanel()) return
               setActiveId(connection.id)
               setSelectedMongoDatabase('')
               openMongoOperation('create-collection', connection)
@@ -1525,6 +1590,7 @@ export default function DatabaseWorkspace({
                   title={`Drop database ${database.name}`}
                   aria-label={`Drop database ${database.name}`}
                   onClick={() => {
+                    if (!closeRowPanel()) return
                     setActiveId(connection.id)
                     setSelectedMongoDatabase(database.name)
                     openMongoOperation('drop-database', connection)
@@ -1547,6 +1613,7 @@ export default function DatabaseWorkspace({
                       aria-label={`Create collection in ${database.name}`}
                       onClick={() => {
                         setSelectedMongoDatabase(database.name)
+                        if (!closeRowPanel()) return
                         setActiveId(connection.id)
                         openMongoOperation('create-collection', connection)
                         setMongoDatabaseName(database.name)
@@ -1604,7 +1671,9 @@ export default function DatabaseWorkspace({
   }
 
   return (
-    <section className="db-workspace">
+    <section
+      className={`db-workspace${sidebarHidden ? ' sidebar-hidden' : ''}${inspectedRow ? ' has-row-panel' : ''}`}
+    >
       <aside className="db-rail">
         <div className="db-rail-heading">
           <div>
@@ -1816,7 +1885,9 @@ export default function DatabaseWorkspace({
                   <button
                     className="db-connection-select"
                     disabled={runState !== 'idle'}
-                    onClick={() => setActiveId(connection.id)}
+                    onClick={() => {
+                      if (closeRowPanel()) setActiveId(connection.id)
+                    }}
                   >
                     <span
                       className={`db-engine-mark ${connection.kind}`}
@@ -2169,6 +2240,8 @@ export default function DatabaseWorkspace({
                   aria-selected={tab.id === activeTab?.id}
                   disabled={runState !== 'idle'}
                   onClick={() => {
+                    if (!closeRowPanel()) return
+                    setRowSource(null)
                     setWorkspace((current) => ({
                       ...current,
                       activeTabId: tab.id
@@ -2526,11 +2599,27 @@ export default function DatabaseWorkspace({
                       )}
                       {windowedRows.map((row, offset) => {
                         const index = firstVisible + offset
+                        const selected =
+                          row === inspectedRow ||
+                          !!(
+                            inspectedRow &&
+                            rowSource &&
+                            isSameRow(rowSource.details, row, inspectedRow)
+                          )
                         return (
                           <tr
                             key={index}
-                            onDoubleClick={() => setInspectedRow(row)}
-                            title="Double-click to inspect row"
+                            className={selected ? 'selected-row' : ''}
+                            tabIndex={0}
+                            aria-selected={selected}
+                            onClick={() => inspectRow(row)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault()
+                                inspectRow(row)
+                              }
+                            }}
+                            title="Click to inspect or edit row"
                           >
                             <td className="db-row-index">{index + 1}</td>
                             {columns.map((column) => (
@@ -2602,7 +2691,7 @@ export default function DatabaseWorkspace({
                 <div className="db-grid-footer">
                   <span>{rows.length.toLocaleString()} rows</span>
                   <span>
-                    Double-click a row to inspect ·{' '}
+                    Click a row to inspect / edit ·{' '}
                     {serverInfo
                       ? `${serverInfo.database} / ${serverInfo.user}`
                       : 'Filtered exports'}
@@ -2613,6 +2702,27 @@ export default function DatabaseWorkspace({
           </>
         )}
       </div>
+
+      {inspectedRow && (
+        <RowSidePanel
+          row={inspectedRow}
+          source={rowSource}
+          onClose={() => {
+            closeRowPanel()
+          }}
+          onDirtyChange={setRowDirty}
+          onBusyChange={setRowBusy}
+          onSaved={(updated) => {
+            setRows((current) =>
+              current.map((row) =>
+                rowSource && isSameRow(rowSource.details, row, inspectedRow)
+                  ? updated
+                  : row
+              )
+            )
+          }}
+        />
+      )}
 
       {saveDialog && (
         <div className="db-modal-backdrop" onClick={() => setSaveDialog(false)}>
@@ -2723,43 +2833,13 @@ export default function DatabaseWorkspace({
               <dt>Format SQL</dt>
               <dd>Ctrl / ⌘ Shift F</dd>
               <dt>Inspect a result row</dt>
-              <dd>Double-click row</dd>
+              <dd>Click row / Enter on focused row</dd>
             </dl>
             <p className="privacy-note">
               Drafts and query history stay on this device. Queries execute with
               the database user’s permissions. Use caution with writes; Rowfish
               does not automatically roll them back.
             </p>
-          </section>
-        </div>
-      )}
-      {inspectedRow && (
-        <div
-          className="db-modal-backdrop"
-          onClick={() => setInspectedRow(null)}
-        >
-          <section
-            className="db-modal row-inspector"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Row details"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="db-modal-head">
-              <h2>Row details</h2>
-              <button
-                className="db-icon-button"
-                onClick={() => setInspectedRow(null)}
-              >
-                ×
-              </button>
-            </div>
-            {Object.entries(inspectedRow).map(([key, value]) => (
-              <div className="row-detail" key={key}>
-                <b>{key}</b>
-                <pre>{value === null ? 'NULL' : String(value)}</pre>
-              </div>
-            ))}
           </section>
         </div>
       )}

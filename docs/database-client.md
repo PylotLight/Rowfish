@@ -62,6 +62,14 @@ The top-bar search filters rows already received in the current result set; it d
 
 Choosing **Cancel** terminates the worker to interrupt server-side work. Rowfish also closes that connection, so reconnect before running another query on it.
 
+## Quick row edits
+
+Select a PostgreSQL table in the explorer and run its unmodified generated `SELECT * ... LIMIT 100;` query. Click a result row to open the side panel beside the grid. It shows column types, nullability, defaults and primary keys alongside the row's values. Supported fields can be edited in place; **Set NULL** is separate from an empty string. **Save changes** writes the modified fields and refreshes that row in the grid. **Discard** restores the loaded values; **Reload** fetches the current database row. Unsaved edits prompt before closing the panel or moving to another result.
+
+Edits require a real PostgreSQL table with a complete, safely represented primary key. Primary keys, generated/identity columns and unsupported column types are read only. Views, tables without a primary key, arbitrary SQL results (including joins/aliases) and MongoDB results remain inspectable but read only in this panel. Select the table and run the generated query again to enable safe editing; changing the query intentionally makes it read only.
+
+The panel fetches full textual values separately rather than saving truncated grid values. Saves use parameterized SQL, database permissions, a transaction and a row-version check. If another session changes or deletes the row, the save fails without overwriting it; reload and review before trying again. Database validation errors leave your draft in the panel. Oversized values are rejected rather than silently truncated.
+
 ## Current scope
 
 The query workspace provides persistent in-app tabs, draft autosave, a named query library with folder labels, searchable execution history, formatting, and schema-aware table/column autocomplete. No external SQL file is needed. The [UI review](ui-review.md) summarizes the comparison and boundaries.
@@ -69,9 +77,9 @@ The query workspace provides persistent in-app tabs, draft autosave, a named que
 Drafts, saved queries and history are stored in local application storage, not encrypted. Disable history recording in the History tab to stop recording subsequent query text; existing entries remain until cleared. Restoring a query never runs it automatically. Select a table to inspect its structure, indexes and constraints in the results pane.
 
 
-Result headings support local sorting; double-click a row to inspect full normalized values. CSV and JSON buttons export the currently filtered, already-fetched rows. CSV escapes spreadsheet formulas; JSON retains value types. Exports still obey row/cell/byte caps and are not full-database backups.
+Result headings support local sorting; click a row (or focus it and press Enter) to open its data and column schema in a side panel. CSV and JSON buttons export the currently filtered, already-fetched rows. CSV escapes spreadsheet formulas; JSON retains value types. Exports still obey row/cell/byte caps and are not full-database backups.
 
-Saved-profile sync, SSH tunnels, a custom CA-file picker, PostgreSQL query parameters, graphical data editing and transaction-control buttons are not included.
+Saved-profile sync, SSH tunnels, a custom CA-file picker, PostgreSQL query parameters and transaction-control buttons are not included.
 
 The checked-in [PostgreSQL seed script](examples/postgres.sql) and [MongoDB seed script](examples/mongodb.js) create matching fictional order examples for local demos. The [README](../README.md) previews use synthetic local records. Its PostgreSQL screenshot comes from the live disposable smoke-test fixture; no production database is used.
 

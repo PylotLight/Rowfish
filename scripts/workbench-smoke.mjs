@@ -1,3 +1,4 @@
+import { Client } from 'pg'
 import { _electron as electron, expect } from '@playwright/test'
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -93,6 +94,125 @@ try {
     await expect(page.locator('.metadata-panel')).toContainText('FOREIGN KEY')
   })
   await page.getByRole('button', { name: 'Results', exact: true }).click()
+  await check(
+    'single-click row side panel with schema and safe updates',
+    async () => {
+      await page.getByRole('button', { name: /Run query/ }).click()
+      await expect(page.locator('.db-results-summary')).toContainText(
+        '100 rows'
+      )
+      await page.locator('.db-result-table tbody tr').first().click()
+      const panel = page.getByRole('complementary', { name: 'Row details' })
+      await expect(panel).toContainText('public.orders')
+      await expect(panel).toContainText('numeric(12,2)')
+      await expect(panel).toContainText('Primary key')
+      await expect(
+        panel.getByLabel('Value for id', { exact: true })
+      ).toHaveCount(0)
+      const status = panel.getByLabel('Value for status', { exact: true })
+      await expect(status).toBeEditable()
+      const original = await status.inputValue()
+      await status.fill('rowfish-sidepanel-smoke')
+      await panel
+        .getByRole('button', { name: 'Save changes', exact: true })
+        .click()
+      await expect(panel.getByRole('status')).toContainText('Changes saved')
+      await expect(
+        page.locator('.db-result-table tbody tr').first()
+      ).toContainText('rowfish-sidepanel-smoke')
+      // A second save must update the grid too, without reopening the panel.
+      await status.fill(original)
+      await panel
+        .getByRole('button', { name: 'Save changes', exact: true })
+        .click()
+      await expect(
+        panel.getByRole('button', { name: 'Save changes', exact: true })
+      ).toBeDisabled()
+      await expect(
+        page.locator('.db-result-table tbody tr').first()
+      ).not.toContainText('rowfish-sidepanel-smoke')
+      const field = status.locator('..')
+      await field.getByRole('checkbox', { name: 'Set NULL' }).check()
+      await panel
+        .getByRole('button', { name: 'Save changes', exact: true })
+        .click()
+      await expect(status).toBeDisabled()
+      await expect(
+        page.locator('.db-result-table tbody tr').first()
+      ).toContainText('NULL')
+      await field.getByRole('checkbox', { name: 'Set NULL' }).uncheck()
+      await status.fill('')
+      await panel
+        .getByRole('button', { name: 'Save changes', exact: true })
+        .click()
+      await expect(
+        panel.getByRole('button', { name: 'Save changes', exact: true })
+      ).toBeDisabled()
+      const client = new Client({
+        host: 'localhost',
+        database: 'rowfish_fixture',
+        user: 'rowfish_test',
+        password: 'rowfish_local_fixture'
+      })
+      await client.connect()
+      try {
+        expect(
+          (await client.query('SELECT status FROM public.orders WHERE id = 1'))
+            .rows[0].status
+        ).toBe('')
+        await status.fill('pending-stale-edit')
+        await client.query(
+          "UPDATE public.orders SET status = 'externally-changed' WHERE id = 1"
+        )
+        await panel
+          .getByRole('button', { name: 'Save changes', exact: true })
+          .click()
+        await expect(panel.getByRole('alert')).toContainText(
+          /changed|stale|reload/i
+        )
+        expect(
+          (await client.query('SELECT status FROM public.orders WHERE id = 1'))
+            .rows[0].status
+        ).toBe('externally-changed')
+        await panel
+          .getByRole('button', { name: 'Discard', exact: true })
+          .click()
+        await panel.getByRole('button', { name: 'Close row details' }).click()
+        await client.query(
+          'UPDATE public.orders SET status = $1 WHERE id = 1',
+          [original]
+        )
+      } finally {
+        await client.end()
+      }
+      await page.getByRole('button', { name: /Run query/ }).click()
+      await expect(page.locator('.db-results-summary')).toContainText(
+        '100 rows'
+      )
+      await page.locator('.db-result-table tbody tr').first().focus()
+      await page.keyboard.press('Enter')
+      await expect(status).toBeEditable()
+      await status.fill('unsaved-value')
+      page.once('dialog', (dialog) => dialog.dismiss())
+      await panel.getByRole('button', { name: 'Close row details' }).click()
+      await expect(panel).toBeVisible()
+      await expect(status).toHaveValue('unsaved-value')
+      await panel.getByRole('button', { name: 'Discard', exact: true }).click()
+      await expect(status).toHaveValue(original)
+      const total = panel.getByLabel('Value for total', { exact: true })
+      await total.fill('-10')
+      await panel
+        .getByRole('button', { name: 'Save changes', exact: true })
+        .click()
+      await expect(panel.getByRole('alert')).toContainText(/check constraint/i)
+      await expect(total).toHaveValue('-10')
+      await panel.getByRole('button', { name: 'Discard', exact: true }).click()
+      await page.screenshot({
+        path: join(artifacts, 'rowfish-row-sidepanel.png')
+      })
+      await panel.getByRole('button', { name: 'Close row details' }).click()
+    }
+  )
   await check('schema and column autocomplete', async () => {
     await inputQuery('SELECT * FROM public.')
     await page.keyboard.press('Control+Space')
@@ -181,13 +301,21 @@ try {
     await expect
       .poll(() => app.evaluate(() => globalThis.__rowfishDownload))
       .toBe('completed')
-    await page.locator('.db-result-table tbody tr').first().dblclick()
+    await page.locator('.db-result-table tbody tr').first().click()
     await expect(
-      page.getByRole('dialog', { name: 'Row details' })
+      page.getByRole('complementary', { name: 'Row details' })
     ).toContainText('customer_id')
+    await expect(
+      page.getByRole('complementary', { name: 'Row details' })
+    ).toContainText('Query result · read only')
+    await expect(
+      page
+        .getByRole('complementary', { name: 'Row details' })
+        .getByRole('button', { name: 'Save changes' })
+    ).toBeDisabled()
     await page
-      .getByRole('dialog', { name: 'Row details' })
-      .getByRole('button')
+      .getByRole('complementary', { name: 'Row details' })
+      .getByRole('button', { name: 'Close row details' })
       .click()
     await page.getByLabel('Filter result rows').fill('')
   })
@@ -260,7 +388,10 @@ try {
   await writeFile(
     join(artifacts, 'smoke-results.json'),
     JSON.stringify(
-      { runtime: await app.evaluate(() => process.versions.electron), checks },
+      {
+        runtime: await app.evaluate(() => process.versions.electron),
+        checks
+      },
       null,
       2
     ) + '\n'

@@ -58,6 +58,25 @@ export interface PostgresColumnDetails {
   isPrimaryKey: boolean
 }
 
+export interface PostgresRowRequest {
+  connectionId: string
+  schema: string
+  table: string
+  key: DatabaseRow
+}
+
+export interface UpdatePostgresRowRequest extends PostgresRowRequest {
+  version: string
+  changes: DatabaseRow
+}
+
+export interface PostgresRowDetails {
+  row: DatabaseRow
+  columns: (PostgresColumnDetails & { editable: boolean })[]
+  key: DatabaseRow
+  version: string
+}
+
 export interface PostgresIndexDetails {
   name: string
   definition: string

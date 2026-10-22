@@ -7,6 +7,8 @@ import {
   getMongoCollectionDetails,
   getPostgresServerInfo,
   getPostgresTableDetails,
+  getPostgresRow,
+  updatePostgresRow,
   listMongoCollections,
   listMongoDatabases,
   listPostgresDatabases,
@@ -70,6 +72,12 @@ export function registerIpc(): void {
   )
   ipcMain.handle('database:mongo-mutate', (event, request: unknown) =>
     runMongoMutation(event, request)
+  )
+  ipcMain.handle('database:postgres-row-get', (event, request: unknown) =>
+    getPostgresRow(event, request)
+  )
+  ipcMain.handle('database:postgres-row-update', (event, request: unknown) =>
+    updatePostgresRow(event, request)
   )
   ipcMain.handle('database:run', (event, request: unknown) =>
     runDatabaseQuery(event, request)

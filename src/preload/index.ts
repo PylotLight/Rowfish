@@ -12,6 +12,9 @@ import type {
   MongoMutationResult,
   PostgresServerInfo,
   PostgresTableDetails,
+  PostgresRowDetails,
+  PostgresRowRequest,
+  UpdatePostgresRowRequest,
   SavedConnectionProfile
 } from '../shared/database'
 
@@ -43,6 +46,14 @@ const api = {
         schema,
         table
       ),
+    getPostgresRow: (
+      request: PostgresRowRequest
+    ): Promise<PostgresRowDetails> =>
+      ipcRenderer.invoke('database:postgres-row-get', request),
+    updatePostgresRow: (
+      request: UpdatePostgresRowRequest
+    ): Promise<PostgresRowDetails> =>
+      ipcRenderer.invoke('database:postgres-row-update', request),
     getPostgresServerInfo: (
       connectionId: string
     ): Promise<PostgresServerInfo> =>
