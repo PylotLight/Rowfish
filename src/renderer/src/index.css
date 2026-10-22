@@ -3233,3 +3233,73 @@ textarea:focus-visible,
 .query-split-layout .db-editor-footer {
   flex-shrink: 0;
 }
+
+/* Explorer hover peek: a thin strip on the left edge slides the explorer out
+   over the workspace (same overlay as the opened explorer), Surffish-style. */
+.rail-reveal-edge {
+  position: absolute;
+  z-index: 32;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 10px;
+  background: transparent;
+  transition: background 140ms ease;
+  -webkit-app-region: no-drag;
+}
+.rail-reveal-edge:hover {
+  background: color-mix(in srgb, var(--mint) 8%, transparent);
+}
+.db-workspace:not(.settings-open) > .db-rail {
+  animation: rail-slide-in 140ms ease-out;
+}
+@keyframes rail-slide-in {
+  from {
+    transform: translateX(-12px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .db-workspace:not(.settings-open) > .db-rail {
+    animation: none;
+  }
+}
+
+/* Rail footer: keychain note on the left, Settings + Quit on the right. */
+.db-rail > .db-rail-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  padding: 10px 2px 0;
+  border-top: 1px solid var(--border);
+  font-size: 10.5px;
+  line-height: 1;
+}
+.db-security-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+.db-rail-footer .app-sidebar-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 2px;
+  margin: 0 0 0 auto;
+  padding: 0;
+  border: 0;
+}
+.db-rail-footer .app-foot-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+}
+.db-rail-footer .app-foot-button svg {
+  display: block;
+}

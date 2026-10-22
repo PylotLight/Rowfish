@@ -196,6 +196,50 @@ export default function DatabaseWorkspace({
     });
   };
   const workspaceRef = useRef<HTMLElement>(null);
+  const railRef = useRef<HTMLElement>(null);
+  // Hover peek, like Surffish: resting the pointer on the left edge slides the
+  // explorer out over the workspace; leaving it slides it away again. The
+  // toggle button still opens it until dismissed.
+  const [sidebarPeek, setSidebarPeek] = useState(false);
+  const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearPeekTimer = (): void => {
+    if (peekTimer.current) clearTimeout(peekTimer.current);
+    peekTimer.current = null;
+  };
+  const revealSidebar = (): void => {
+    clearPeekTimer();
+    setSidebarPeek(true);
+  };
+  const scheduleSidebarHide = (): void => {
+    clearPeekTimer();
+    peekTimer.current = setTimeout(() => {
+      peekTimer.current = null;
+      const active = document.activeElement;
+      // Stay out while typing in the filter, a dialog is up, or mid-resize.
+      if (
+        (active instanceof HTMLInputElement &&
+          railRef.current?.contains(active)) ||
+        document.querySelector('[role="dialog"]') ||
+        document.querySelector(".explorer-resizer:hover")
+      )
+        return;
+      setSidebarPeek(false);
+    }, 220);
+  };
+  const closeSidebar = (): void => {
+    clearPeekTimer();
+    setSidebarPeek(false);
+    setSidebarHidden(true);
+  };
+  useEffect(() => clearPeekTimer, []);
+  // Leaving Settings returns focus to its gear in the rail footer, so keep the
+  // rail peeked out until the pointer moves away or it is dismissed.
+  const hadSettings = useRef(!!settingsView);
+  useEffect(() => {
+    if (hadSettings.current && !settingsView && sidebarHidden) revealSidebar();
+    hadSettings.current = !!settingsView;
+  }, [settingsView]);
+  const railOpen = !sidebarHidden || sidebarPeek;
   useEffect(() => {
     try {
       localStorage.setItem("rowfish.sidebar-hidden", String(sidebarHidden));
@@ -208,23 +252,24 @@ export default function DatabaseWorkspace({
     const dismiss = (event: KeyboardEvent): void => {
       if (
         event.key === "Escape" &&
-        !sidebarHidden &&
+        railOpen &&
         !document.querySelector('[role="dialog"]')
       )
-        setSidebarHidden(true);
+        closeSidebar();
     };
     const outside = (event: PointerEvent): void => {
       const target = event.target as Node;
       if (
-        !sidebarHidden &&
+        railOpen &&
         workspaceRef.current &&
         !workspaceRef.current.querySelector(".db-rail")?.contains(target) &&
         !workspaceRef.current
           .querySelector(".sidebar-toggle")
           ?.contains(target) &&
-        !(target instanceof Element && target.closest(".layout-resizer"))
+        !(target instanceof Element && target.closest(".layout-resizer")) &&
+        !(target instanceof Element && target.closest('[role="dialog"]'))
       )
-        setSidebarHidden(true);
+        closeSidebar();
     };
     document.addEventListener("keydown", dismiss);
     document.addEventListener("pointerdown", outside);
@@ -232,7 +277,7 @@ export default function DatabaseWorkspace({
       document.removeEventListener("keydown", dismiss);
       document.removeEventListener("pointerdown", outside);
     };
-  }, [sidebarHidden, settingsView]);
+  }, [railOpen, settingsView]);
   const [selectedTable, setSelectedTable] = useState<{
     connectionId: string;
     schema: string;
@@ -455,7 +500,7 @@ export default function DatabaseWorkspace({
       setNotice("Close an existing tab before opening more (100 tab limit).");
       return;
     }
-    if (stored) setSidebarHidden(true);
+    if (stored) closeSidebar();
     const tab = makeQueryTab(
       stored?.kind ?? connection?.kind ?? "postgres",
       stored?.connectionKey ?? queryConnectionKey(connection),
@@ -1202,7 +1247,7 @@ export default function DatabaseWorkspace({
       return;
     }
     if (!closeRowPanel()) return;
-    setSidebarHidden(true);
+    closeSidebar();
     const tableQuery = selectedTable
       ? `SELECT * FROM ${quotePostgresIdentifier(selectedTable.schema)}.${quotePostgresIdentifier(selectedTable.name)} LIMIT 100;`
       : "";
@@ -1325,7 +1370,7 @@ export default function DatabaseWorkspace({
     item: MongoBrowserCollection,
   ): Promise<void> {
     if (runState !== "idle" || !closeRowPanel()) return;
-    setSidebarHidden(true);
+    closeSidebar();
     const mode =
       activeConnection?.id === connection.id ? mongoQueryMode : "find";
     setActiveId(connection.id);
@@ -1667,7 +1712,7 @@ export default function DatabaseWorkspace({
     table: DatabaseBrowserTable,
   ): void {
     if (runState !== "idle" || !closeRowPanel()) return;
-    setSidebarHidden(true);
+    closeSidebar();
     setActiveId(connection.id);
     newTab(
       `SELECT * FROM ${quotePostgresIdentifier(table.schema)}.${quotePostgresIdentifier(table.name)} LIMIT 100;`,
@@ -1926,19 +1971,32 @@ export default function DatabaseWorkspace({
           ["--row-panel-width"]: `${layout.rowPanel}px`,
         } as React.CSSProperties
       }
-      className={`db-workspace${sidebarHidden && !settingsView ? " sidebar-hidden" : ""}${settingsView ? " settings-open" : ""}${inspectedRow && !settingsView ? " has-row-panel" : ""}`}
+      onMouseMove={(event) => {
+        // Backstop for leaves the rail never saw (e.g. after a resize drag).
+        if (!sidebarPeek || !sidebarHidden || peekTimer.current) return;
+        const rail = railRef.current?.getBoundingClientRect();
+        if (rail && event.clientX > rail.right + 16) scheduleSidebarHide();
+      }}
+      className={`db-workspace${!railOpen && !settingsView ? " sidebar-hidden" : ""}${settingsView ? " settings-open" : ""}${inspectedRow && !settingsView ? " has-row-panel" : ""}`}
     >
       <aside
         id="db-explorer-sidebar"
         className="db-rail"
+        ref={railRef}
         aria-label="Database explorer"
-        aria-hidden={sidebarHidden && !settingsView}
+        aria-hidden={!railOpen && !settingsView}
+        onMouseEnter={() => {
+          if (sidebarPeek) clearPeekTimer();
+        }}
+        onMouseLeave={() => {
+          if (sidebarPeek && sidebarHidden) scheduleSidebarHide();
+        }}
       >
         <div className="db-rail-heading">
           <button
             className="db-icon-button rail-close"
             aria-label="Close explorer sidebar"
-            onClick={() => setSidebarHidden(true)}
+            onClick={closeSidebar}
           >
             <PanelLeftClose size={16} />
           </button>
@@ -2312,13 +2370,26 @@ export default function DatabaseWorkspace({
           </div>
         )}
         <div className="db-rail-footer">
-          <KeyRound size={16} className="db-security-mark" />
-          <span>Saved passwords are encrypted by your operating system.</span>
+          <span
+            className="db-security-note"
+            title="Saved passwords are encrypted by your operating system."
+          >
+            <KeyRound size={13} className="db-security-mark" />
+            Keychain encrypted
+          </span>
+          {sidebarActions}
         </div>
       </aside>
-      {sidebarActions}
+      {!railOpen && !settingsView && (
+        <div
+          className="rail-reveal-edge"
+          aria-hidden="true"
+          onMouseEnter={revealSidebar}
+          onMouseMove={revealSidebar}
+        />
+      )}
       {settingsView}
-      {!sidebarHidden && !settingsView && (
+      {railOpen && !settingsView && (
         <ResizeSeparator
           className="explorer-resizer"
           label="Resize explorer sidebar"
@@ -2334,13 +2405,15 @@ export default function DatabaseWorkspace({
           <button
             className="sidebar-toggle"
             aria-label={
-              sidebarHidden ? "Open explorer sidebar" : "Close explorer sidebar"
+              railOpen ? "Close explorer sidebar" : "Open explorer sidebar"
             }
-            aria-expanded={!sidebarHidden}
+            aria-expanded={railOpen}
             aria-controls="db-explorer-sidebar"
-            onClick={() => setSidebarHidden((value) => !value)}
+            onClick={() =>
+              railOpen ? closeSidebar() : setSidebarHidden(false)
+            }
           >
-            {sidebarHidden ? (
+            {!railOpen ? (
               <PanelLeftOpen size={17} />
             ) : (
               <PanelLeftClose size={17} />

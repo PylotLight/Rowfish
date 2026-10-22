@@ -44,17 +44,16 @@ export default function App(): React.JSX.Element {
   };
   const actions = (
     <div className="app-sidebar-actions" aria-label="Application actions">
-      <span>Rowfish</span>
       <button
         ref={triggerRef}
         className={`app-foot-button${settingsOpen ? " active" : ""}`}
         type="button"
-        title="Settings"
+        title="Settings (⌘,)"
         aria-label="Settings"
         aria-pressed={settingsOpen}
         onClick={() => setSettingsOpen((open) => !open)}
       >
-        <SettingsIcon size={16} aria-hidden="true" />
+        <SettingsIcon size={15} strokeWidth={1.8} aria-hidden="true" />
       </button>
       <button
         className="app-foot-button quit"
@@ -63,7 +62,7 @@ export default function App(): React.JSX.Element {
         aria-label="Quit Rowfish"
         onClick={() => void window.api.app.quit()}
       >
-        <Power size={16} aria-hidden="true" />
+        <Power size={15} strokeWidth={1.8} aria-hidden="true" />
       </button>
     </div>
   );

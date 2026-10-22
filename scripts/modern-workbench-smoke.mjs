@@ -35,6 +35,11 @@ const inputQuery = async (query) => {
   await page.keyboard.press("Control+a");
   await page.keyboard.insertText(query);
 };
+const revealRail = async () => {
+  if (!(await page.locator(".db-rail").isVisible()))
+    await page.locator(".rail-reveal-edge").hover();
+  await expect(page.locator(".db-rail")).toBeVisible();
+};
 const appearance = () =>
   page.getByRole("button", { name: "Settings", exact: true });
 const runQuery = async () => {
@@ -57,6 +62,7 @@ try {
   await check(
     "AMOLED uses opaque black main surfaces and persists",
     async () => {
+      await revealRail();
       await appearance().click();
       await page
         .getByRole("radio", { name: "AMOLED black", exact: true })
@@ -90,6 +96,7 @@ try {
         "data-text-density",
         "compact",
       );
+      await revealRail();
       await appearance().click();
       await page
         .getByRole("radio", { name: "Comfortable", exact: true })

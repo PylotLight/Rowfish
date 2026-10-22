@@ -18,12 +18,18 @@ page.on("pageerror", (error) => errors.push(error.message));
 const settings = () =>
   page.getByRole("button", { name: "Settings", exact: true });
 const panel = () => page.getByRole("region", { name: "Settings", exact: true });
+const revealRail = async () => {
+  if (!(await page.locator(".db-rail").isVisible()))
+    await page.locator(".rail-reveal-edge").hover();
+  await expect(page.locator(".db-rail")).toBeVisible();
+};
 const chooseTheme = async (name) =>
   panel().getByRole("radio", { name, exact: true }).click();
 try {
   await page.waitForSelector(".cm-content");
   const editor = page.locator(".cm-content");
   await editor.fill("SELECT 42 AS preserved_draft;");
+  await revealRail();
   const settingsBox = await settings().boundingBox();
   const quitBox = await page
     .getByRole("button", { name: "Quit Rowfish" })
@@ -126,7 +132,8 @@ try {
   );
   if (await page.locator(".db-rail").isVisible()) await sidebarToggle.click();
   await expect(page.locator(".db-rail")).not.toBeVisible();
-  // The collapsed workspace keeps a compact, reachable Settings/Quit footer.
+  // A collapsed explorer peeks out from the left edge, footer and all.
+  await revealRail();
   await expect(settings()).toBeVisible();
   await settings().click();
   await expect(panel()).toBeVisible();
