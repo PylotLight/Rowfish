@@ -34,7 +34,9 @@ try {
   await check('Tab accepts the selected keyword completion', async () => {
     await inputQuery('SEL')
     await page.keyboard.press('Control+Space')
-    const selected = page.locator('.cm-tooltip-autocomplete [aria-selected="true"]')
+    const selected = page.locator(
+      '.cm-tooltip-autocomplete [aria-selected="true"]'
+    )
     await expect(selected).toContainText('SELECT')
     // CodeMirror briefly ignores completion keys after opening the popup.
     await page.waitForTimeout(100)
@@ -42,14 +44,17 @@ try {
     await expect(editor()).toHaveText('SELECT')
     await expect(page.locator('.cm-tooltip-autocomplete')).not.toBeVisible()
   })
-  await check('Tab indents and Shift-Tab unindents without a completion', async () => {
-    await inputQuery('SELECT 1;')
-    await page.keyboard.press('Escape')
-    await page.keyboard.press('Tab')
-    await expect(editor()).toHaveText('  SELECT 1;', { useInnerText: false })
-    await page.keyboard.press('Shift+Tab')
-    await expect(editor()).toHaveText('SELECT 1;')
-  })
+  await check(
+    'Tab indents and Shift-Tab unindents without a completion',
+    async () => {
+      await inputQuery('SELECT 1;')
+      await page.keyboard.press('Escape')
+      await page.keyboard.press('Tab')
+      await expect(editor()).toHaveText('  SELECT 1;', { useInnerText: false })
+      await page.keyboard.press('Shift+Tab')
+      await expect(editor()).toHaveText('SELECT 1;')
+    }
+  )
   await check('offline drafts autosave across reload', async () => {
     await inputQuery('SELECT 42 AS answer;')
     await expect
@@ -120,6 +125,16 @@ try {
       await expect(page.locator('.db-results-summary')).toContainText(
         '100 rows'
       )
+      // PostgreSQL does not guarantee row order without ORDER BY. Follow the
+      // actual displayed primary key, including after earlier updates.
+      const inspectedId = Number(
+        await page
+          .locator('.db-result-table tbody tr')
+          .first()
+          .locator('td')
+          .nth(1)
+          .innerText()
+      )
       await page.locator('.db-result-table tbody tr').first().click()
       const panel = page.getByRole('complementary', { name: 'Row details' })
       await expect(panel).toContainText('public.orders')
@@ -176,12 +191,17 @@ try {
       await client.connect()
       try {
         expect(
-          (await client.query('SELECT status FROM public.orders WHERE id = 1'))
-            .rows[0].status
+          (
+            await client.query(
+              'SELECT status FROM public.orders WHERE id = $1',
+              [inspectedId]
+            )
+          ).rows[0].status
         ).toBe('')
         await status.fill('pending-stale-edit')
         await client.query(
-          "UPDATE public.orders SET status = 'externally-changed' WHERE id = 1"
+          "UPDATE public.orders SET status = 'externally-changed' WHERE id = $1",
+          [inspectedId]
         )
         await panel
           .getByRole('button', { name: 'Save changes', exact: true })
@@ -190,16 +210,20 @@ try {
           /changed|stale|reload/i
         )
         expect(
-          (await client.query('SELECT status FROM public.orders WHERE id = 1'))
-            .rows[0].status
+          (
+            await client.query(
+              'SELECT status FROM public.orders WHERE id = $1',
+              [inspectedId]
+            )
+          ).rows[0].status
         ).toBe('externally-changed')
         await panel
           .getByRole('button', { name: 'Discard', exact: true })
           .click()
         await panel.getByRole('button', { name: 'Close row details' }).click()
         await client.query(
-          'UPDATE public.orders SET status = $1 WHERE id = 1',
-          [original]
+          'UPDATE public.orders SET status = $1 WHERE id = $2',
+          [original, inspectedId]
         )
       } finally {
         await client.end()
@@ -211,13 +235,14 @@ try {
       await page.locator('.db-result-table tbody tr').first().focus()
       await page.keyboard.press('Enter')
       await expect(status).toBeEditable()
+      const reopenedStatus = await status.inputValue()
       await status.fill('unsaved-value')
       page.once('dialog', (dialog) => dialog.dismiss())
       await panel.getByRole('button', { name: 'Close row details' }).click()
       await expect(panel).toBeVisible()
       await expect(status).toHaveValue('unsaved-value')
       await panel.getByRole('button', { name: 'Discard', exact: true }).click()
-      await expect(status).toHaveValue(original)
+      await expect(status).toHaveValue(reopenedStatus)
       const total = panel.getByLabel('Value for total', { exact: true })
       await total.fill('-10')
       await panel
@@ -242,7 +267,9 @@ try {
     await page.waitForTimeout(100)
     await page.keyboard.press('ArrowDown')
     const selectedTable = await page
-      .locator('.cm-tooltip-autocomplete [aria-selected="true"] .cm-completionLabel')
+      .locator(
+        '.cm-tooltip-autocomplete [aria-selected="true"] .cm-completionLabel'
+      )
       .innerText()
     await page.keyboard.press('Tab')
     await expect(editor()).toHaveText(`SELECT * FROM public.${selectedTable}`)
@@ -254,7 +281,9 @@ try {
     )
     await page.waitForTimeout(100)
     const selectedColumn = await page
-      .locator('.cm-tooltip-autocomplete [aria-selected="true"] .cm-completionLabel')
+      .locator(
+        '.cm-tooltip-autocomplete [aria-selected="true"] .cm-completionLabel'
+      )
       .innerText()
     await page.keyboard.press('Tab')
     await expect(editor()).toHaveText(

@@ -1,0 +1,192 @@
+.pg-tools-bar {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-subtle);
+}
+.pg-tools-bar > button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--mint-dim);
+  color: var(--mint);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pg-tools-bar > button:hover:not(:disabled) {
+  border-color: var(--mint);
+}
+.pg-tools-bar button:disabled,
+.pg-tools-bar select:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.pg-tools-bar label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.pg-tools-label {
+  font-size: 11px;
+  color: var(--muted);
+}
+.pg-tools-bar select {
+  max-width: 230px;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text);
+  background: var(--surface-raised);
+}
+.pg-tools-hint {
+  color: var(--muted);
+  font-size: 11px;
+  margin-left: auto;
+}
+.pg-query-plan {
+  flex: 1;
+  min-height: 0;
+  padding: 20px;
+  overflow: auto;
+  color: var(--text);
+  background: var(--editor-bg);
+  font-size: 13px;
+}
+.pg-plan-heading {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 20px;
+}
+.pg-plan-heading h3 {
+  font-size: 15px;
+  margin: 0 0 5px;
+  letter-spacing: -0.02em;
+}
+.pg-plan-heading p {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.5;
+}
+.pg-plan-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  color: var(--mint);
+  background: var(--mint-dim);
+}
+.pg-plan-tree,
+.pg-plan-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pg-plan-tree ul {
+  margin: 6px 0 6px 17px;
+  padding-left: 18px;
+  border-left: 1px solid var(--border);
+}
+.pg-plan-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px 11px 8px;
+  margin-bottom: 6px;
+  min-width: max-content;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-subtle);
+}
+.pg-plan-row > button,
+.pg-plan-leaf {
+  display: inline-grid;
+  width: 25px;
+  height: 28px;
+  place-items: center;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+.pg-plan-row > button:hover {
+  background: var(--mint-dim);
+  color: var(--mint);
+}
+.pg-plan-operator {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
+  flex: 1;
+}
+.pg-plan-operator strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.pg-plan-operator > span {
+  font:
+    12px/1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  color: var(--mint);
+}
+.pg-plan-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 95px;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+.pg-plan-metric small {
+  font-size: 11px;
+  color: var(--muted);
+}
+.pg-plan-raw {
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+.pg-plan-raw summary {
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.pg-plan-raw pre {
+  font:
+    12px/1.6 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+@media (max-width: 1120px) {
+  .pg-tools-hint,
+  .pg-tools-label {
+    display: none;
+  }
+  .pg-tools-bar {
+    gap: 8px;
+    padding: 7px 12px;
+  }
+}

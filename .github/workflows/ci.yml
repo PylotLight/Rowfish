@@ -55,7 +55,9 @@ jobs:
           PGDATABASE: rowfish_fixture
           PGUSER: rowfish_test
           PGPASSWORD: rowfish_local_fixture
-        run: xvfb-run -a node scripts/workbench-smoke.mjs
+        run: |
+          xvfb-run -a node scripts/workbench-smoke.mjs
+          xvfb-run -a node scripts/modern-workbench-smoke.mjs
       - name: Preserve smoke diagnostics
         if: always()
         uses: actions/upload-artifact@v4

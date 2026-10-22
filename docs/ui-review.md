@@ -1,33 +1,41 @@
-# A more capable Rowfish workbench
+# A clearer, more capable Rowfish
 
-This sweep takes its cues from the user’s Beekeeper Studio reference: a searchable object tree, a real editor with inline completion, and query text that stays in the app between sessions.
+Rowfish pairs a quiet Mac-inspired workspace with practical PostgreSQL tools. This update adds a true-black AMOLED appearance, more readable typography, and query-plan inspection without giving up the existing tabs, schema explorer, query history, or safe table-row editor.
 
-## What changed
+## Appearance that works for long sessions
 
-- **Electron 45.0.0.** Context isolation stays enabled and Node integration is disabled. A CommonJS preload supports Chromium sandboxing.
-- **Persistent query tabs.** Draft text, tab names, and the active tab restore locally. SQL files are optional exports, not a prerequisite for keeping work.
-- **A real code editor.** CodeMirror provides syntax highlighting, line numbers, bracket matching, undo, autocomplete, statement/selection execution, and whole-editor execution. SQL formatting is built in.
-- **Query management.** An internal library stores named queries with folder labels. Searchable history records execution status, timing, and connection context. History recording can be disabled and history cleared.
-- **An explorer rather than a flat connection list.** Saved servers, PostgreSQL databases, schemas, tables/views, object filtering, refresh, and collapsible schemas stay close to the editor. Existing MongoDB database/collection workflows remain available.
-- **PostgreSQL inspection.** Tables expose columns, types, defaults, nullability, primary keys, indexes, and constraints. Metadata requests retain connection ownership checks and bounded worker timeouts.
-- **Usable result tools.** Virtualized rows, local filtering and sorting, CSV/JSON exports, distinct NULL styling, and a double-click row inspector improve everyday analysis.
-- **Responsive editing.** Autosave writes are debounced and flushed when leaving, autocomplete indexes columns once per catalog refresh, and formatter code loads on demand. Database work stays off the UI thread.
-- **Denser layout.** Compact chrome, a hideable sidebar, a vertically resizable editor, clear result sections, visible focus, and reduced-motion handling give more space to SQL and data.
+**Glass** keeps the native macOS translucent window and uses restrained mint accents, layered surfaces, and clear borders. **AMOLED** replaces the main working surfaces with opaque black; it is not simply a darker blue theme. Appearance preferences stay on this device and restore when the app opens.
 
-## References behind the choices
+Controls, metadata, tabs, and result text are larger than the previous compact workbench. Comfortable and compact text settings let you choose readability or density. Focus indicators, reduced-motion support, and reduced-transparency handling remain part of the design. Platform-native vibrancy still needs a real macOS check: Linux Electron testing cannot establish how macOS composites the window.
 
-[Beekeeper Studio’s editor](https://docs.beekeeperstudio.io/user_guide/sql_editor/editor/) documents table/column completion, run contexts, and query history. Those are the core interaction patterns for this sweep—not a pixel-for-pixel clone.
+## Understand a PostgreSQL query before running it
 
-[TablePlus history](https://docs.tableplus.com/query-editor/query-history) demonstrates searchable connection-context execution history and reuse in an editor rather than silently executing an old query.
+The **Explain** action requests a PostgreSQL estimated plan using `EXPLAIN (FORMAT JSON)`, without `ANALYZE`. The plan viewer shows the operator hierarchy, relations, estimated row counts, and planner costs, with raw JSON available for inspection. Planner cost is not a measured time, and estimated rows are not actual rows.
 
-[Postico 2](https://eggerapps.at/postico/) emphasizes persistent query work, formatting, and a table-centric workspace. Rowfish keeps drafts internally rather than requiring an external SQL file.
+Explain handles one supported statement at a time. It does not run the editor as a script, accept an existing `EXPLAIN ANALYZE`, or change your SQL draft. Ordinary SQL execution still uses the connected user's permissions; Explain is a planning aid, not a security sandbox or a guarantee against effects from unusual server-side planning functions.
 
-[DBeaver’s navigator](https://dbeaver.com/docs/dbeaver/Database-Navigator/) provides the hierarchy/filter/refresh model for exploring servers and database objects.
+## Useful PostgreSQL starting points
 
-## Important boundaries
+PostgreSQL diagnostic shortcuts open SQL drafts for active sessions, table and index sizes, index usage, and blocking locks. They do **not** run automatically. Review the SQL and use Run when ready. Visibility depends on your PostgreSQL version and role privileges; missing statistics or restricted query text are not client errors.
 
-Query text, saved SQL, and history are local application data, **not encrypted secrets**. Do not put passwords or sensitive literal values in them. Connection passwords continue to use the existing OS-encrypted storage path; TLS certificate verification stays enabled.
+## Keep the good foundations
 
-The current grid is a query result viewer, not a PostgreSQL row editor. This sweep does not claim SSH tunneling, import/backup tooling, graphical schema modification, an ER diagram editor, an AI assistant, production connection protections, or a transaction-control UI. SQL executes with the connected user’s permissions; it is not automatically read-only or automatically rolled back. Cancellation currently closes the active database session.
+The existing workbench already provides persistent query tabs, table/column autocomplete, SQL formatting, current-statement or selected-text execution, saved queries, searchable execution history, a searchable schema explorer, column/index/constraint metadata, bounded streaming results, filtering, sorting, CSV/JSON export, and cancellation. MongoDB browsing and guarded mutation tools remain available.
 
-Native title-bar and packaging behavior still need macOS and Windows validation; the available desktop verification environment is Linux. Saved queries use folder labels, not a drag-and-drop filesystem.
+Single-click a result row to inspect it beside the grid. Rows opened from the exact table-browser query can be edited when the table has a suitable primary key. Updates use an optimistic concurrency check; arbitrary query results remain read-only. NULL and an empty string stay distinct.
+
+## What inspired the changes
+
+[pgAdmin's Query Tool](https://www.pgadmin.org/docs/pgadmin4/latest/query_tool.html) brings SQL execution, history, result inspection, and explain plans into one workflow. Rowfish adopts the estimated-plan inspection pattern without adding automatic `ANALYZE` execution.
+
+[Beekeeper Studio](https://www.beekeeperstudio.io/) emphasizes an approachable editor, many tabs, schema completion, saved work, and easy data browsing. These remain core Rowfish interactions rather than separate admin screens.
+
+[TablePro](https://tablepro.app/compare/beekeeper-studio) emphasizes a Mac-native presentation, dark mode, and direct data interaction. Its performance comparisons are vendor claims, not measurements of Rowfish. Rowfish remains an Electron application, not a SwiftUI rewrite.
+
+[Queryline](https://queryline.dev/) is a PostgreSQL-capable client with a focused editor, schema browser, query history, virtual scrolling, and multiple export formats. Its emphasis on getting out of the way informed the restrained chrome. Its large-result performance claims are not Rowfish benchmarks.
+
+## Boundaries
+
+This update does not add SSH tunneling, backup/restore, a schema migration designer, ER diagrams, Vim mode, AI SQL generation, or transaction-control buttons. Results remain bounded to 10,000 rows and 16 MB, with a 120-second query timeout. Cancellation currently closes the active database session.
+
+SQL drafts, saved queries, and history are local data and **not encrypted secrets**. Connection passwords keep the existing OS-encrypted storage path, and TLS certificate verification stays enabled. Do not put credentials or sensitive literals in query history. SQL writes are not automatically rolled back.

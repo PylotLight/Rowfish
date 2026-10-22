@@ -8,12 +8,17 @@ Rowfish brings persistent SQL tabs, a searchable server explorer, schema-aware a
 
 ![PostgreSQL workspace with a SQL query and fictional order rows](docs/screenshots/postgres.png)
 
+![AMOLED-black workspace with larger readable controls](docs/screenshots/amoled.png)
+
 ![MongoDB workspace with a JSON filter and fictional order documents](docs/screenshots/mongodb.png)
 
 These previews show Rowfish with synthetic local order data, not production databases or customer records. The PostgreSQL workbench is exercised against a disposable PostgreSQL fixture by the desktop smoke test.
 
 ## What it does
 
+- Choose translucent **Glass** or true-black **AMOLED** appearance, with persistent Comfortable/Compact text sizes and readable editor/grid typography.
+- Inspect PostgreSQL estimated execution plans in an expandable **Plan** tab, review raw JSON, and export the plan. Explain uses one selected statement or a single-statement draft, never adds `ANALYZE`, and rejects scripts and unsupported commands.
+- Open ready-to-review PostgreSQL diagnostic drafts for active sessions, table/index sizes, index usage, and blocking locks. Diagnostics never run automatically.
 - Save PostgreSQL or MongoDB connection profiles between sessions; passwords and MongoDB URI secrets are encrypted with the operating system credential store.
 - Quickly connect to MongoDB by pasting a `mongodb://` or `mongodb+srv://` URI and choosing a display name.
 - Browse accessible PostgreSQL databases on a server, inspect schemas and tables in the sidebar, and load a table query with one click.
@@ -45,6 +50,8 @@ bun run typecheck
 bun run build
 bun run start
 ```
+
+With the disposable `rowfish_fixture` PostgreSQL database seeded using `scripts/smoke-fixture.sql`, `bun run test:smoke` exercises the existing workbench plus theme persistence, estimated plans, diagnostic drafts, and minimum-window layout in Electron. Linux CI runs both suites; native macOS vibrancy still needs a Mac check.
 
 For macOS test builds, run `bun run dist:mac`. See [Mac testing](docs/mac-testing.md) and [Releasing](docs/releasing.md) before packaging or publishing.
 

@@ -22,6 +22,8 @@ import {
   CircleHelp
 } from 'lucide-react'
 import SqlEditor from '../components/SqlEditor'
+import QueryPlan from '../components/QueryPlan'
+import { buildExplainQuery, postgresDiagnostics } from '../lib/postgres-tools'
 import RowSidePanel, { type RowSource } from '../components/RowSidePanel'
 import { isSameRow } from '../lib/row-editor'
 import {
@@ -159,7 +161,7 @@ export default function DatabaseWorkspace({
   const [metadataLoading, setMetadataLoading] = useState(false)
   const metadataRequest = useRef(0)
   const [resultView, setResultView] = useState<
-    'data' | 'structure' | 'indexes'
+    'data' | 'structure' | 'indexes' | 'plan'
   >('data')
   const [serverInfo, setServerInfo] = useState<PostgresServerInfo | null>(null)
   const [saveDialog, setSaveDialog] = useState(false)
@@ -241,6 +243,9 @@ export default function DatabaseWorkspace({
   const [rows, setRows] = useState<DatabaseRow[]>([])
   const [columns, setColumns] = useState<string[]>([])
   const [queryError, setQueryError] = useState('')
+  const [queryPlan, setQueryPlan] = useState<unknown>(null)
+  const [sqlSelection, setSqlSelection] = useState('')
+  const explainPending = useRef(false)
   const [querySummary, setQuerySummary] = useState('No query run.')
   const [serverDatabases, setServerDatabases] = useState<
     Record<string, DatabaseBrowserDatabase[]>
@@ -291,6 +296,17 @@ export default function DatabaseWorkspace({
   const activeQuery = useRef<{ id: string; connectionId: string } | null>(null)
   const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase())
   const deferredRows = useDeferredValue(rows)
+
+  useEffect(() => {
+    setRows([])
+    setColumns([])
+    setQueryError('')
+    setQueryPlan(null)
+    setSqlSelection('')
+    setRowSource(null)
+    setQuerySummary('Ready to execute.')
+    explainPending.current = false
+  }, [workspace.activeTabId])
 
   const activeConnection =
     connections.find((connection) => connection.id === activeId) ?? null
@@ -677,6 +693,8 @@ export default function DatabaseWorkspace({
 
       if (activeQuery.current?.id !== event.queryId) return
       if (event.type === 'query:rows') {
+        if (explainPending.current && event.rows.length)
+          setQueryPlan(event.rows[0])
         startTransition(() => {
           setRows((current) =>
             current.length >= DATABASE_LIMITS.maxRows
@@ -702,7 +720,9 @@ export default function DatabaseWorkspace({
         setRunState('idle')
         setQueryError('')
         setQuerySummary(
-          `${event.receivedRows.toLocaleString()} rows${event.affectedRows ? ` · ${event.affectedRows.toLocaleString()} affected` : ''}${(event.statementCount ?? 1) > 1 ? ` · ${event.statementCount} statements (last result shown)` : ''} · ${(event.elapsedMs / 1_000).toFixed(2)} s${event.truncated ? ' · result capped (row or 16 MB limit)' : ''}`
+          explainPending.current
+            ? `Estimated plan · ${(event.elapsedMs / 1_000).toFixed(2)} s · no ANALYZE`
+            : `${event.receivedRows.toLocaleString()} rows${event.affectedRows ? ` · ${event.affectedRows.toLocaleString()} affected` : ''}${(event.statementCount ?? 1) > 1 ? ` · ${event.statementCount} statements (last result shown)` : ''} · ${(event.elapsedMs / 1_000).toFixed(2)} s${event.truncated ? ' · result capped (row or 16 MB limit)' : ''}`
         )
         return
       }
@@ -777,6 +797,8 @@ export default function DatabaseWorkspace({
     setRows([])
     setColumns([])
     setQueryError('')
+    setQueryPlan(null)
+    explainPending.current = false
     setQuerySummary(
       activeConnection
         ? `${activeConnection?.kind !== 'mongodb' ? 'PostgreSQL' : 'MongoDB'} · ${activeConnection!.serverMode ? 'server browser' : activeConnection!.database}`
@@ -943,6 +965,7 @@ export default function DatabaseWorkspace({
       collection?: string
       query?: string
       mongoMode?: 'find' | 'aggregate'
+      explain?: boolean
     } = {}
   ): Promise<void> {
     const target = overrides.connection ?? activeConnection
@@ -997,7 +1020,9 @@ export default function DatabaseWorkspace({
           ...current.history
         ].slice(0, 200)
       }))
-    setResultView('data')
+    setResultView(overrides.explain ? 'plan' : 'data')
+    setQueryPlan(null)
+    explainPending.current = overrides.explain === true
     setSort(null)
     setRows([])
     setColumns([])
@@ -2314,7 +2339,8 @@ export default function DatabaseWorkspace({
                         value={mongoQueryMode}
                         onChange={(event) => {
                           const mode = event.target.value as
-                            'find' | 'aggregate'
+                            | 'find'
+                            | 'aggregate'
                           setMongoQueryMode(mode)
                           setQueryText(mode === 'find' ? '{}' : '[]')
                         }}
@@ -2428,9 +2454,66 @@ export default function DatabaseWorkspace({
                   <Download size={13} />
                 </button>
               </div>
+              {activeConnection?.kind === 'postgres' && (
+                <div className="pg-tools-bar">
+                  <button
+                    type="button"
+                    data-testid="explain-query"
+                    disabled={
+                      !queryText.trim() ||
+                      runState !== 'idle' ||
+                      activeConnection.serverMode
+                    }
+                    title="Estimate the selected SQL or single-statement draft without ANALYZE"
+                    onClick={() => {
+                      try {
+                        const explain = buildExplainQuery(
+                          sqlSelection.trim() || queryText
+                        )
+                        void runQuery({ query: explain, explain: true })
+                      } catch (error) {
+                        setQueryError(
+                          error instanceof Error
+                            ? error.message
+                            : 'Could not build EXPLAIN query.'
+                        )
+                      }
+                    }}
+                  >
+                    Explain (estimated)
+                  </button>
+                  <label>
+                    <span className="pg-tools-label">PostgreSQL tools</span>
+                    <select
+                      aria-label="PostgreSQL diagnostic query"
+                      value=""
+                      disabled={
+                        runState !== 'idle' || activeConnection.serverMode
+                      }
+                      onChange={(event) => {
+                        const item = postgresDiagnostics.find(
+                          (entry) => entry.id === event.target.value
+                        )
+                        if (item) newTab(item.sql, item.label)
+                      }}
+                    >
+                      <option value="">Open diagnostic…</option>
+                      {postgresDiagnostics.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <span className="pg-tools-hint">
+                    Opens a draft · run when ready
+                  </span>
+                </div>
+              )}
               <SqlEditor
                 value={queryText}
                 onChange={setQueryText}
+                onSelectionChange={setSqlSelection}
                 onRun={(selection) =>
                   void runQuery({ query: selection ?? queryText })
                 }
@@ -2457,6 +2540,14 @@ export default function DatabaseWorkspace({
               <div className="db-results-header">
                 <div>
                   <div className="result-tabs">
+                    {(queryPlan !== null || resultView === 'plan') && (
+                      <button
+                        className={resultView === 'plan' ? 'active' : ''}
+                        onClick={() => setResultView('plan')}
+                      >
+                        <FileCode2 size={14} /> Plan
+                      </button>
+                    )}
                     <button
                       className={resultView === 'data' ? 'active' : ''}
                       onClick={() => setResultView('data')}
@@ -2484,41 +2575,60 @@ export default function DatabaseWorkspace({
                       : querySummary}
                   </p>
                 </div>
-                <div className="result-actions">
-                  <span className="db-row-count">
-                    {visibleRows.length.toLocaleString()}
-                    {deferredSearch
-                      ? ` / ${rows.length.toLocaleString()}`
-                      : ''}{' '}
-                    rows
-                  </span>
-                  <button
-                    disabled={!columns.length || runState !== 'idle'}
-                    title="Export filtered rows as CSV"
-                    onClick={() =>
-                      downloadText(
-                        'rowfish-results.csv',
-                        exportResultsCsv(columns, visibleRows),
-                        'text/csv'
-                      )
-                    }
-                  >
-                    CSV <Download size={12} />
-                  </button>
-                  <button
-                    disabled={!columns.length || runState !== 'idle'}
-                    title="Export filtered rows as JSON"
-                    onClick={() =>
-                      downloadText(
-                        'rowfish-results.json',
-                        exportResultsJson(visibleRows),
-                        'application/json'
-                      )
-                    }
-                  >
-                    JSON <Download size={12} />
-                  </button>
-                </div>
+                {resultView === 'plan' ? (
+                  <div className="result-actions">
+                    <button
+                      disabled={queryPlan === null || runState !== 'idle'}
+                      onClick={() =>
+                        downloadText(
+                          'rowfish-plan.json',
+                          typeof rows[0]?.['QUERY PLAN'] === 'string'
+                            ? rows[0]['QUERY PLAN']
+                            : JSON.stringify(queryPlan, null, 2),
+                          'application/json'
+                        )
+                      }
+                    >
+                      Export plan JSON <Download size={12} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="result-actions">
+                    <span className="db-row-count">
+                      {visibleRows.length.toLocaleString()}
+                      {deferredSearch
+                        ? ` / ${rows.length.toLocaleString()}`
+                        : ''}{' '}
+                      rows
+                    </span>
+                    <button
+                      disabled={!columns.length || runState !== 'idle'}
+                      title="Export filtered rows as CSV"
+                      onClick={() =>
+                        downloadText(
+                          'rowfish-results.csv',
+                          exportResultsCsv(columns, visibleRows),
+                          'text/csv'
+                        )
+                      }
+                    >
+                      CSV <Download size={12} />
+                    </button>
+                    <button
+                      disabled={!columns.length || runState !== 'idle'}
+                      title="Export filtered rows as JSON"
+                      onClick={() =>
+                        downloadText(
+                          'rowfish-results.json',
+                          exportResultsJson(visibleRows),
+                          'application/json'
+                        )
+                      }
+                    >
+                      JSON <Download size={12} />
+                    </button>
+                  </div>
+                )}
               </div>
               {queryError && (
                 <div className="db-query-error" role="alert">
@@ -2530,7 +2640,17 @@ export default function DatabaseWorkspace({
                   <span />
                 </div>
               )}
-              {resultView !== 'data' ? (
+              {resultView === 'plan' ? (
+                queryPlan !== null ? (
+                  <QueryPlan result={queryPlan} />
+                ) : (
+                  <div className="metadata-panel">
+                    {runState !== 'idle'
+                      ? 'Requesting estimated plan…'
+                      : 'No estimated plan available.'}
+                  </div>
+                )
+              ) : resultView !== 'data' ? (
                 <div className="metadata-panel">
                   {metadataLoading ? (
                     <p>Loading table metadata…</p>
@@ -2687,7 +2807,7 @@ export default function DatabaseWorkspace({
                   )}
                 </div>
               )}
-              {columns.length > 0 && (
+              {columns.length > 0 && resultView === 'data' && (
                 <div className="db-grid-footer">
                   <span>{rows.length.toLocaleString()} rows</span>
                   <span>

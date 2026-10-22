@@ -46,9 +46,9 @@ const theme = EditorView.theme(
     '&': {
       height: '100%',
       minHeight: '0',
-      color: '#d7e1ec',
-      backgroundColor: '#111923',
-      fontSize: '13px'
+      color: 'var(--editor-text, #d7e1ec)',
+      backgroundColor: 'var(--editor-bg, #111923)',
+      fontSize: 'var(--editor-font-size, 14px)'
     },
     '.cm-scroller': {
       overflow: 'auto',
@@ -56,23 +56,27 @@ const theme = EditorView.theme(
       lineHeight: '1.6'
     },
     '.cm-gutters': {
-      backgroundColor: '#111923',
-      color: '#718096',
+      backgroundColor: 'var(--editor-bg, #111923)',
+      color: 'var(--editor-gutter, #718096)',
       border: 'none'
     },
-    '.cm-activeLine': { backgroundColor: '#ffffff08' },
-    '.cm-activeLineGutter': { backgroundColor: '#ffffff08' },
+    '.cm-activeLine': {
+      backgroundColor: 'var(--editor-active-line, #ffffff08)'
+    },
+    '.cm-activeLineGutter': {
+      backgroundColor: 'var(--editor-active-line, #ffffff08)'
+    },
     '.cm-cursor': { borderLeftColor: '#79b8ff' },
     '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
-      backgroundColor: '#264f78 !important'
+      backgroundColor: 'var(--editor-selection, #264f78) !important'
     },
     '.cm-tooltip': {
-      backgroundColor: '#182330',
+      backgroundColor: 'var(--editor-tooltip, #182330)',
       border: '1px solid #334155',
-      color: '#d7e1ec'
+      color: 'var(--editor-text, #d7e1ec)'
     },
     '.cm-tooltip-autocomplete ul li[aria-selected]': {
-      backgroundColor: '#26384b'
+      backgroundColor: 'var(--editor-selection, #26384b)'
     }
   },
   { dark: true }
@@ -171,7 +175,7 @@ export default function SqlEditor({
         EditorView.updateListener.of((update) => {
           if (update.docChanged)
             latest.current.onChange(update.state.doc.toString())
-          if (update.selectionSet) {
+          if (update.selectionSet || update.docChanged) {
             const selection = update.state.selection.main
             latest.current.onSelectionChange?.(
               update.state.sliceDoc(selection.from, selection.to)
