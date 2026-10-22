@@ -74,3 +74,52 @@ jobs:
           files: dist/*
           fail_on_unmatched_files: true
           prerelease: ${{ contains(github.ref_name, '-') }}
+
+  # This repo doubles as the Homebrew tap (brew taps any repo with a Casks/
+  # dir via `brew tap pylotlight/rowfish <url>`). The job updates
+  # Casks/rowfish.rb on main with the built-in GITHUB_TOKEN, no extra
+  # secrets. Token pushes don't re-trigger workflows, so no loop.
+  homebrew:
+    name: "Rowfish · Release · homebrew cask · ${{ github.ref_name }}"
+    needs: publish
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - uses: actions/download-artifact@v4
+        with:
+          name: rowfish-macos-release
+          path: dist
+      - name: Resolve version and checksum
+        id: meta
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          {
+            echo "version=$version"
+            echo "sha256=$(shasum -a 256 "dist/Rowfish-${version}-mac-arm64.zip" | cut -d ' ' -f 1)"
+          } >> "$GITHUB_OUTPUT"
+      - name: Render cask
+        run: |
+          bun scripts/render-cask.ts \
+            --version "${{ steps.meta.outputs.version }}" \
+            --sha256 "${{ steps.meta.outputs.sha256 }}" \
+            --out Casks/rowfish.rb
+      - name: Commit and push cask update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/rowfish.rb
+          if git diff --cached --quiet; then
+            echo "cask already up to date"
+          else
+            git commit -m "chore(tap): rowfish ${{ steps.meta.outputs.version }}"
+            git push
+          fi
