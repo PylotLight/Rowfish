@@ -11,7 +11,7 @@ import {
   schemaCompletionSource,
   keywordCompletionSource
 } from '@codemirror/lang-sql'
-import { autocompletion } from '@codemirror/autocomplete'
+import { acceptCompletion, autocompletion } from '@codemirror/autocomplete'
 import { json } from '@codemirror/lang-json'
 import {
   defaultKeymap,
@@ -160,7 +160,12 @@ export default function SqlEditor({
         ),
         editableCompartment.of(EditorView.editable.of(!disabled)),
         runKeymap,
-        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+        keymap.of([
+          ...defaultKeymap,
+          ...historyKeymap,
+          { key: 'Tab', run: acceptCompletion },
+          indentWithTab
+        ]),
         theme,
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {

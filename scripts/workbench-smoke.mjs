@@ -31,6 +31,25 @@ try {
   await check('Electron 45 runtime', async () =>
     expect(await app.evaluate(() => process.versions.electron)).toMatch(/^45\./)
   )
+  await check('Tab accepts the selected keyword completion', async () => {
+    await inputQuery('SEL')
+    await page.keyboard.press('Control+Space')
+    const selected = page.locator('.cm-tooltip-autocomplete [aria-selected="true"]')
+    await expect(selected).toContainText('SELECT')
+    // CodeMirror briefly ignores completion keys after opening the popup.
+    await page.waitForTimeout(100)
+    await page.keyboard.press('Tab')
+    await expect(editor()).toHaveText('SELECT')
+    await expect(page.locator('.cm-tooltip-autocomplete')).not.toBeVisible()
+  })
+  await check('Tab indents and Shift-Tab unindents without a completion', async () => {
+    await inputQuery('SELECT 1;')
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Tab')
+    await expect(editor()).toHaveText('  SELECT 1;', { useInnerText: false })
+    await page.keyboard.press('Shift+Tab')
+    await expect(editor()).toHaveText('SELECT 1;')
+  })
   await check('offline drafts autosave across reload', async () => {
     await inputQuery('SELECT 42 AS answer;')
     await expect
@@ -219,13 +238,29 @@ try {
     await expect(page.locator('.cm-tooltip-autocomplete')).toContainText(
       'customers'
     )
-    await page.keyboard.press('Escape')
+    // Move off the initial item to verify Tab accepts the highlighted choice.
+    await page.waitForTimeout(100)
+    await page.keyboard.press('ArrowDown')
+    const selectedTable = await page
+      .locator('.cm-tooltip-autocomplete [aria-selected="true"] .cm-completionLabel')
+      .innerText()
+    await page.keyboard.press('Tab')
+    await expect(editor()).toHaveText(`SELECT * FROM public.${selectedTable}`)
+    await expect(page.locator('.cm-tooltip-autocomplete')).not.toBeVisible()
     await inputQuery('SELECT * FROM public.orders WHERE orders.')
     await page.keyboard.press('Control+Space')
     await expect(page.locator('.cm-tooltip-autocomplete')).toContainText(
       'customer_id'
     )
-    await page.keyboard.press('Escape')
+    await page.waitForTimeout(100)
+    const selectedColumn = await page
+      .locator('.cm-tooltip-autocomplete [aria-selected="true"] .cm-completionLabel')
+      .innerText()
+    await page.keyboard.press('Tab')
+    await expect(editor()).toHaveText(
+      `SELECT * FROM public.orders WHERE orders.${selectedColumn}`
+    )
+    await expect(page.locator('.cm-tooltip-autocomplete')).not.toBeVisible()
   })
   await check('multi-statement scripts and final result', async () => {
     await inputQuery('SELECT 1 AS first; SELECT 2 AS final;')
