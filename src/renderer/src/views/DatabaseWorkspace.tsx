@@ -106,6 +106,20 @@ function connectionSubline(connection: DatabaseConnectionSummary): string {
   return `${connection.kind === "postgres" ? "PostgreSQL" : "MongoDB"} · ${connection.database}`;
 }
 
+const MAX_CACHED_TAB_RESULTS = 12;
+type TabResultSnapshot = {
+  rows: DatabaseRow[];
+  columns: string[];
+  queryError: string;
+  queryPlan: unknown;
+  querySummary: string;
+  resultView: "data" | "structure" | "indexes" | "plan";
+  sort: { column: string; direction: 1 | -1 } | null;
+  rowSource: RowSource | null;
+  selectedTable: { connectionId: string; schema: string; name: string } | null;
+  tableDetails: PostgresTableDetails | null;
+};
+
 export default function DatabaseWorkspace({
   search,
   preferences,
@@ -430,16 +444,69 @@ export default function DatabaseWorkspace({
   const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase());
   const deferredRows = useDeferredValue(rows);
 
+  // Each tab keeps its last result in memory, so switching back shows it
+  // without re-running. Capped so a pile of tabs can't hold unbounded rows.
+  const tabResults = useRef(new Map<string, TabResultSnapshot>());
+  const resultsTabId = useRef<string>(workspace.activeTabId ?? "");
+  const skipResultSave = useRef(false);
   useEffect(() => {
-    setRows([]);
-    setColumns([]);
-    setQueryError("");
-    setQueryPlan(null);
+    const tabId = workspace.activeTabId ?? "";
+    if (resultsTabId.current === tabId) return;
+    resultsTabId.current = tabId;
+    skipResultSave.current = true;
+    const saved = tabResults.current.get(tabId);
+    setRows(saved?.rows ?? []);
+    setColumns(saved?.columns ?? []);
+    setQueryError(saved?.queryError ?? "");
+    setQueryPlan(saved?.queryPlan ?? null);
     setSqlSelection("");
-    setRowSource(null);
-    setQuerySummary("Ready to execute.");
+    setRowSource(saved?.rowSource ?? null);
+    setQuerySummary(saved?.querySummary ?? "Ready to execute.");
     explainPending.current = false;
+    if (saved) {
+      setResultView(saved.resultView);
+      setSort(saved.sort);
+      setSelectedTable(saved.selectedTable);
+      setTableDetails(saved.tableDetails);
+    }
   }, [workspace.activeTabId]);
+  useEffect(() => {
+    if (runState !== "idle") return;
+    if (skipResultSave.current) {
+      skipResultSave.current = false;
+      return;
+    }
+    const id = resultsTabId.current;
+    const cache = tabResults.current;
+    cache.delete(id);
+    if (!rows.length && !columns.length && !queryError && !queryPlan) return;
+    cache.set(id, {
+      rows,
+      columns,
+      queryError,
+      queryPlan,
+      querySummary,
+      resultView,
+      sort,
+      rowSource,
+      selectedTable,
+      tableDetails,
+    });
+    while (cache.size > MAX_CACHED_TAB_RESULTS)
+      cache.delete(cache.keys().next().value!);
+  }, [
+    rows,
+    columns,
+    queryError,
+    queryPlan,
+    querySummary,
+    resultView,
+    sort,
+    rowSource,
+    selectedTable,
+    tableDetails,
+    runState,
+  ]);
 
   const activeConnection =
     connections.find((connection) => connection.id === activeId) ?? null;
@@ -517,6 +584,7 @@ export default function DatabaseWorkspace({
   }
   function closeTab(id: string): void {
     if (!closeRowPanel()) return;
+    tabResults.current.delete(id);
     setWorkspace((current) => {
       const tabs = current.tabs.filter((tab) => tab.id !== id);
       if (!tabs.length)
@@ -978,6 +1046,31 @@ export default function DatabaseWorkspace({
     activeConnection?.kind,
     activeConnection?.database,
     activeConnection?.serverMode,
+  ]);
+
+  // Clicking a table opens its SELECT and runs it once the tab, connection
+  // and table structure (for row editing) have settled.
+  const pendingTableRun = useRef<{
+    connectionId: string;
+    query: string;
+  } | null>(null);
+  useEffect(() => {
+    const pending = pendingTableRun.current;
+    if (!pending || runState !== "idle" || metadataLoading) return;
+    if (
+      activeConnection?.id !== pending.connectionId ||
+      activeTab?.query !== pending.query
+    )
+      return;
+    pendingTableRun.current = null;
+    void runQuery({ connection: activeConnection, query: pending.query });
+  }, [
+    activeConnection,
+    activeTab?.id,
+    activeTab?.query,
+    metadataLoading,
+    runState,
+    tableDetails,
   ]);
 
   useEffect(() => {
@@ -1716,11 +1809,9 @@ export default function DatabaseWorkspace({
     if (runState !== "idle" || !closeRowPanel()) return;
     closeSidebar();
     setActiveId(connection.id);
-    newTab(
-      `SELECT * FROM ${quotePostgresIdentifier(table.schema)}.${quotePostgresIdentifier(table.name)} LIMIT 100;`,
-      table.name,
-      connection,
-    );
+    const query = `SELECT * FROM ${quotePostgresIdentifier(table.schema)}.${quotePostgresIdentifier(table.name)} LIMIT 100;`;
+    pendingTableRun.current = { connectionId: connection.id, query };
+    newTab(query, table.name, connection);
     setSelectedTable({
       connectionId: connection.id,
       schema: table.schema,
