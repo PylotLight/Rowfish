@@ -130,7 +130,9 @@ try {
   await expect(sidebarToggle).toHaveAccessibleName(
     /^(Open|Close) explorer sidebar$/,
   );
-  if (await page.locator(".db-rail").isVisible()) await sidebarToggle.click();
+  // Back leaves the rail peeked over the toggle; Escape tucks it away.
+  if (await page.locator(".db-rail").isVisible())
+    await page.keyboard.press("Escape");
   await expect(page.locator(".db-rail")).not.toBeVisible();
   // A collapsed explorer peeks out from the left edge, footer and all.
   await revealRail();
