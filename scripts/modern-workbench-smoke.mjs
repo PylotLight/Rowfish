@@ -271,8 +271,9 @@ try {
     await ensureSidebar();
     await page.getByRole("button", { name: "orders", exact: true }).click();
     // Clicking a table runs its SELECT straight away.
-    await expect(page.locator(".db-results-summary")).toContainText(
-      /\d+ rows/,
+    // Wait for the finished summary, not "Query running · 0 rows received".
+    await expect(page.locator(".db-results-summary")).toHaveText(
+      /^\d+ rows · /,
       { timeout: 15000 },
     );
     await expect(page.getByRole("button", { name: /Run query/ })).toBeEnabled();
@@ -302,7 +303,12 @@ try {
     const gear = await appearance().boundingBox();
     expect(gear.x).toBeGreaterThanOrEqual(0);
     expect(gear.x + gear.width).toBeLessThanOrEqual(1000);
-    await page.keyboard.press("Escape");
+    const collapse = page.getByRole("button", {
+      name: "Collapse explorer sidebar",
+    });
+    if (await collapse.isVisible()) await collapse.click();
+    else await page.keyboard.press("Escape");
+    await page.mouse.move(800, 300);
     await expect(page.locator(".db-rail")).toBeHidden();
     for (const target of [
       page.getByTestId("explain-query"),

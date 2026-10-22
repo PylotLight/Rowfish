@@ -241,10 +241,22 @@ export default function DatabaseWorkspace({
       setSidebarPeek(false);
     }, 220);
   };
+  // Collapse the docked explorer (the rail's own button).
   const closeSidebar = (): void => {
     clearPeekTimer();
     setSidebarPeek(false);
     setSidebarHidden(true);
+  };
+  // Dock the explorer: it takes its own column and the workspace shifts over.
+  const dockSidebar = (): void => {
+    clearPeekTimer();
+    setSidebarPeek(false);
+    setSidebarHidden(false);
+  };
+  // Tuck a hover-peeked explorer away after an action; a docked one stays.
+  const dismissPeek = (): void => {
+    clearPeekTimer();
+    setSidebarPeek(false);
   };
   useEffect(() => clearPeekTimer, []);
   // Leaving Settings returns focus to its gear in the rail footer, so keep the
@@ -268,15 +280,15 @@ export default function DatabaseWorkspace({
     const dismiss = (event: KeyboardEvent): void => {
       if (
         event.key === "Escape" &&
-        railOpen &&
+        sidebarPeek &&
         !document.querySelector('[role="dialog"]')
       )
-        closeSidebar();
+        dismissPeek();
     };
     const outside = (event: PointerEvent): void => {
       const target = event.target as Node;
       if (
-        railOpen &&
+        sidebarPeek &&
         workspaceRef.current &&
         !workspaceRef.current.querySelector(".db-rail")?.contains(target) &&
         !workspaceRef.current
@@ -285,7 +297,7 @@ export default function DatabaseWorkspace({
         !(target instanceof Element && target.closest(".layout-resizer")) &&
         !(target instanceof Element && target.closest('[role="dialog"]'))
       )
-        closeSidebar();
+        dismissPeek();
     };
     document.addEventListener("keydown", dismiss);
     document.addEventListener("pointerdown", outside);
@@ -293,7 +305,7 @@ export default function DatabaseWorkspace({
       document.removeEventListener("keydown", dismiss);
       document.removeEventListener("pointerdown", outside);
     };
-  }, [railOpen, settingsView]);
+  }, [sidebarPeek, settingsView]);
   const [selectedTable, setSelectedTable] = useState<{
     connectionId: string;
     schema: string;
@@ -569,7 +581,7 @@ export default function DatabaseWorkspace({
       setNotice("Close an existing tab before opening more (100 tab limit).");
       return;
     }
-    if (stored) closeSidebar();
+    if (stored) dismissPeek();
     const tab = makeQueryTab(
       stored?.kind ?? connection?.kind ?? "postgres",
       stored?.connectionKey ?? queryConnectionKey(connection),
@@ -1342,7 +1354,7 @@ export default function DatabaseWorkspace({
       return;
     }
     if (!closeRowPanel()) return;
-    closeSidebar();
+    dismissPeek();
     const tableQuery = selectedTable
       ? `SELECT * FROM ${quotePostgresIdentifier(selectedTable.schema)}.${quotePostgresIdentifier(selectedTable.name)} LIMIT 100;`
       : "";
@@ -1465,7 +1477,7 @@ export default function DatabaseWorkspace({
     item: MongoBrowserCollection,
   ): Promise<void> {
     if (runState !== "idle" || !closeRowPanel()) return;
-    closeSidebar();
+    dismissPeek();
     const mode =
       activeConnection?.id === connection.id ? mongoQueryMode : "find";
     setActiveId(connection.id);
@@ -1807,7 +1819,7 @@ export default function DatabaseWorkspace({
     table: DatabaseBrowserTable,
   ): void {
     if (runState !== "idle" || !closeRowPanel()) return;
-    closeSidebar();
+    dismissPeek();
     setActiveId(connection.id);
     const query = `SELECT * FROM ${quotePostgresIdentifier(table.schema)}.${quotePostgresIdentifier(table.name)} LIMIT 100;`;
     pendingTableRun.current = { connectionId: connection.id, query };
@@ -2070,7 +2082,7 @@ export default function DatabaseWorkspace({
         const rail = railRef.current?.getBoundingClientRect();
         if (rail && event.clientX > rail.right + 16) scheduleSidebarHide();
       }}
-      className={`db-workspace${!railOpen && !settingsView ? " sidebar-hidden" : ""}${settingsView ? " settings-open" : ""}${inspectedRow && !settingsView ? " has-row-panel" : ""}`}
+      className={`db-workspace${!railOpen && !settingsView ? " sidebar-hidden" : ""}${!sidebarHidden && !settingsView ? " sidebar-docked" : ""}${settingsView ? " settings-open" : ""}${inspectedRow && !settingsView ? " has-row-panel" : ""}`}
     >
       <aside
         id="db-explorer-sidebar"
@@ -2090,11 +2102,20 @@ export default function DatabaseWorkspace({
           {!settingsView && (
             <button
               className="db-icon-button rail-close"
-              aria-label="Close explorer sidebar"
-              title="Close explorer"
-              onClick={closeSidebar}
+              aria-label={
+                sidebarHidden
+                  ? "Pin explorer sidebar"
+                  : "Collapse explorer sidebar"
+              }
+              title={sidebarHidden ? "Keep explorer open" : "Collapse explorer"}
+              aria-pressed={!sidebarHidden}
+              onClick={sidebarHidden ? dockSidebar : closeSidebar}
             >
-              <PanelLeftClose size={15} />
+              {sidebarHidden ? (
+                <PanelLeftOpen size={15} />
+              ) : (
+                <PanelLeftClose size={15} />
+              )}
             </button>
           )}
         </div>
@@ -2494,20 +2515,19 @@ export default function DatabaseWorkspace({
       <div className="db-main" hidden={!!settingsView}>
         <div className="db-workspace-header">
           <button
-            className="sidebar-toggle"
+            className="db-icon-button sidebar-toggle"
             aria-label={
-              railOpen ? "Close explorer sidebar" : "Open explorer sidebar"
+              sidebarHidden ? "Open explorer sidebar" : "Close explorer sidebar"
             }
+            title={sidebarHidden ? "Show explorer" : "Collapse explorer"}
             aria-expanded={railOpen}
             aria-controls="db-explorer-sidebar"
-            onClick={() =>
-              railOpen ? closeSidebar() : setSidebarHidden(false)
-            }
+            onClick={sidebarHidden ? dockSidebar : closeSidebar}
           >
-            {!railOpen ? (
-              <PanelLeftOpen size={17} />
+            {sidebarHidden ? (
+              <PanelLeftOpen size={15} />
             ) : (
-              <PanelLeftClose size={17} />
+              <PanelLeftClose size={15} />
             )}
           </button>
           <div>

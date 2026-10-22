@@ -3411,3 +3411,36 @@ textarea:focus-visible,
 .settings-page .settings-code-line {
   min-width: max-content;
 }
+
+/* Docked explorer: the rail's button pins it into its own column and the
+   workspace shifts over; collapsed, the same button sits in the workspace
+   header to bring it back. Hover peek still overlays when collapsed. */
+.db-workspace.sidebar-docked > .db-rail {
+  box-shadow: none;
+  animation: none;
+}
+.db-workspace.sidebar-docked > .db-main {
+  margin-left: calc(min(var(--sidebar-width, 292px), calc(100% - 360px)) + 8px);
+  width: calc(
+    100% - min(var(--sidebar-width, 292px), calc(100% - 360px)) - 8px
+  );
+}
+.db-workspace.sidebar-docked.has-row-panel > .db-main {
+  width: calc(
+    100% - min(var(--sidebar-width, 292px), calc(100% - 360px)) -
+      min(var(--row-panel-width, 390px), calc(100% - 360px)) - 16px
+  );
+}
+.db-workspace.sidebar-docked > .db-main .sidebar-toggle {
+  display: none;
+}
+/* Same look in both spots so it reads as one button that moves. */
+.db-workspace-header > .db-icon-button.sidebar-toggle {
+  padding: 0;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.db-workspace-header > .sidebar-toggle:hover,
+.db-rail-heading .rail-close:hover {
+  color: var(--text);
+}
