@@ -50,18 +50,31 @@ try {
     },
   );
   await check(
-    "explorer opens as overlay without shrinking main; Escape and outside dismiss; reopen",
+    "toggle docks explorer and shifts main; Escape keeps it; rail button collapses",
     async () => {
       await page.locator(".sidebar-toggle").click();
       await expect(page.locator(".db-rail")).toBeVisible();
-      let main = await page.locator(".db-main").boundingBox();
-      let workspace = await page.locator(".db-workspace").boundingBox();
-      expect(main.width).toBeGreaterThan(workspace.width * 0.95);
+      await expect(page.locator(".db-workspace")).toHaveClass(/sidebar-docked/);
+      const rail = await page.locator(".db-rail").boundingBox();
+      const main = await page.locator(".db-main").boundingBox();
+      expect(main.x).toBeGreaterThanOrEqual(rail.x + rail.width - 1);
       await page.keyboard.press("Escape");
+      await expect(page.locator(".db-rail")).toBeVisible();
+      await page
+        .getByRole("button", { name: "Collapse explorer sidebar" })
+        .click();
       await expect(page.locator(".db-rail")).toBeHidden();
-      await page.locator(".sidebar-toggle").click();
-      await page.locator(".db-main").click({ position: { x: 800, y: 20 } });
+      await expect(page.locator(".sidebar-toggle")).toBeVisible();
+      // Peek from the edge, then pin it with the same button.
+      await page.locator(".rail-reveal-edge").hover();
+      await expect(page.locator(".db-rail")).toBeVisible();
+      await page.getByRole("button", { name: "Pin explorer sidebar" }).click();
+      await expect(page.locator(".db-workspace")).toHaveClass(/sidebar-docked/);
+      await page
+        .getByRole("button", { name: "Collapse explorer sidebar" })
+        .click();
       await expect(page.locator(".db-rail")).toBeHidden();
+      await page.mouse.move(800, 300);
       await page.locator(".sidebar-toggle").click();
       await expect(page.locator(".db-rail")).toBeVisible();
     },
