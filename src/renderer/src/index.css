@@ -82,21 +82,13 @@ button:disabled {
   min-width: 175px;
 }
 .brand-mark {
-  display: grid;
+  display: block;
   width: 32px;
   height: 32px;
-  place-items: center;
-  border: 1px solid rgba(141, 224, 193, 0.29);
-  border-radius: 10px;
-  background: linear-gradient(
-    145deg,
-    rgba(141, 224, 193, 0.22),
-    rgba(91, 144, 148, 0.15)
-  );
-  color: #a9f0d1;
-  font:
-    700 21px/1 Georgia,
-    serif;
+  flex: 0 0 auto;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 .app-brand h1 {
   margin: 0;
@@ -1362,8 +1354,6 @@ button:disabled {
 .brand-mark {
   width: 29px;
   height: 29px;
-  border-radius: 8px;
-  font-size: 22px;
 }
 .search {
   max-width: 310px;
