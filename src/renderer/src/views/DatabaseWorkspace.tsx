@@ -1995,28 +1995,17 @@ export default function DatabaseWorkspace({
         }}
       >
         <div className="db-rail-heading">
-          <button
-            className="db-icon-button rail-close"
-            aria-label="Close explorer sidebar"
-            onClick={closeSidebar}
-          >
-            <PanelLeftClose size={16} />
-          </button>
-          <div>
-            <span className="db-overline">WORKSPACE</span>
-            <h2>Explorer</h2>
-          </div>
-          <button
-            className="db-icon-button"
-            aria-label="Add connection"
-            title="Add connection"
-            onClick={() => {
-              setShowConnect(true);
-              setConnectionError("");
-            }}
-          >
-            ＋
-          </button>
+          <h2>Explorer</h2>
+          {!settingsView && (
+            <button
+              className="db-icon-button rail-close"
+              aria-label="Close explorer sidebar"
+              title="Close explorer"
+              onClick={closeSidebar}
+            >
+              <PanelLeftClose size={15} />
+            </button>
+          )}
         </div>
         <button
           className="db-connect-button"
@@ -2042,8 +2031,8 @@ export default function DatabaseWorkspace({
               className={railView === id ? "active" : ""}
               onClick={() => setRailView(id)}
             >
-              <Icon size={14} />
-              {label}
+              <Icon size={14} aria-hidden="true" />
+              <span>{label}</span>
             </button>
           ))}
         </div>
@@ -2306,8 +2295,17 @@ export default function DatabaseWorkspace({
             ))}
           {connections.length === 0 && (
             <div className="db-empty-rail">
-              <b>No connections</b>
-              <p>Add a PostgreSQL or MongoDB connection.</p>
+              {savedConnections.length > 0 ? (
+                <>
+                  <b>Not connected</b>
+                  <p>Pick a saved server to connect.</p>
+                </>
+              ) : (
+                <>
+                  <b>No connections</b>
+                  <p>Add a PostgreSQL or MongoDB connection.</p>
+                </>
+              )}
             </div>
           )}
           {savedConnections.length > 0 && (
