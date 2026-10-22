@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Power, Settings as SettingsIcon } from "lucide-react";
+import rowfishIcon from "./assets/rowfish-icon.png";
 import DatabaseWorkspace from "./views/DatabaseWorkspace";
 import Settings from "./views/Settings";
 import {
@@ -71,9 +72,13 @@ export default function App(): React.JSX.Element {
       <main className="content">
         <header className="topbar">
           <div className="app-brand">
-            <span className="brand-mark" aria-hidden="true">
-              r
-            </span>
+            <img
+              className="brand-mark"
+              src={rowfishIcon}
+              alt=""
+              aria-hidden="true"
+              draggable={false}
+            />
             <div>
               <h1>Rowfish</h1>
               <span>PostgreSQL workspace</span>

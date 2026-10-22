@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/assets/rowfish-icon.png" width="128" height="128" alt="Rowfish icon"></p>
+
 # Rowfish
 
 **A PostgreSQL-first desktop query client, with MongoDB support available.**
