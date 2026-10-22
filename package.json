@@ -1,6 +1,6 @@
 {
   "name": "rowfish",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A desktop PostgreSQL and MongoDB client built with Electron, React and TypeScript",
   "private": true,
   "type": "module",
