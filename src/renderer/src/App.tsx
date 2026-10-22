@@ -1,52 +1,52 @@
-import { useEffect, useRef, useState } from 'react'
-import { Power, Settings as SettingsIcon } from 'lucide-react'
-import DatabaseWorkspace from './views/DatabaseWorkspace'
-import Settings from './views/Settings'
+import { useEffect, useRef, useState } from "react";
+import { Power, Settings as SettingsIcon } from "lucide-react";
+import DatabaseWorkspace from "./views/DatabaseWorkspace";
+import Settings from "./views/Settings";
 import {
   applyUiPreferences,
   loadUiPreferences,
   saveUiPreferences,
-  type UiPreferences
-} from './lib/ui-preferences'
+  type UiPreferences,
+} from "./lib/ui-preferences";
 
 export default function App(): React.JSX.Element {
-  const [search, setSearch] = useState('')
-  const [prefs, setPrefs] = useState(loadUiPreferences)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [saveError, setSaveError] = useState(false)
-  const triggerRef = useRef<HTMLButtonElement>(null)
+  const [search, setSearch] = useState("");
+  const [prefs, setPrefs] = useState(loadUiPreferences);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    applyUiPreferences(prefs)
+    applyUiPreferences(prefs);
     void window.api.app
-      .setBlur(prefs.blur && prefs.theme === 'glass')
-      .catch(() => undefined)
-  }, [prefs])
+      .setBlur(prefs.blur && prefs.theme === "glass")
+      .catch(() => undefined);
+  }, [prefs]);
   const closeSettings = () => {
-    setSettingsOpen(false)
-    requestAnimationFrame(() => triggerRef.current?.focus())
-  }
+    setSettingsOpen(false);
+    requestAnimationFrame(() => triggerRef.current?.focus());
+  };
   useEffect(() => {
     if (settingsOpen)
-      document.querySelector<HTMLButtonElement>('.settings-back')?.focus()
+      document.querySelector<HTMLButtonElement>(".settings-back")?.focus();
     const keyboard = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === ',') {
-        event.preventDefault()
-        setSettingsOpen((open) => !open)
-      } else if (event.key === 'Escape' && settingsOpen) closeSettings()
-    }
-    window.addEventListener('keydown', keyboard)
-    return () => window.removeEventListener('keydown', keyboard)
-  }, [settingsOpen])
+      if ((event.metaKey || event.ctrlKey) && event.key === ",") {
+        event.preventDefault();
+        setSettingsOpen((open) => !open);
+      } else if (event.key === "Escape" && settingsOpen) closeSettings();
+    };
+    window.addEventListener("keydown", keyboard);
+    return () => window.removeEventListener("keydown", keyboard);
+  }, [settingsOpen]);
   const changePreferences = (next: UiPreferences) => {
-    setPrefs(next)
-    setSaveError(!saveUiPreferences(next))
-  }
+    setPrefs(next);
+    setSaveError(!saveUiPreferences(next));
+  };
   const actions = (
     <div className="app-sidebar-actions" aria-label="Application actions">
       <span>Rowfish</span>
       <button
         ref={triggerRef}
-        className={`app-foot-button${settingsOpen ? ' active' : ''}`}
+        className={`app-foot-button${settingsOpen ? " active" : ""}`}
         type="button"
         title="Settings"
         aria-label="Settings"
@@ -65,7 +65,7 @@ export default function App(): React.JSX.Element {
         <Power size={16} aria-hidden="true" />
       </button>
     </div>
-  )
+  );
   return (
     <div className="shell" data-appearance={prefs.theme}>
       <main className="content">
@@ -115,5 +115,5 @@ export default function App(): React.JSX.Element {
         </div>
       </main>
     </div>
-  )
+  );
 }

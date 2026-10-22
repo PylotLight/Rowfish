@@ -1,513 +1,518 @@
-import { _electron as electron, expect } from '@playwright/test'
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { _electron as electron, expect } from "@playwright/test";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // Real renderer/preload/UI with database IPC mocked durably in the main process.
-const root = process.cwd()
-const artifacts = join(root, 'artifacts')
-await mkdir(artifacts, { recursive: true })
-const userData = await mkdtemp(join(tmpdir(), 'rowfish-query-connection-'))
+const root = process.cwd();
+const artifacts = join(root, "artifacts");
+await mkdir(artifacts, { recursive: true });
+const userData = await mkdtemp(join(tmpdir(), "rowfish-query-connection-"));
 const app = await electron.launch({
-  executablePath: join(root, 'node_modules/electron/dist/electron'),
-  args: ['--no-sandbox', `--user-data-dir=${userData}`, 'out/main/index.js'],
-  env: { ...process.env, DISPLAY: process.env.DISPLAY || ':106' }
-})
-const page = await app.firstWindow()
-page.setDefaultTimeout(10000)
-const errors = []
-const checks = []
-page.on('pageerror', (error) => errors.push(error.message))
+  executablePath: join(root, "node_modules/electron/dist/electron"),
+  args: ["--no-sandbox", `--user-data-dir=${userData}`, "out/main/index.js"],
+  env: { ...process.env, DISPLAY: process.env.DISPLAY || ":106" },
+});
+const page = await app.firstWindow();
+page.setDefaultTimeout(10000);
+const errors = [];
+const checks = [];
+page.on("pageerror", (error) => errors.push(error.message));
 const check = async (name, run) => {
-  await run()
-  checks.push(name)
-  console.log('PASS', name)
-}
-const editor = () => page.locator('.cm-content')
-const run = () => page.getByRole('button', { name: /Run query/i })
+  await run();
+  checks.push(name);
+  console.log("PASS", name);
+};
+const editor = () => page.locator(".cm-content");
+const run = () => page.getByRole("button", { name: /Run query/i });
 const dialog = () =>
-  page.getByRole('dialog', { name: 'Choose a query connection' })
-const profile = (id, name, kind = 'postgres') => ({
+  page.getByRole("dialog", { name: "Choose a query connection" });
+const profile = (id, name, kind = "postgres") => ({
   id,
   name,
   kind,
-  host: 'db.example.test',
-  port: kind === 'postgres' ? 5432 : 27017,
-  database: 'appdb',
-  username: 'tester',
-  saved: true
-})
+  host: "db.example.test",
+  port: kind === "postgres" ? 5432 : 27017,
+  database: "appdb",
+  username: "tester",
+  saved: true,
+});
 const online = (
   id,
   name,
-  kind = 'postgres',
-  database = 'appdb',
-  extra = {}
+  kind = "postgres",
+  database = "appdb",
+  extra = {},
 ) => ({
   id,
   name,
   kind,
-  host: 'db.example.test',
-  port: kind === 'postgres' ? 5432 : 27017,
+  host: "db.example.test",
+  port: kind === "postgres" ? 5432 : 27017,
   database,
-  username: 'tester',
+  username: "tester",
   connected: true,
-  ...extra
-})
+  ...extra,
+});
 const queryTab = (
-  kind = 'postgres',
-  query = 'SELECT 731 AS preserved_draft;'
+  kind = "postgres",
+  query = "SELECT 731 AS preserved_draft;",
 ) => ({
-  id: 'offline-query-tab',
-  title: 'Offline draft — keep this title',
+  id: "offline-query-tab",
+  title: "Offline draft — keep this title",
   query,
   kind,
-  connectionKey: 'offline-connection',
-  updatedAt: Date.now()
-})
-const workspace = (kind = 'postgres', query) => ({
+  connectionKey: "offline-connection",
+  updatedAt: Date.now(),
+});
+const workspace = (kind = "postgres", query) => ({
   tabs: [queryTab(kind, query)],
-  activeTabId: 'offline-query-tab',
+  activeTabId: "offline-query-tab",
   saved: [],
-  history: []
-})
+  history: [],
+});
 const profiles = [
-  profile('saved-pg', 'Saved PostgreSQL'),
-  profile('saved-mongo', 'Saved MongoDB', 'mongodb')
-]
+  profile("saved-pg", "Saved PostgreSQL"),
+  profile("saved-mongo", "Saved MongoDB", "mongodb"),
+];
 
 // Install handlers in Electron's main process, where ipcMain handlers are mutable.
 await app.evaluate(({ ipcMain, BrowserWindow }) => {
-  const state = { calls: [], failure: null, connections: [] }
+  const state = { calls: [], failure: null, connections: [] };
   const ch = [
-    'database:list-tables',
-    'database:postgres-columns',
-    'database:postgres-server-info',
-    'database:saved',
-    'database:connect-saved',
-    'database:connect',
-    'database:run',
-    'database:list-databases',
-    'database:open-database',
-    'database:mongo-databases',
-    'database:mongo-collections'
-  ]
-  for (const channel of ch) ipcMain.removeHandler(channel)
-  ipcMain.handle('database:list-tables', () => [])
-  ipcMain.handle('database:postgres-columns', () => [])
-  ipcMain.handle('database:postgres-server-info', () => ({
-    database: 'appdb',
-    user: 'tester',
-    version: 'fixture'
-  }))
-  ipcMain.handle('database:saved', () => [
+    "database:list-tables",
+    "database:postgres-columns",
+    "database:postgres-server-info",
+    "database:saved",
+    "database:connect-saved",
+    "database:connect",
+    "database:run",
+    "database:list-databases",
+    "database:open-database",
+    "database:mongo-databases",
+    "database:mongo-collections",
+  ];
+  for (const channel of ch) ipcMain.removeHandler(channel);
+  ipcMain.handle("database:list-tables", () => []);
+  ipcMain.handle("database:postgres-columns", () => []);
+  ipcMain.handle("database:postgres-server-info", () => ({
+    database: "appdb",
+    user: "tester",
+    version: "fixture",
+  }));
+  ipcMain.handle("database:saved", () => [
     {
-      id: 'saved-pg',
-      name: 'Saved PostgreSQL',
-      kind: 'postgres',
-      host: 'db.example.test',
+      id: "saved-pg",
+      name: "Saved PostgreSQL",
+      kind: "postgres",
+      host: "db.example.test",
       port: 5432,
-      database: 'appdb',
-      username: 'tester'
+      database: "appdb",
+      username: "tester",
     },
     {
-      id: 'saved-mongo',
-      name: 'Saved MongoDB',
-      kind: 'mongodb',
-      host: 'db.example.test',
+      id: "saved-mongo",
+      name: "Saved MongoDB",
+      kind: "mongodb",
+      host: "db.example.test",
       port: 27017,
-      database: 'appdb',
-      username: 'tester'
-    }
-  ])
-  ipcMain.handle('database:connect-saved', (_event, id) => {
-    state.calls.push(['connectSaved', id])
-    if (state.failure) throw new Error(state.failure)
+      database: "appdb",
+      username: "tester",
+    },
+  ]);
+  ipcMain.handle("database:connect-saved", (_event, id) => {
+    state.calls.push(["connectSaved", id]);
+    if (state.failure) throw new Error(state.failure);
     const p =
-      id === 'saved-mongo'
-        ? { id: 'live-mongo', name: 'Saved MongoDB', kind: 'mongodb' }
-        : { id: 'live-pg', name: 'Saved PostgreSQL', kind: 'postgres' }
+      id === "saved-mongo"
+        ? { id: "live-mongo", name: "Saved MongoDB", kind: "mongodb" }
+        : { id: "live-pg", name: "Saved PostgreSQL", kind: "postgres" };
     const value = {
       ...p,
-      host: 'db.example.test',
-      port: p.kind === 'postgres' ? 5432 : 27017,
-      database: 'appdb',
-      username: 'tester',
+      host: "db.example.test",
+      port: p.kind === "postgres" ? 5432 : 27017,
+      database: "appdb",
+      username: "tester",
       connected: true,
-      savedConnectionId: id
-    }
-    state.connections.push(value)
-    return value
-  })
-  ipcMain.handle('database:connect', (_event, input, save) => {
-    state.calls.push(['connect', input, save])
-    const value = { ...input, id: 'live-new', connected: true }
-    state.connections.push(value)
-    return value
-  })
-  ipcMain.handle('database:list-databases', (_event, id) => {
-    state.calls.push(['listDatabases', id])
+      savedConnectionId: id,
+    };
+    state.connections.push(value);
+    return value;
+  });
+  ipcMain.handle("database:connect", (_event, input, save) => {
+    state.calls.push(["connect", input, save]);
+    const value = { ...input, id: "live-new", connected: true };
+    state.connections.push(value);
+    return value;
+  });
+  ipcMain.handle("database:list-databases", (_event, id) => {
+    state.calls.push(["listDatabases", id]);
     return [
-      { name: 'appdb', canConnect: true },
-      { name: 'otherdb', canConnect: true }
-    ]
-  })
-  ipcMain.handle('database:open-database', (_event, id, database) => {
-    state.calls.push(['openDatabase', id, database])
+      { name: "appdb", canConnect: true },
+      { name: "otherdb", canConnect: true },
+    ];
+  });
+  ipcMain.handle("database:open-database", (_event, id, database) => {
+    state.calls.push(["openDatabase", id, database]);
     const parent = state.connections.find((x) => x.id === id) || {
-      name: 'Server',
-      kind: 'postgres',
-      host: 'db.example.test',
+      name: "Server",
+      kind: "postgres",
+      host: "db.example.test",
       port: 5432,
-      username: 'tester'
-    }
+      username: "tester",
+    };
     const child = {
       ...parent,
-      id: 'live-child',
+      id: "live-child",
       name: `${parent.name} — ${database}`,
       database,
       connected: true,
       serverMode: false,
-      parentConnectionId: id
-    }
-    state.connections.push(child)
-    return child
-  })
-  ipcMain.handle('database:mongo-databases', () => [{ name: 'appdb' }])
-  ipcMain.handle('database:mongo-collections', () => [])
-  ipcMain.handle('database:run', (_event, request) => {
-    state.calls.push(['run', request])
+      parentConnectionId: id,
+    };
+    state.connections.push(child);
+    return child;
+  });
+  ipcMain.handle("database:mongo-databases", () => [{ name: "appdb" }]);
+  ipcMain.handle("database:mongo-collections", () => []);
+  ipcMain.handle("database:run", (_event, request) => {
+    state.calls.push(["run", request]);
     setTimeout(() => {
-      const win = BrowserWindow.getAllWindows()[0]
-      win?.webContents.send('database:event', {
-        type: 'query:rows',
+      const win = BrowserWindow.getAllWindows()[0];
+      win?.webContents.send("database:event", {
+        type: "query:rows",
         queryId: request.queryId,
-        columns: ['value'],
+        columns: ["value"],
         rows: [{ value: 731 }],
-        receivedRows: 1
-      })
-      win?.webContents.send('database:event', {
-        type: 'query:complete',
+        receivedRows: 1,
+      });
+      win?.webContents.send("database:event", {
+        type: "query:complete",
         queryId: request.queryId,
         receivedRows: 1,
         elapsedMs: 1,
-        truncated: false
-      })
-    }, 30)
-    return { queryId: request.queryId }
-  })
-  globalThis.__querySmokeState = state
-})
+        truncated: false,
+      });
+    }, 30);
+    return { queryId: request.queryId };
+  });
+  globalThis.__querySmokeState = state;
+});
 await page.addInitScript(() => {
-  const seed = sessionStorage.getItem('query-smoke-seed')
-  if (seed) localStorage.setItem('rowfish.query-workspace.v1', seed)
-  localStorage.setItem('rowfish.sidebar-hidden', 'true')
-})
-const fixture = async (kind = 'postgres', extra = {}) => {
+  const seed = sessionStorage.getItem("query-smoke-seed");
+  if (seed) localStorage.setItem("rowfish.query-workspace.v1", seed);
+  localStorage.setItem("rowfish.sidebar-hidden", "true");
+});
+const fixture = async (kind = "postgres", extra = {}) => {
   const state = {
     ...workspace(
       kind,
-      kind === 'mongodb' ? '{"preserved_draft":731}' : undefined
+      kind === "mongodb" ? '{"preserved_draft":731}' : undefined,
     ),
-    ...extra
-  }
+    ...extra,
+  };
   await page.evaluate(
     (state) =>
-      sessionStorage.setItem('query-smoke-seed', JSON.stringify(state)),
-    state
-  )
+      sessionStorage.setItem("query-smoke-seed", JSON.stringify(state)),
+    state,
+  );
   await app.evaluate(() => {
-    globalThis.__querySmokeState.calls.length = 0
-    globalThis.__querySmokeState.failure = null
-  })
-  await page.reload()
-  await page.waitForSelector('.cm-content')
-  await expect(editor()).toContainText('preserved_draft')
-}
-const calls = async () => app.evaluate(() => globalThis.__querySmokeState.calls)
+    globalThis.__querySmokeState.calls.length = 0;
+    globalThis.__querySmokeState.failure = null;
+  });
+  await page.reload();
+  await page.waitForSelector(".cm-content");
+  await expect(editor()).toContainText("preserved_draft");
+};
+const calls = async () =>
+  app.evaluate(() => globalThis.__querySmokeState.calls);
 const clearCalls = async () =>
   app.evaluate(() => {
-    globalThis.__querySmokeState.calls.length = 0
-    globalThis.__querySmokeState.failure = null
-  })
+    globalThis.__querySmokeState.calls.length = 0;
+    globalThis.__querySmokeState.failure = null;
+  });
 try {
-  await page.waitForSelector('.cm-content')
-  await fixture()
+  await page.waitForSelector(".cm-content");
+  await fixture();
   await check(
-    'restored offline draft is runnable, retains tab/title, and prompts without autorun',
+    "restored offline draft is runnable, retains tab/title, and prompts without autorun",
     async () => {
-      await expect(run()).toBeEnabled()
-      await run().click()
-      await expect(dialog()).toBeVisible()
+      await expect(run()).toBeEnabled();
+      await run().click();
+      await expect(dialog()).toBeVisible();
       await expect(
-        dialog().getByRole('button', { name: 'Reconnect Saved PostgreSQL' })
-      ).toBeVisible()
+        dialog().getByRole("button", { name: "Reconnect Saved PostgreSQL" }),
+      ).toBeVisible();
       await expect(
-        dialog().getByRole('button', { name: 'New connection' })
-      ).toBeVisible()
+        dialog().getByRole("button", { name: "New connection" }),
+      ).toBeVisible();
       await expect(
-        page.getByRole('tab', { name: /Offline draft — keep this title/ })
-      ).toBeVisible()
-      expect((await calls()).filter((x) => x[0] === 'run')).toHaveLength(0)
-    }
-  )
+        page.getByRole("tab", { name: /Offline draft — keep this title/ }),
+      ).toBeVisible();
+      expect((await calls()).filter((x) => x[0] === "run")).toHaveLength(0);
+    },
+  );
   await check(
-    'Escape and F5 cancel picker; cancellation does not execute',
+    "Escape and F5 cancel picker; cancellation does not execute",
     async () => {
-      await page.keyboard.press('Escape')
-      await expect(dialog()).toHaveCount(0)
+      await page.keyboard.press("Escape");
+      await expect(dialog()).toHaveCount(0);
       await page.evaluate(() =>
         document.dispatchEvent(
-          new KeyboardEvent('keydown', {
-            key: 'F5',
+          new KeyboardEvent("keydown", {
+            key: "F5",
             bubbles: true,
-            cancelable: true
-          })
-        )
-      )
-      await expect(dialog()).toBeVisible()
-      await page.keyboard.press('Escape')
-      await expect(dialog()).toHaveCount(0)
-      await editor().click()
-      await page.keyboard.press('Control+Enter')
-      await expect(dialog()).toBeVisible()
-      await page.keyboard.press('Escape')
-      expect((await calls()).filter((x) => x[0] === 'run')).toHaveLength(0)
-    }
-  )
+            cancelable: true,
+          }),
+        ),
+      );
+      await expect(dialog()).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(dialog()).toHaveCount(0);
+      await editor().click();
+      await page.keyboard.press("Control+Enter");
+      await expect(dialog()).toBeVisible();
+      await page.keyboard.press("Escape");
+      expect((await calls()).filter((x) => x[0] === "run")).toHaveLength(0);
+    },
+  );
   await check(
-    'saved reconnect failure is retryable and successful retry preserves draft and never autoruns',
+    "saved reconnect failure is retryable and successful retry preserves draft and never autoruns",
     async () => {
-      await run().click()
+      await run().click();
       await app.evaluate(() => {
-        globalThis.__querySmokeState.failure = 'mock reconnect failure'
-      })
+        globalThis.__querySmokeState.failure = "mock reconnect failure";
+      });
       await dialog()
-        .getByRole('button', { name: 'Reconnect Saved PostgreSQL' })
-        .click()
-      await expect(dialog().getByRole('alert')).toContainText(
-        'mock reconnect failure'
-      )
+        .getByRole("button", { name: "Reconnect Saved PostgreSQL" })
+        .click();
+      await expect(dialog().getByRole("alert")).toContainText(
+        "mock reconnect failure",
+      );
       await expect(
-        dialog().getByRole('button', { name: 'Reconnect Saved PostgreSQL' })
-      ).toBeEnabled()
+        dialog().getByRole("button", { name: "Reconnect Saved PostgreSQL" }),
+      ).toBeEnabled();
       await app.evaluate(() => {
-        globalThis.__querySmokeState.failure = null
-      })
+        globalThis.__querySmokeState.failure = null;
+      });
       await dialog()
-        .getByRole('button', { name: 'Reconnect Saved PostgreSQL' })
-        .click()
-      await expect(dialog()).toHaveCount(0)
-      await expect(page.getByRole('status')).toContainText(
-        'Query connected. Review the selected database, then run when ready.'
-      )
-      await expect(editor()).toContainText('preserved_draft')
+        .getByRole("button", { name: "Reconnect Saved PostgreSQL" })
+        .click();
+      await expect(dialog()).toHaveCount(0);
+      await expect(page.getByRole("status")).toContainText(
+        "Query connected. Review the selected database, then run when ready.",
+      );
+      await expect(editor()).toContainText("preserved_draft");
       await expect(
-        page.getByRole('tab', { name: /Offline draft — keep this title/ })
-      ).toHaveCount(1)
-      expect((await calls()).filter((x) => x[0] === 'run')).toHaveLength(0)
-    }
-  )
+        page.getByRole("tab", { name: /Offline draft — keep this title/ }),
+      ).toHaveCount(1);
+      expect((await calls()).filter((x) => x[0] === "run")).toHaveLength(0);
+    },
+  );
   await check(
-    'explicit Run invokes mocked query and receives completion',
+    "explicit Run invokes mocked query and receives completion",
     async () => {
-      await clearCalls()
-      await run().click()
+      await clearCalls();
+      await run().click();
       await expect
-        .poll(async () => (await calls()).filter((x) => x[0] === 'run').length)
-        .toBe(1)
-      await expect(page.locator('.db-results-summary')).toContainText(/1 row/)
-      expect((await calls()).find((x) => x[0] === 'run')[1].query).toContain(
-        'preserved_draft'
-      )
-    }
-  )
+        .poll(async () => (await calls()).filter((x) => x[0] === "run").length)
+        .toBe(1);
+      await expect(page.locator(".db-results-summary")).toContainText(/1 row/);
+      expect((await calls()).find((x) => x[0] === "run")[1].query).toContain(
+        "preserved_draft",
+      );
+    },
+  );
   await check(
-    'kind filtering works for offline Mongo labels and compatible reconnect retains Mongo kind',
+    "kind filtering works for offline Mongo labels and compatible reconnect retains Mongo kind",
     async () => {
-      await fixture('mongodb')
-      await run().click()
+      await fixture("mongodb");
+      await run().click();
       await expect(
-        dialog().getByRole('button', { name: 'Reconnect Saved MongoDB' })
-      ).toBeVisible()
+        dialog().getByRole("button", { name: "Reconnect Saved MongoDB" }),
+      ).toBeVisible();
       await expect(
-        dialog().getByRole('button', { name: 'Reconnect Saved PostgreSQL' })
-      ).toHaveCount(0)
+        dialog().getByRole("button", { name: "Reconnect Saved PostgreSQL" }),
+      ).toHaveCount(0);
       await dialog()
-        .getByRole('button', { name: 'Reconnect Saved MongoDB' })
-        .click()
+        .getByRole("button", { name: "Reconnect Saved MongoDB" })
+        .click();
       const stored = await page.evaluate(() =>
-        JSON.parse(localStorage.getItem('rowfish.query-workspace.v1'))
-      )
-      expect(stored.tabs.find((t) => t.id === 'offline-query-tab').kind).toBe(
-        'mongodb'
-      )
+        JSON.parse(localStorage.getItem("rowfish.query-workspace.v1")),
+      );
+      expect(stored.tabs.find((t) => t.id === "offline-query-tab").kind).toBe(
+        "mongodb",
+      );
       await expect(
-        page.getByRole('tab', { name: /Offline draft — keep this title/ })
-      ).toHaveCount(1)
-    }
-  )
+        page.getByRole("tab", { name: /Offline draft — keep this title/ }),
+      ).toHaveCount(1);
+    },
+  );
   await check(
-    'saved-library draft opens offline preserving kind and connection key',
+    "saved-library draft opens offline preserving kind and connection key",
     async () => {
-      await fixture('mongodb', {
+      await fixture("mongodb", {
         saved: [
           {
-            id: 'saved-mongo-query',
-            title: 'Saved offline Mongo',
-            query: '{}',
-            kind: 'mongodb',
-            connectionKey: 'saved-key',
-            folder: 'General',
-            updatedAt: Date.now()
-          }
-        ]
-      })
-      await page.locator('.sidebar-toggle').click()
-      await page.getByRole('tab', { name: 'Queries', exact: true }).click()
-      await page.locator('.library-item > button').first().click()
+            id: "saved-mongo-query",
+            title: "Saved offline Mongo",
+            query: "{}",
+            kind: "mongodb",
+            connectionKey: "saved-key",
+            folder: "General",
+            updatedAt: Date.now(),
+          },
+        ],
+      });
+      await page.locator(".sidebar-toggle").click();
+      await page.getByRole("tab", { name: "Queries", exact: true }).click();
+      await page.locator(".library-item > button").first().click();
       await expect(
-        page.getByRole('tab', { name: /Saved offline Mongo/ })
-      ).toBeVisible()
+        page.getByRole("tab", { name: /Saved offline Mongo/ }),
+      ).toBeVisible();
       await expect
         .poll(() =>
           page.evaluate(() =>
             JSON.parse(
-              localStorage.getItem('rowfish.query-workspace.v1')
-            ).tabs.some((t) => t.title === 'Saved offline Mongo')
-          )
+              localStorage.getItem("rowfish.query-workspace.v1"),
+            ).tabs.some((t) => t.title === "Saved offline Mongo"),
+          ),
         )
-        .toBe(true)
+        .toBe(true);
       const s = await page.evaluate(() =>
-        JSON.parse(localStorage.getItem('rowfish.query-workspace.v1'))
-      )
-      const tab = s.tabs.find((t) => t.title.includes('Saved offline Mongo'))
-      expect(tab.kind).toBe('mongodb')
-      expect(tab.connectionKey).toBe('saved-key')
-    }
-  )
+        JSON.parse(localStorage.getItem("rowfish.query-workspace.v1")),
+      );
+      const tab = s.tabs.find((t) => t.title.includes("Saved offline Mongo"));
+      expect(tab.kind).toBe("mongodb");
+      expect(tab.connectionKey).toBe("saved-key");
+    },
+  );
   await check(
-    'live connection mismatch opens chooser rather than running',
+    "live connection mismatch opens chooser rather than running",
     async () => {
-      await fixture('postgres', {
+      await fixture("postgres", {
         saved: [
           {
-            id: 'other-query',
-            title: 'Different database query',
-            query: 'SELECT 5;',
-            kind: 'postgres',
-            connectionKey: 'different-database',
-            folder: 'General',
-            updatedAt: Date.now()
-          }
-        ]
-      })
-      await run().click()
+            id: "other-query",
+            title: "Different database query",
+            query: "SELECT 5;",
+            kind: "postgres",
+            connectionKey: "different-database",
+            folder: "General",
+            updatedAt: Date.now(),
+          },
+        ],
+      });
+      await run().click();
       await dialog()
-        .getByRole('button', { name: 'Reconnect Saved PostgreSQL' })
-        .click()
-      await page.locator('.sidebar-toggle').click()
-      await page.getByRole('tab', { name: 'Queries', exact: true }).click()
-      await page.locator('.library-item > button').first().click()
-      await expect(editor()).toHaveText('SELECT 5;')
-      await run().click()
-      await expect(dialog()).toBeVisible()
+        .getByRole("button", { name: "Reconnect Saved PostgreSQL" })
+        .click();
+      await page.locator(".sidebar-toggle").click();
+      await page.getByRole("tab", { name: "Queries", exact: true }).click();
+      await page.locator(".library-item > button").first().click();
+      await expect(editor()).toHaveText("SELECT 5;");
+      await run().click();
+      await expect(dialog()).toBeVisible();
       await expect(
-        dialog().getByRole('button', {
-          name: 'Use Saved PostgreSQL',
-          exact: true
-        })
-      ).toBeVisible()
-      expect((await calls()).filter((x) => x[0] === 'run')).toHaveLength(0)
+        dialog().getByRole("button", {
+          name: "Use Saved PostgreSQL",
+          exact: true,
+        }),
+      ).toBeVisible();
+      expect((await calls()).filter((x) => x[0] === "run")).toHaveLength(0);
       await dialog()
-        .getByRole('button', { name: 'Use Saved PostgreSQL', exact: true })
-        .click()
-      await expect(dialog()).toHaveCount(0)
+        .getByRole("button", { name: "Use Saved PostgreSQL", exact: true })
+        .click();
+      await expect(dialog()).toHaveCount(0);
       await expect(
-        page.getByRole('tab', { name: /Different database query/ })
-      ).toHaveAttribute('aria-selected', 'true')
-      expect((await calls()).filter((x) => x[0] === 'run')).toHaveLength(0)
-    }
-  )
+        page.getByRole("tab", { name: /Different database query/ }),
+      ).toHaveAttribute("aria-selected", "true");
+      expect((await calls()).filter((x) => x[0] === "run")).toHaveLength(0);
+    },
+  );
   await check(
-    'new connection binds the same draft without autorunning',
+    "new connection binds the same draft without autorunning",
     async () => {
-      await fixture()
-      await run().click()
-      await dialog().getByRole('button', { name: 'New connection' }).click()
-      const connect = page.getByRole('dialog', { name: 'Connect a database' })
-      await expect(connect).toBeVisible()
+      await fixture();
+      await run().click();
+      await dialog().getByRole("button", { name: "New connection" }).click();
+      const connect = page.getByRole("dialog", { name: "Connect a database" });
+      await expect(connect).toBeVisible();
       await connect
-        .getByLabel('Connection name', { exact: true })
-        .fill('Mock new connection')
-      await connect.getByLabel('Host', { exact: true }).fill('db.example.test')
-      await connect.getByLabel('Database', { exact: true }).fill('appdb')
-      await connect.getByLabel(/^Username/).fill('tester')
-      await connect.getByRole('button', { name: /^Connect$/ }).click()
-      await expect(connect).toHaveCount(0)
+        .getByLabel("Connection name", { exact: true })
+        .fill("Mock new connection");
+      await connect.getByLabel("Host", { exact: true }).fill("db.example.test");
+      await connect.getByLabel("Database", { exact: true }).fill("appdb");
+      await connect.getByLabel(/^Username/).fill("tester");
+      await connect.getByRole("button", { name: /^Connect$/ }).click();
+      await expect(connect).toHaveCount(0);
       await expect(
-        page.getByRole('tab', { name: /Offline draft — keep this title/ })
-      ).toHaveCount(1)
-      expect((await calls()).filter((x) => x[0] === 'run')).toHaveLength(0)
-    }
-  )
+        page.getByRole("tab", { name: /Offline draft — keep this title/ }),
+      ).toHaveCount(1);
+      expect((await calls()).filter((x) => x[0] === "run")).toHaveLength(0);
+    },
+  );
   await check(
-    'PostgreSQL server profile lists child databases and binds selected child to draft',
+    "PostgreSQL server profile lists child databases and binds selected child to draft",
     async () => {
       await app.evaluate(({ ipcMain }) => {
-        ipcMain.removeHandler('database:connect-saved')
-        ipcMain.handle('database:connect-saved', (_event, id) => {
-          globalThis.__querySmokeState.calls.push(['connectSaved', id])
+        ipcMain.removeHandler("database:connect-saved");
+        ipcMain.handle("database:connect-saved", (_event, id) => {
+          globalThis.__querySmokeState.calls.push(["connectSaved", id]);
           const value = {
-            id: 'server-profile',
-            name: 'Server profile',
-            kind: 'postgres',
-            host: 'db.example.test',
+            id: "server-profile",
+            name: "Server profile",
+            kind: "postgres",
+            host: "db.example.test",
             port: 5432,
-            database: '',
-            username: 'tester',
+            database: "",
+            username: "tester",
             connected: true,
             serverMode: true,
-            savedConnectionId: id
-          }
-          globalThis.__querySmokeState.connections.push(value)
-          return value
-        })
-      })
-      await fixture()
-      await run().click()
+            savedConnectionId: id,
+          };
+          globalThis.__querySmokeState.connections.push(value);
+          return value;
+        });
+      });
+      await fixture();
+      await run().click();
       await dialog()
-        .getByRole('button', { name: 'Reconnect Saved PostgreSQL' })
-        .click()
+        .getByRole("button", { name: "Reconnect Saved PostgreSQL" })
+        .click();
       await expect(
-        dialog().getByRole('button', { name: 'Use database appdb' })
-      ).toBeVisible()
-      await dialog().getByRole('button', { name: 'Use database appdb' }).click()
-      await expect(dialog()).toHaveCount(0)
+        dialog().getByRole("button", { name: "Use database appdb" }),
+      ).toBeVisible();
+      await dialog()
+        .getByRole("button", { name: "Use database appdb" })
+        .click();
+      await expect(dialog()).toHaveCount(0);
       expect(
-        (await calls()).some((x) => x[0] === 'openDatabase' && x[2] === 'appdb')
-      ).toBe(true)
-      expect((await calls()).filter((x) => x[0] === 'run')).toHaveLength(0)
-    }
-  )
-  await page.waitForTimeout(700)
-  expect(errors).toEqual([])
+        (await calls()).some(
+          (x) => x[0] === "openDatabase" && x[2] === "appdb",
+        ),
+      ).toBe(true);
+      expect((await calls()).filter((x) => x[0] === "run")).toHaveLength(0);
+    },
+  );
+  await page.waitForTimeout(700);
+  expect(errors).toEqual([]);
   await writeFile(
-    join(artifacts, 'query-connection-smoke-results.json'),
-    JSON.stringify({ checks, errors }, null, 2) + '\n'
-  )
-  console.log(`ALL QUERY CONNECTION CHECKS PASSED (${checks.length})`)
+    join(artifacts, "query-connection-smoke-results.json"),
+    JSON.stringify({ checks, errors }, null, 2) + "\n",
+  );
+  console.log(`ALL QUERY CONNECTION CHECKS PASSED (${checks.length})`);
 } catch (error) {
   await page
-    .screenshot({ path: join(artifacts, 'query-connection-smoke-failure.png') })
-    .catch(() => {})
+    .screenshot({ path: join(artifacts, "query-connection-smoke-failure.png") })
+    .catch(() => {});
   console.error(
     await page
-      .locator('body')
+      .locator("body")
       .innerText()
-      .catch(() => '')
-  )
-  throw error
+      .catch(() => ""),
+  );
+  throw error;
 } finally {
-  await app.close().catch(() => {})
+  await app.close().catch(() => {});
 }

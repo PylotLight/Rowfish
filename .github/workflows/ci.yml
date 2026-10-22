@@ -45,13 +45,14 @@ jobs:
         env:
           PGPASSWORD: rowfish_local_fixture
         run: psql -h 127.0.0.1 -U rowfish_test -d rowfish_fixture -v ON_ERROR_STOP=1 -f scripts/smoke-fixture.sql
+      - run: bun run format:check
       - run: bun run test
       - run: bun run typecheck
       - run: bun run build
       - name: Live desktop PostgreSQL smoke test
         env:
           PGHOST: 127.0.0.1
-          PGPORT: '5432'
+          PGPORT: "5432"
           PGDATABASE: rowfish_fixture
           PGUSER: rowfish_test
           PGPASSWORD: rowfish_local_fixture

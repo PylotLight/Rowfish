@@ -19,18 +19,18 @@ import {
   ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
-  CircleHelp
-} from 'lucide-react'
-import type { ReactNode } from 'react'
-import '../components/query-connection.css'
-import type { UiPreferences } from '../lib/ui-preferences'
-import SqlEditor from '../components/SqlEditor'
-import QueryPlan from '../components/QueryPlan'
-import { buildExplainQuery, postgresDiagnostics } from '../lib/postgres-tools'
-import RowSidePanel, { type RowSource } from '../components/RowSidePanel'
-import ResizeSeparator from '../components/ResizeSeparator'
-import { clampLayout, loadLayout, saveLayout } from '../lib/layout-preferences'
-import { isSameRow } from '../lib/row-editor'
+  CircleHelp,
+} from "lucide-react";
+import type { ReactNode } from "react";
+import "../components/query-connection.css";
+import type { UiPreferences } from "../lib/ui-preferences";
+import SqlEditor from "../components/SqlEditor";
+import QueryPlan from "../components/QueryPlan";
+import { buildExplainQuery, postgresDiagnostics } from "../lib/postgres-tools";
+import RowSidePanel, { type RowSource } from "../components/RowSidePanel";
+import ResizeSeparator from "../components/ResizeSeparator";
+import { clampLayout, loadLayout, saveLayout } from "../lib/layout-preferences";
+import { isSameRow } from "../lib/row-editor";
 import {
   loadQueryWorkspace,
   saveQueryWorkspace,
@@ -40,16 +40,16 @@ import {
   exportResultsJson,
   downloadText,
   type SavedQuery,
-  type QueryHistoryEntry
-} from '../lib/query-workspace'
+  type QueryHistoryEntry,
+} from "../lib/query-workspace";
 import {
   startTransition,
   useDeferredValue,
   useEffect,
   useMemo,
   useRef,
-  useState
-} from 'react'
+  useState,
+} from "react";
 import type {
   PostgresTableDetails,
   PostgresServerInfo,
@@ -62,123 +62,123 @@ import type {
   MongoBrowserCollection,
   MongoBrowserDatabase,
   MongoMutationRequest,
-  SavedConnectionProfile
-} from '../../../shared/database'
+  SavedConnectionProfile,
+} from "../../../shared/database";
 import {
   DATABASE_LIMITS,
   getVirtualRowRange,
-  quotePostgresIdentifier
-} from '../../../shared/database-helpers'
+  quotePostgresIdentifier,
+} from "../../../shared/database-helpers";
 
-const ROW_HEIGHT = 36
+const ROW_HEIGHT = 36;
 const DEFAULT_FORM: DatabaseConnectionInput = {
-  name: 'Local database',
-  kind: 'postgres',
-  host: 'localhost',
+  name: "Local database",
+  kind: "postgres",
+  host: "localhost",
   port: 5432,
-  database: 'postgres',
-  username: 'postgres',
-  password: '',
+  database: "postgres",
+  username: "postgres",
+  password: "",
   tls: false,
   serverMode: false,
-  connectionString: ''
-}
+  connectionString: "",
+};
 
-type RunState = 'idle' | 'running' | 'cancelling'
+type RunState = "idle" | "running" | "cancelling";
 type MongoOperation =
-  | 'insert'
-  | 'update'
-  | 'delete'
-  | 'create-collection'
-  | 'drop-collection'
-  | 'create-index'
-  | 'drop-index'
-  | 'drop-database'
+  | "insert"
+  | "update"
+  | "delete"
+  | "create-collection"
+  | "drop-collection"
+  | "create-index"
+  | "drop-index"
+  | "drop-database";
 
 function mongoBrowserKey(connectionId: string, database: string): string {
-  return `${connectionId}::${database}`
+  return `${connectionId}::${database}`;
 }
 
 function connectionSubline(connection: DatabaseConnectionSummary): string {
   if (connection.serverMode)
-    return `PostgreSQL · ${connection.host}:${connection.port} · all databases`
-  return `${connection.kind === 'postgres' ? 'PostgreSQL' : 'MongoDB'} · ${connection.database}`
+    return `PostgreSQL · ${connection.host}:${connection.port} · all databases`;
+  return `${connection.kind === "postgres" ? "PostgreSQL" : "MongoDB"} · ${connection.database}`;
 }
 
 export default function DatabaseWorkspace({
   search,
   preferences,
   sidebarActions,
-  settingsView
+  settingsView,
 }: {
-  search: string
-  preferences: UiPreferences
-  sidebarActions: ReactNode
-  settingsView?: ReactNode
+  search: string;
+  preferences: UiPreferences;
+  sidebarActions: ReactNode;
+  settingsView?: ReactNode;
 }): React.JSX.Element {
   const [connections, setConnections] = useState<DatabaseConnectionSummary[]>(
-    []
-  )
+    [],
+  );
   const [savedConnections, setSavedConnections] = useState<
     SavedConnectionProfile[]
-  >([])
-  const [activeId, setActiveId] = useState('')
-  const [showConnect, setShowConnect] = useState(false)
-  const [showQueryConnection, setShowQueryConnection] = useState(false)
-  const queryConnectionTabId = useRef<string | null>(null)
-  const [queryConnectionBusy, setQueryConnectionBusy] = useState(false)
-  const [queryConnectionError, setQueryConnectionError] = useState('')
+  >([]);
+  const [activeId, setActiveId] = useState("");
+  const [showConnect, setShowConnect] = useState(false);
+  const [showQueryConnection, setShowQueryConnection] = useState(false);
+  const queryConnectionTabId = useRef<string | null>(null);
+  const [queryConnectionBusy, setQueryConnectionBusy] = useState(false);
+  const [queryConnectionError, setQueryConnectionError] = useState("");
   const [queryConnectionServer, setQueryConnectionServer] =
-    useState<DatabaseConnectionSummary | null>(null)
+    useState<DatabaseConnectionSummary | null>(null);
   const [queryConnectionDatabases, setQueryConnectionDatabases] = useState<
     DatabaseBrowserDatabase[]
-  >([])
-  const [form, setForm] = useState<DatabaseConnectionInput>(DEFAULT_FORM)
-  const [saveProfile, setSaveProfile] = useState(true)
-  const [mongoUriMode, setMongoUriMode] = useState(false)
-  const [connecting, setConnecting] = useState(false)
-  const [connectionError, setConnectionError] = useState('')
+  >([]);
+  const [form, setForm] = useState<DatabaseConnectionInput>(DEFAULT_FORM);
+  const [saveProfile, setSaveProfile] = useState(true);
+  const [mongoUriMode, setMongoUriMode] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [connectionError, setConnectionError] = useState("");
   const [workspace, setWorkspace] = useState(() => {
-    const loaded = loadQueryWorkspace()
+    const loaded = loadQueryWorkspace();
     if (!loaded.tabs.length) {
-      const tab = makeQueryTab()
-      loaded.tabs = [tab]
-      loaded.activeTabId = tab.id
-    } else if (!loaded.activeTabId) loaded.activeTabId = loaded.tabs[0]!.id
-    return loaded
-  })
+      const tab = makeQueryTab();
+      loaded.tabs = [tab];
+      loaded.activeTabId = tab.id;
+    } else if (!loaded.activeTabId) loaded.activeTabId = loaded.tabs[0]!.id;
+    return loaded;
+  });
   const activeTab =
     workspace.tabs.find((tab) => tab.id === workspace.activeTabId) ??
-    workspace.tabs[0]
-  const queryText = activeTab?.query ?? ''
+    workspace.tabs[0];
+  const queryText = activeTab?.query ?? "";
   function setQueryText(query: string): void {
     setWorkspace((current) => ({
       ...current,
       tabs: current.tabs.map((tab) =>
         tab.id === current.activeTabId
           ? { ...tab, query, updatedAt: Date.now() }
-          : tab
-      )
-    }))
+          : tab,
+      ),
+    }));
   }
-  const [railView, setRailView] = useState<'servers' | 'saved' | 'history'>(
-    'servers'
-  )
-  const [objectSearch, setObjectSearch] = useState('')
+  const [railView, setRailView] = useState<"servers" | "saved" | "history">(
+    "servers",
+  );
+  const [objectSearch, setObjectSearch] = useState("");
   const [collapsedSchemas, setCollapsedSchemas] = useState<
     Record<string, boolean>
-  >({})
+  >({});
   const [sidebarHidden, setSidebarHidden] = useState(() => {
     try {
-      return localStorage.getItem('rowfish.sidebar-hidden') !== 'false'
+      return localStorage.getItem("rowfish.sidebar-hidden") !== "false";
     } catch {
-      return true
+      return true;
     }
-  })
-  const [layout, setLayout] = useState(loadLayout)
+  });
+  const [layout, setLayout] = useState(loadLayout);
   const resizeLayout = (
-    key: 'sidebar' | 'split' | 'rowPanel',
-    value: number
+    key: "sidebar" | "split" | "rowPanel",
+    value: number,
   ): void => {
     setLayout((current) => {
       const next = {
@@ -186,366 +186,368 @@ export default function DatabaseWorkspace({
         [key]: clampLayout(
           value,
           key,
-          key === 'sidebar' || key === 'rowPanel'
+          key === "sidebar" || key === "rowPanel"
             ? window.innerWidth
-            : undefined
-        )
-      }
-      saveLayout(next)
-      return next
-    })
-  }
-  const workspaceRef = useRef<HTMLElement>(null)
+            : undefined,
+        ),
+      };
+      saveLayout(next);
+      return next;
+    });
+  };
+  const workspaceRef = useRef<HTMLElement>(null);
   useEffect(() => {
     try {
-      localStorage.setItem('rowfish.sidebar-hidden', String(sidebarHidden))
+      localStorage.setItem("rowfish.sidebar-hidden", String(sidebarHidden));
     } catch {
       /* storage may be unavailable */
     }
-  }, [sidebarHidden])
+  }, [sidebarHidden]);
   useEffect(() => {
-    if (settingsView) return
+    if (settingsView) return;
     const dismiss = (event: KeyboardEvent): void => {
       if (
-        event.key === 'Escape' &&
+        event.key === "Escape" &&
         !sidebarHidden &&
         !document.querySelector('[role="dialog"]')
       )
-        setSidebarHidden(true)
-    }
+        setSidebarHidden(true);
+    };
     const outside = (event: PointerEvent): void => {
-      const target = event.target as Node
+      const target = event.target as Node;
       if (
         !sidebarHidden &&
         workspaceRef.current &&
-        !workspaceRef.current.querySelector('.db-rail')?.contains(target) &&
+        !workspaceRef.current.querySelector(".db-rail")?.contains(target) &&
         !workspaceRef.current
-          .querySelector('.sidebar-toggle')
+          .querySelector(".sidebar-toggle")
           ?.contains(target) &&
-        !(target instanceof Element && target.closest('.layout-resizer'))
+        !(target instanceof Element && target.closest(".layout-resizer"))
       )
-        setSidebarHidden(true)
-    }
-    document.addEventListener('keydown', dismiss)
-    document.addEventListener('pointerdown', outside)
+        setSidebarHidden(true);
+    };
+    document.addEventListener("keydown", dismiss);
+    document.addEventListener("pointerdown", outside);
     return () => {
-      document.removeEventListener('keydown', dismiss)
-      document.removeEventListener('pointerdown', outside)
-    }
-  }, [sidebarHidden, settingsView])
+      document.removeEventListener("keydown", dismiss);
+      document.removeEventListener("pointerdown", outside);
+    };
+  }, [sidebarHidden, settingsView]);
   const [selectedTable, setSelectedTable] = useState<{
-    connectionId: string
-    schema: string
-    name: string
-  } | null>(null)
+    connectionId: string;
+    schema: string;
+    name: string;
+  } | null>(null);
   const [tableDetails, setTableDetails] = useState<PostgresTableDetails | null>(
-    null
-  )
-  const [metadataError, setMetadataError] = useState('')
-  const [metadataLoading, setMetadataLoading] = useState(false)
-  const metadataRequest = useRef(0)
+    null,
+  );
+  const [metadataError, setMetadataError] = useState("");
+  const [metadataLoading, setMetadataLoading] = useState(false);
+  const metadataRequest = useRef(0);
   const [resultView, setResultView] = useState<
-    'data' | 'structure' | 'indexes' | 'plan'
-  >('data')
-  const [serverInfo, setServerInfo] = useState<PostgresServerInfo | null>(null)
-  const [saveDialog, setSaveDialog] = useState(false)
-  const [queryName, setQueryName] = useState('')
-  const [queryFolder, setQueryFolder] = useState('General')
-  const [notice, setNotice] = useState('')
-  const [showHelp, setShowHelp] = useState(false)
+    "data" | "structure" | "indexes" | "plan"
+  >("data");
+  const [serverInfo, setServerInfo] = useState<PostgresServerInfo | null>(null);
+  const [saveDialog, setSaveDialog] = useState(false);
+  const [queryName, setQueryName] = useState("");
+  const [queryFolder, setQueryFolder] = useState("General");
+  const [notice, setNotice] = useState("");
+  const [showHelp, setShowHelp] = useState(false);
   const [sort, setSort] = useState<{
-    column: string
-    direction: 1 | -1
-  } | null>(null)
-  const [inspectedRow, setInspectedRow] = useState<DatabaseRow | null>(null)
-  const [rowSource, setRowSource] = useState<RowSource | null>(null)
-  const [rowDirty, setRowDirty] = useState(false)
-  const [rowBusy, setRowBusy] = useState(false)
+    column: string;
+    direction: 1 | -1;
+  } | null>(null);
+  const [inspectedRow, setInspectedRow] = useState<DatabaseRow | null>(null);
+  const [rowSource, setRowSource] = useState<RowSource | null>(null);
+  const [rowDirty, setRowDirty] = useState(false);
+  const [rowBusy, setRowBusy] = useState(false);
   function closeRowPanel(): boolean {
-    if (rowBusy) return false
-    if (rowDirty && !window.confirm('Discard unsaved changes to this row?'))
-      return false
-    setInspectedRow(null)
-    setRowDirty(false)
-    return true
+    if (rowBusy) return false;
+    if (rowDirty && !window.confirm("Discard unsaved changes to this row?"))
+      return false;
+    setInspectedRow(null);
+    setRowDirty(false);
+    return true;
   }
   function inspectRow(row: DatabaseRow): void {
-    if (row === inspectedRow || !closeRowPanel()) return
-    setInspectedRow(row)
+    if (row === inspectedRow || !closeRowPanel()) return;
+    setInspectedRow(row);
   }
   useEffect(() => {
-    if (!rowDirty) return
+    if (!rowDirty) return;
     const prevent = (event: BeforeUnloadEvent): void => {
-      event.preventDefault()
-      event.returnValue = ''
-    }
-    window.addEventListener('beforeunload', prevent)
-    return () => window.removeEventListener('beforeunload', prevent)
-  }, [rowDirty])
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", prevent);
+    return () => window.removeEventListener("beforeunload", prevent);
+  }, [rowDirty]);
   const [rememberQueries, setRememberQueries] = useState(() => {
     try {
-      return localStorage.getItem('rowfish.remember-query-history') !== 'false'
+      return localStorage.getItem("rowfish.remember-query-history") !== "false";
     } catch {
-      return true
+      return true;
     }
-  })
+  });
   useEffect(() => {
     try {
       localStorage.setItem(
-        'rowfish.remember-query-history',
-        String(rememberQueries)
-      )
+        "rowfish.remember-query-history",
+        String(rememberQueries),
+      );
     } catch {}
-  }, [rememberQueries])
-  const workspaceSnapshot = useRef(workspace)
-  workspaceSnapshot.current = workspace
+  }, [rememberQueries]);
+  const workspaceSnapshot = useRef(workspace);
+  workspaceSnapshot.current = workspace;
   useEffect(() => {
     const timer = window.setTimeout(() => {
       if (!saveQueryWorkspace(workspace))
         setNotice(
-          'Workspace could not be saved locally. Export important SQL before closing.'
-        )
-    }, 250)
-    return () => window.clearTimeout(timer)
-  }, [workspace])
+          "Workspace could not be saved locally. Export important SQL before closing.",
+        );
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [workspace]);
   useEffect(() => {
     const flush = (): void => {
-      saveQueryWorkspace(workspaceSnapshot.current)
-    }
-    window.addEventListener('beforeunload', flush)
+      saveQueryWorkspace(workspaceSnapshot.current);
+    };
+    window.addEventListener("beforeunload", flush);
     return () => {
-      flush()
-      window.removeEventListener('beforeunload', flush)
-    }
-  }, [])
-  const [collection, setCollection] = useState('documents')
-  const [mongoQueryMode, setMongoQueryMode] = useState<'find' | 'aggregate'>(
-    'find'
-  )
-  const [maxRows, setMaxRows] = useState(1_000)
-  const [runState, setRunState] = useState<RunState>('idle')
-  const [rows, setRows] = useState<DatabaseRow[]>([])
-  const [columns, setColumns] = useState<string[]>([])
-  const [queryError, setQueryError] = useState('')
-  const [queryPlan, setQueryPlan] = useState<unknown>(null)
-  const [sqlSelection, setSqlSelection] = useState('')
-  const explainPending = useRef(false)
-  const [querySummary, setQuerySummary] = useState('No query run.')
+      flush();
+      window.removeEventListener("beforeunload", flush);
+    };
+  }, []);
+  const [collection, setCollection] = useState("documents");
+  const [mongoQueryMode, setMongoQueryMode] = useState<"find" | "aggregate">(
+    "find",
+  );
+  const [maxRows, setMaxRows] = useState(1_000);
+  const [runState, setRunState] = useState<RunState>("idle");
+  const [rows, setRows] = useState<DatabaseRow[]>([]);
+  const [columns, setColumns] = useState<string[]>([]);
+  const [queryError, setQueryError] = useState("");
+  const [queryPlan, setQueryPlan] = useState<unknown>(null);
+  const [sqlSelection, setSqlSelection] = useState("");
+  const explainPending = useRef(false);
+  const [querySummary, setQuerySummary] = useState("No query run.");
   const [serverDatabases, setServerDatabases] = useState<
     Record<string, DatabaseBrowserDatabase[]>
-  >({})
+  >({});
   const [completionColumns, setCompletionColumns] = useState<
     Record<string, { schema: string; table: string; name: string }[]>
-  >({})
+  >({});
   const [tableLists, setTableLists] = useState<
     Record<string, DatabaseBrowserTable[]>
-  >({})
+  >({});
   const [browserLoading, setBrowserLoading] = useState<Record<string, boolean>>(
-    {}
-  )
-  const [browserErrors, setBrowserErrors] = useState<Record<string, string>>({})
+    {},
+  );
+  const [browserErrors, setBrowserErrors] = useState<Record<string, string>>(
+    {},
+  );
   const [mongoDatabases, setMongoDatabases] = useState<
     Record<string, MongoBrowserDatabase[]>
-  >({})
+  >({});
   const [mongoCollections, setMongoCollections] = useState<
     Record<string, MongoBrowserCollection[]>
-  >({})
+  >({});
   const [expandedMongoDatabases, setExpandedMongoDatabases] = useState<
     Record<string, boolean>
-  >({})
-  const [selectedMongoDatabase, setSelectedMongoDatabase] = useState('')
+  >({});
+  const [selectedMongoDatabase, setSelectedMongoDatabase] = useState("");
   const [selectedMongoCollection, setSelectedMongoCollection] =
-    useState<MongoBrowserCollection | null>(null)
+    useState<MongoBrowserCollection | null>(null);
   const [mongoOperation, setMongoOperation] = useState<MongoOperation | null>(
-    null
-  )
-  const [mongoOperationBusy, setMongoOperationBusy] = useState(false)
-  const [mongoDocument, setMongoDocument] = useState('{}')
-  const [mongoFilter, setMongoFilter] = useState('{}')
-  const [mongoUpdate, setMongoUpdate] = useState('{"$set":{}}')
-  const [mongoMany, setMongoMany] = useState(false)
-  const [mongoUpsert, setMongoUpsert] = useState(false)
-  const [mongoIndexKeys, setMongoIndexKeys] = useState('{"field":1}')
-  const [mongoUniqueIndex, setMongoUniqueIndex] = useState(false)
-  const [mongoIndexName, setMongoIndexName] = useState('')
-  const [mongoOperationError, setMongoOperationError] = useState('')
-  const [mongoOperationSummary, setMongoOperationSummary] = useState('')
-  const [mongoCollectionName, setMongoCollectionName] = useState('')
-  const [mongoDatabaseName, setMongoDatabaseName] = useState('')
-  const [mongoCreateNewDatabase, setMongoCreateNewDatabase] = useState(false)
-  const [mongoConfirmName, setMongoConfirmName] = useState('')
-  const [mongoDeleteConfirmed, setMongoDeleteConfirmed] = useState(false)
-  const [viewport, setViewport] = useState({ top: 0, height: 480 })
-  const scrollElement = useRef<HTMLDivElement>(null)
-  const activeQuery = useRef<{ id: string; connectionId: string } | null>(null)
-  const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase())
-  const deferredRows = useDeferredValue(rows)
+    null,
+  );
+  const [mongoOperationBusy, setMongoOperationBusy] = useState(false);
+  const [mongoDocument, setMongoDocument] = useState("{}");
+  const [mongoFilter, setMongoFilter] = useState("{}");
+  const [mongoUpdate, setMongoUpdate] = useState('{"$set":{}}');
+  const [mongoMany, setMongoMany] = useState(false);
+  const [mongoUpsert, setMongoUpsert] = useState(false);
+  const [mongoIndexKeys, setMongoIndexKeys] = useState('{"field":1}');
+  const [mongoUniqueIndex, setMongoUniqueIndex] = useState(false);
+  const [mongoIndexName, setMongoIndexName] = useState("");
+  const [mongoOperationError, setMongoOperationError] = useState("");
+  const [mongoOperationSummary, setMongoOperationSummary] = useState("");
+  const [mongoCollectionName, setMongoCollectionName] = useState("");
+  const [mongoDatabaseName, setMongoDatabaseName] = useState("");
+  const [mongoCreateNewDatabase, setMongoCreateNewDatabase] = useState(false);
+  const [mongoConfirmName, setMongoConfirmName] = useState("");
+  const [mongoDeleteConfirmed, setMongoDeleteConfirmed] = useState(false);
+  const [viewport, setViewport] = useState({ top: 0, height: 480 });
+  const scrollElement = useRef<HTMLDivElement>(null);
+  const activeQuery = useRef<{ id: string; connectionId: string } | null>(null);
+  const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase());
+  const deferredRows = useDeferredValue(rows);
 
   useEffect(() => {
-    setRows([])
-    setColumns([])
-    setQueryError('')
-    setQueryPlan(null)
-    setSqlSelection('')
-    setRowSource(null)
-    setQuerySummary('Ready to execute.')
-    explainPending.current = false
-  }, [workspace.activeTabId])
+    setRows([]);
+    setColumns([]);
+    setQueryError("");
+    setQueryPlan(null);
+    setSqlSelection("");
+    setRowSource(null);
+    setQuerySummary("Ready to execute.");
+    explainPending.current = false;
+  }, [workspace.activeTabId]);
 
   const activeConnection =
-    connections.find((connection) => connection.id === activeId) ?? null
+    connections.find((connection) => connection.id === activeId) ?? null;
   const autocompleteTables = useMemo(() => {
-    const byTable = new Map<string, string[]>()
+    const byTable = new Map<string, string[]>();
     for (const column of completionColumns[activeId] ?? []) {
-      const key = JSON.stringify([column.schema, column.table])
-      const names = byTable.get(key) ?? []
-      names.push(column.name)
-      byTable.set(key, names)
+      const key = JSON.stringify([column.schema, column.table]);
+      const names = byTable.get(key) ?? [];
+      names.push(column.name);
+      byTable.set(key, names);
     }
     return (tableLists[activeId] ?? []).map((table) => ({
       ...table,
-      columns: byTable.get(JSON.stringify([table.schema, table.name])) ?? []
-    }))
-  }, [tableLists, completionColumns, activeId])
+      columns: byTable.get(JSON.stringify([table.schema, table.name])) ?? [],
+    }));
+  }, [tableLists, completionColumns, activeId]);
   const visibleRows = useMemo(() => {
     const filtered = deferredSearch
       ? deferredRows.filter((row) =>
           Object.values(row).some((value) =>
-            String(value ?? '')
+            String(value ?? "")
               .toLocaleLowerCase()
-              .includes(deferredSearch)
-          )
+              .includes(deferredSearch),
+          ),
         )
-      : deferredRows
-    if (!sort) return filtered
+      : deferredRows;
+    if (!sort) return filtered;
     return [...filtered].sort((a, b) => {
       const x = a[sort.column],
-        y = b[sort.column]
-      if (x === y) return 0
-      if (x == null) return sort.direction
-      if (y == null) return -sort.direction
+        y = b[sort.column];
+      if (x === y) return 0;
+      if (x == null) return sort.direction;
+      if (y == null) return -sort.direction;
       return (
-        (typeof x === 'number' && typeof y === 'number'
+        (typeof x === "number" && typeof y === "number"
           ? x - y
           : String(x).localeCompare(String(y), undefined, {
-              numeric: true
+              numeric: true,
             })) * sort.direction
-      )
-    })
-  }, [deferredRows, deferredSearch, sort])
+      );
+    });
+  }, [deferredRows, deferredSearch, sort]);
   const { start: firstVisible, end: lastVisible } = getVirtualRowRange(
     visibleRows.length,
     viewport.top,
     viewport.height,
-    ROW_HEIGHT
-  )
-  const windowedRows = visibleRows.slice(firstVisible, lastVisible)
-  const deferredQuery = runState !== 'idle'
+    ROW_HEIGHT,
+  );
+  const windowedRows = visibleRows.slice(firstVisible, lastVisible);
+  const deferredQuery = runState !== "idle";
 
   function newTab(
-    query = '',
+    query = "",
     title?: string,
     connection = activeConnection,
-    stored?: Pick<SavedQuery, 'kind' | 'connectionKey'>
+    stored?: Pick<SavedQuery, "kind" | "connectionKey">,
   ): void {
-    if (runState !== 'idle' || !closeRowPanel()) return
+    if (runState !== "idle" || !closeRowPanel()) return;
     if (workspace.tabs.length >= 100) {
-      setNotice('Close an existing tab before opening more (100 tab limit).')
-      return
+      setNotice("Close an existing tab before opening more (100 tab limit).");
+      return;
     }
-    if (stored) setSidebarHidden(true)
+    if (stored) setSidebarHidden(true);
     const tab = makeQueryTab(
-      stored?.kind ?? connection?.kind ?? 'postgres',
+      stored?.kind ?? connection?.kind ?? "postgres",
       stored?.connectionKey ?? queryConnectionKey(connection),
       query,
-      title
-    )
+      title,
+    );
     setWorkspace((current) => ({
       ...current,
       tabs: [...current.tabs, tab],
-      activeTabId: tab.id
-    }))
+      activeTabId: tab.id,
+    }));
   }
   function closeTab(id: string): void {
-    if (!closeRowPanel()) return
+    if (!closeRowPanel()) return;
     setWorkspace((current) => {
-      const tabs = current.tabs.filter((tab) => tab.id !== id)
+      const tabs = current.tabs.filter((tab) => tab.id !== id);
       if (!tabs.length)
         tabs.push(
           makeQueryTab(
-            activeConnection?.kind ?? 'postgres',
-            queryConnectionKey(activeConnection)
-          )
-        )
+            activeConnection?.kind ?? "postgres",
+            queryConnectionKey(activeConnection),
+          ),
+        );
       return {
         ...current,
         tabs,
         activeTabId:
           current.activeTabId === id
             ? tabs[tabs.length - 1]!.id
-            : current.activeTabId
-      }
-    })
+            : current.activeTabId,
+      };
+    });
   }
   function updateHistory(id: string, update: Partial<QueryHistoryEntry>): void {
     setWorkspace((current) => ({
       ...current,
       history: current.history.map((entry) =>
-        entry.id === id ? { ...entry, ...update } : entry
-      )
-    }))
+        entry.id === id ? { ...entry, ...update } : entry,
+      ),
+    }));
   }
   function saveCurrentQuery(): void {
-    if (!queryText.trim()) return
+    if (!queryText.trim()) return;
     setQueryName(
-      activeTab?.title === 'Untitled query' ? '' : (activeTab?.title ?? '')
-    )
-    setSaveDialog(true)
+      activeTab?.title === "Untitled query" ? "" : (activeTab?.title ?? ""),
+    );
+    setSaveDialog(true);
   }
   async function formatQuery(): Promise<void> {
-    const original = queryText
-    const tabId = workspace.activeTabId
+    const original = queryText;
+    const tabId = workspace.activeTabId;
     try {
-      const { format } = await import('sql-formatter')
-      const current = workspaceSnapshot.current
+      const { format } = await import("sql-formatter");
+      const current = workspaceSnapshot.current;
       if (
         current.activeTabId !== tabId ||
         current.tabs.find((tab) => tab.id === tabId)?.query !== original
       )
-        return
+        return;
       setQueryText(
-        format(queryText, { language: 'postgresql', keywordCase: 'upper' })
-      )
+        format(queryText, { language: "postgresql", keywordCase: "upper" }),
+      );
     } catch (error) {
       setNotice(
-        error instanceof Error ? error.message : 'Unable to format this query.'
-      )
+        error instanceof Error ? error.message : "Unable to format this query.",
+      );
     }
   }
   useEffect(() => {
     const handler = (event: KeyboardEvent): void => {
-      if (document.querySelector('[role="dialog"]')) return
-      if (event.key === 'F5') {
-        event.preventDefault()
-        void runQuery()
-        return
+      if (document.querySelector('[role="dialog"]')) return;
+      if (event.key === "F5") {
+        event.preventDefault();
+        void runQuery();
+        return;
       }
-      if (!(event.metaKey || event.ctrlKey)) return
-      if (event.shiftKey && event.key.toLowerCase() === 'f') {
-        event.preventDefault()
-        formatQuery()
+      if (!(event.metaKey || event.ctrlKey)) return;
+      if (event.shiftKey && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        formatQuery();
       }
-      if (event.key.toLowerCase() === 's') {
-        event.preventDefault()
-        saveCurrentQuery()
+      if (event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        saveCurrentQuery();
       }
-      if (event.key.toLowerCase() === 't') {
-        event.preventDefault()
-        newTab()
+      if (event.key.toLowerCase() === "t") {
+        event.preventDefault();
+        newTab();
       }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   }, [
     queryText,
     activeTab,
@@ -554,23 +556,23 @@ export default function DatabaseWorkspace({
     rowBusy,
     selectedTable,
     tableDetails,
-    runState
-  ])
+    runState,
+  ]);
   useEffect(() => {
-    setServerInfo(null)
-    if (activeConnection?.kind === 'postgres') {
-      let cancelled = false
+    setServerInfo(null);
+    if (activeConnection?.kind === "postgres") {
+      let cancelled = false;
       void window.api.database
         .getPostgresServerInfo(activeConnection!.id)
         .then((info) => {
-          if (!cancelled) setServerInfo(info)
+          if (!cancelled) setServerInfo(info);
         })
-        .catch(() => {})
+        .catch(() => {});
       return () => {
-        cancelled = true
-      }
+        cancelled = true;
+      };
     }
-  }, [activeConnection?.id])
+  }, [activeConnection?.id]);
 
   useEffect(() => {
     if (!(
@@ -580,50 +582,50 @@ export default function DatabaseWorkspace({
       showHelp ||
       mongoOperation
     ))
-      return
+      return;
     const previous =
       document.activeElement instanceof HTMLElement
         ? document.activeElement
-        : null
-    const modal = document.querySelector<HTMLElement>('[role="dialog"]')
+        : null;
+    const modal = document.querySelector<HTMLElement>('[role="dialog"]');
     if (showQueryConnection && !queryConnectionBusy)
-      modal?.querySelector<HTMLElement>('button:not(:disabled)')?.focus()
+      modal?.querySelector<HTMLElement>("button:not(:disabled)")?.focus();
     const onKey = (event: KeyboardEvent): void => {
       if (
-        event.key === 'Escape' &&
+        event.key === "Escape" &&
         !connecting &&
         !queryConnectionBusy &&
         !mongoOperationBusy
       ) {
-        cancelQueryConnection()
-        setShowConnect(false)
-        setSaveDialog(false)
-        setShowHelp(false)
-        setMongoOperation(null)
+        cancelQueryConnection();
+        setShowConnect(false);
+        setSaveDialog(false);
+        setShowHelp(false);
+        setMongoOperation(null);
       }
-      if (event.key === 'Tab' && modal) {
+      if (event.key === "Tab" && modal) {
         const items = [
           ...modal.querySelectorAll<HTMLElement>(
-            'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]'
-          )
-        ]
+            'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]',
+          ),
+        ];
         const first = items[0],
-          last = items[items.length - 1]
+          last = items[items.length - 1];
         if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault()
-          last?.focus()
+          event.preventDefault();
+          last?.focus();
         }
         if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault()
-          first?.focus()
+          event.preventDefault();
+          first?.focus();
         }
       }
-    }
-    window.addEventListener('keydown', onKey)
+    };
+    window.addEventListener("keydown", onKey);
     return () => {
-      window.removeEventListener('keydown', onKey)
-      previous?.focus()
-    }
+      window.removeEventListener("keydown", onKey);
+      previous?.focus();
+    };
   }, [
     showConnect,
     showQueryConnection,
@@ -632,84 +634,88 @@ export default function DatabaseWorkspace({
     showHelp,
     mongoOperation,
     connecting,
-    mongoOperationBusy
-  ])
+    mongoOperationBusy,
+  ]);
 
   async function refreshSavedConnections(): Promise<void> {
-    setSavedConnections(await window.api.database.saved())
+    setSavedConnections(await window.api.database.saved());
   }
 
   async function inspectConnection(
-    connection: DatabaseConnectionSummary
+    connection: DatabaseConnectionSummary,
   ): Promise<void> {
-    setBrowserLoading((current) => ({ ...current, [connection.id]: true }))
-    setBrowserErrors((current) => ({ ...current, [connection.id]: '' }))
+    setBrowserLoading((current) => ({ ...current, [connection.id]: true }));
+    setBrowserErrors((current) => ({ ...current, [connection.id]: "" }));
     try {
-      if (connection.kind === 'mongodb') {
-        let databases: MongoBrowserDatabase[]
+      if (connection.kind === "mongodb") {
+        let databases: MongoBrowserDatabase[];
         try {
           databases = await window.api.database.listMongoDatabases(
-            connection.id
-          )
+            connection.id,
+          );
         } catch (error) {
-          databases = connection.database ? [{ name: connection.database }] : []
+          databases = connection.database
+            ? [{ name: connection.database }]
+            : [];
           if (connection.database)
             setBrowserErrors((current) => ({
               ...current,
-              [connection.id]: `Could not list all databases; showing the connected database only. ${error instanceof Error ? error.message : ''}`
-            }))
-          else throw error
+              [connection.id]: `Could not list all databases; showing the connected database only. ${error instanceof Error ? error.message : ""}`,
+            }));
+          else throw error;
         }
         if (databases.length === 0 && connection.database) {
-          databases = [{ name: connection.database }]
+          databases = [{ name: connection.database }];
           setBrowserErrors((current) => ({
             ...current,
             [connection.id]:
-              'The server returned no database list; showing the connected database only.'
-          }))
+              "The server returned no database list; showing the connected database only.",
+          }));
         }
         setMongoDatabases((current) => ({
           ...current,
-          [connection.id]: databases
-        }))
+          [connection.id]: databases,
+        }));
         const preferred = databases.some(
-          (database) => database.name === connection.database
+          (database) => database.name === connection.database,
         )
           ? connection.database
-          : (databases[0]?.name ?? '')
+          : (databases[0]?.name ?? "");
         if (preferred) {
-          const key = mongoBrowserKey(connection.id, preferred)
+          const key = mongoBrowserKey(connection.id, preferred);
           const collections = await window.api.database.listMongoCollections(
             connection.id,
-            preferred
-          )
+            preferred,
+          );
           setMongoCollections((current) => ({
             ...current,
-            [key]: collections
-          }))
+            [key]: collections,
+          }));
           setExpandedMongoDatabases((current) => ({
             ...current,
-            [key]: true
-          }))
-          setSelectedMongoDatabase(preferred)
+            [key]: true,
+          }));
+          setSelectedMongoDatabase(preferred);
         }
       } else if (connection.serverMode) {
-        const databases = await window.api.database.listDatabases(connection.id)
+        const databases = await window.api.database.listDatabases(
+          connection.id,
+        );
         setServerDatabases((current) => ({
           ...current,
-          [connection.id]: databases
-        }))
+          [connection.id]: databases,
+        }));
       } else {
-        const tables = await window.api.database.listTables(connection.id)
-        setTableLists((current) => ({ ...current, [connection.id]: tables }))
+        const tables = await window.api.database.listTables(connection.id);
+        setTableLists((current) => ({ ...current, [connection.id]: tables }));
         try {
           const columns = await window.api.database.listPostgresColumns(
-            connection.id
-          )
+            connection.id,
+          );
           setCompletionColumns((current) => ({
             ...current,
-            [connection.id]: columns
-          }))
+            [connection.id]: columns,
+          }));
         } catch {
           /* Table browsing remains available when column metadata is restricted. */
         }
@@ -720,10 +726,10 @@ export default function DatabaseWorkspace({
         [connection.id]:
           error instanceof Error
             ? error.message
-            : 'Could not load the PostgreSQL browser.'
-      }))
+            : "Could not load the PostgreSQL browser.",
+      }));
     } finally {
-      setBrowserLoading((current) => ({ ...current, [connection.id]: false }))
+      setBrowserLoading((current) => ({ ...current, [connection.id]: false }));
     }
   }
 
@@ -732,140 +738,140 @@ export default function DatabaseWorkspace({
       setConnectionError(
         error instanceof Error
           ? error.message
-          : 'Could not load saved connections.'
-      )
-    })
-  }, [])
+          : "Could not load saved connections.",
+      );
+    });
+  }, []);
 
   useEffect(() => {
     const unsubscribe = window.api.database.onEvent((event) => {
-      if (event.type === 'connection:closed') {
+      if (event.type === "connection:closed") {
         setConnections((current) =>
           current.filter(
             (connection) =>
               connection.id !== event.connectionId &&
-              connection.parentConnectionId !== event.connectionId
-          )
-        )
+              connection.parentConnectionId !== event.connectionId,
+          ),
+        );
         setActiveId((current) =>
-          current === event.connectionId ? '' : current
-        )
+          current === event.connectionId ? "" : current,
+        );
         setTableLists((current) => {
-          const next = { ...current }
-          delete next[event.connectionId]
-          return next
-        })
+          const next = { ...current };
+          delete next[event.connectionId];
+          return next;
+        });
         setServerDatabases((current) => {
-          const next = { ...current }
-          delete next[event.connectionId]
-          return next
-        })
+          const next = { ...current };
+          delete next[event.connectionId];
+          return next;
+        });
         setMongoDatabases((current) => {
-          const next = { ...current }
-          delete next[event.connectionId]
-          return next
-        })
+          const next = { ...current };
+          delete next[event.connectionId];
+          return next;
+        });
         setMongoCollections((current) =>
           Object.fromEntries(
             Object.entries(current).filter(
-              ([key]) => !key.startsWith(`${event.connectionId}::`)
-            )
-          )
-        )
+              ([key]) => !key.startsWith(`${event.connectionId}::`),
+            ),
+          ),
+        );
         if (activeQuery.current?.connectionId === event.connectionId) {
           updateHistory(activeQuery.current.id, {
-            status: 'cancelled',
-            error: event.message
-          })
-          activeQuery.current = null
-          setRunState('idle')
+            status: "cancelled",
+            error: event.message,
+          });
+          activeQuery.current = null;
+          setRunState("idle");
         }
-        if (event.message) setQuerySummary(event.message)
-        return
+        if (event.message) setQuerySummary(event.message);
+        return;
       }
 
-      if (event.type === 'query:cancelled') {
-        if (activeQuery.current?.id !== event.queryId) return
-        updateHistory(event.queryId, { status: 'cancelled' })
-        activeQuery.current = null
-        setRunState('idle')
+      if (event.type === "query:cancelled") {
+        if (activeQuery.current?.id !== event.queryId) return;
+        updateHistory(event.queryId, { status: "cancelled" });
+        activeQuery.current = null;
+        setRunState("idle");
         setQuerySummary(
-          'Query cancelled. The connection was closed to stop server-side work.'
-        )
-        return
+          "Query cancelled. The connection was closed to stop server-side work.",
+        );
+        return;
       }
 
-      if (activeQuery.current?.id !== event.queryId) return
-      if (event.type === 'query:rows') {
+      if (activeQuery.current?.id !== event.queryId) return;
+      if (event.type === "query:rows") {
         if (explainPending.current && event.rows.length)
-          setQueryPlan(event.rows[0])
+          setQueryPlan(event.rows[0]);
         startTransition(() => {
           setRows((current) =>
             current.length >= DATABASE_LIMITS.maxRows
               ? current
-              : [...current, ...event.rows].slice(0, DATABASE_LIMITS.maxRows)
-          )
+              : [...current, ...event.rows].slice(0, DATABASE_LIMITS.maxRows),
+          );
           setColumns((current) =>
             [...new Set([...current, ...event.columns])].slice(
               0,
-              DATABASE_LIMITS.maxColumns
-            )
-          )
-        })
-        return
+              DATABASE_LIMITS.maxColumns,
+            ),
+          );
+        });
+        return;
       }
-      if (event.type === 'query:complete') {
+      if (event.type === "query:complete") {
         updateHistory(event.queryId, {
-          status: 'success',
+          status: "success",
           elapsedMs: event.elapsedMs,
-          rowCount: event.receivedRows
-        })
-        activeQuery.current = null
-        setRunState('idle')
-        setQueryError('')
+          rowCount: event.receivedRows,
+        });
+        activeQuery.current = null;
+        setRunState("idle");
+        setQueryError("");
         setQuerySummary(
           explainPending.current
             ? `Estimated plan · ${(event.elapsedMs / 1_000).toFixed(2)} s · no ANALYZE`
-            : `${event.receivedRows.toLocaleString()} rows${event.affectedRows ? ` · ${event.affectedRows.toLocaleString()} affected` : ''}${(event.statementCount ?? 1) > 1 ? ` · ${event.statementCount} statements (last result shown)` : ''} · ${(event.elapsedMs / 1_000).toFixed(2)} s${event.truncated ? ' · result capped (row or 16 MB limit)' : ''}`
-        )
-        return
+            : `${event.receivedRows.toLocaleString()} rows${event.affectedRows ? ` · ${event.affectedRows.toLocaleString()} affected` : ""}${(event.statementCount ?? 1) > 1 ? ` · ${event.statementCount} statements (last result shown)` : ""} · ${(event.elapsedMs / 1_000).toFixed(2)} s${event.truncated ? " · result capped (row or 16 MB limit)" : ""}`,
+        );
+        return;
       }
-      if (event.type === 'query:error') {
+      if (event.type === "query:error") {
         updateHistory(event.queryId, {
-          status: 'error',
-          error: event.message
-        })
-        activeQuery.current = null
-        setRunState('idle')
-        setQueryError(event.message)
-        setQuerySummary('Query failed.')
+          status: "error",
+          error: event.message,
+        });
+        activeQuery.current = null;
+        setRunState("idle");
+        setQueryError(event.message);
+        setQuerySummary("Query failed.");
       }
-    })
-    return unsubscribe
-  }, [])
+    });
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
-    setInspectedRow(null)
-    setRowSource(null)
-    setSelectedMongoCollection(null)
+    setInspectedRow(null);
+    setRowSource(null);
+    setSelectedMongoCollection(null);
     if (selectedTable?.connectionId !== activeConnection?.id) {
-      setSelectedTable(null)
-      setTableDetails(null)
-      metadataRequest.current += 1
+      setSelectedTable(null);
+      setTableDetails(null);
+      metadataRequest.current += 1;
     }
-    setResultView('data')
-    setSort(null)
+    setResultView("data");
+    setSort(null);
     if (activeConnection && !activeConnection!.serverMode) {
-      const key = queryConnectionKey(activeConnection)
+      const key = queryConnectionKey(activeConnection);
       setWorkspace((current) => {
         const selected = current.tabs.find(
-          (tab) => tab.id === current.activeTabId
-        )
+          (tab) => tab.id === current.activeTabId,
+        );
         if (
           selected?.connectionKey === key &&
           selected.kind === activeConnection.kind
         )
-          return current
+          return current;
         if (
           selected &&
           !selected.connectionKey &&
@@ -874,17 +880,17 @@ export default function DatabaseWorkspace({
           return {
             ...current,
             tabs: current.tabs.map((tab) =>
-              tab.id === selected.id ? { ...tab, connectionKey: key } : tab
-            )
-          }
+              tab.id === selected.id ? { ...tab, connectionKey: key } : tab,
+            ),
+          };
         const existing = current.tabs.find(
           (tab) =>
-            tab.connectionKey === key && tab.kind === activeConnection?.kind
-        )
-        if (existing) return { ...current, activeTabId: existing.id }
+            tab.connectionKey === key && tab.kind === activeConnection?.kind,
+        );
+        if (existing) return { ...current, activeTabId: existing.id };
         const unbound = current.tabs.find(
-          (tab) => !tab.connectionKey && !tab.query
-        )
+          (tab) => !tab.connectionKey && !tab.query,
+        );
         if (unbound)
           return {
             ...current,
@@ -892,74 +898,74 @@ export default function DatabaseWorkspace({
             tabs: current.tabs.map((tab) =>
               tab.id === unbound.id
                 ? { ...tab, kind: activeConnection?.kind, connectionKey: key }
-                : tab
-            )
-          }
-        const tab = makeQueryTab(activeConnection?.kind, key)
+                : tab,
+            ),
+          };
+        const tab = makeQueryTab(activeConnection?.kind, key);
         return {
           ...current,
           tabs: [...current.tabs, tab],
-          activeTabId: tab.id
-        }
-      })
+          activeTabId: tab.id,
+        };
+      });
     }
-    if (activeConnection?.kind === 'mongodb') {
-      setCollection('documents')
-      setMongoQueryMode('find')
-      setSelectedMongoDatabase(activeConnection!.database || '')
-      setSelectedMongoCollection(null)
+    if (activeConnection?.kind === "mongodb") {
+      setCollection("documents");
+      setMongoQueryMode("find");
+      setSelectedMongoDatabase(activeConnection!.database || "");
+      setSelectedMongoCollection(null);
     }
-    setRows([])
-    setColumns([])
-    setQueryError('')
-    setQueryPlan(null)
-    explainPending.current = false
+    setRows([]);
+    setColumns([]);
+    setQueryError("");
+    setQueryPlan(null);
+    explainPending.current = false;
     setQuerySummary(
       activeConnection
-        ? `${activeConnection?.kind !== 'mongodb' ? 'PostgreSQL' : 'MongoDB'} · ${activeConnection!.serverMode ? 'server browser' : activeConnection!.database}`
-        : 'No query run.'
-    )
-    if (scrollElement.current) scrollElement.current.scrollTop = 0
+        ? `${activeConnection?.kind !== "mongodb" ? "PostgreSQL" : "MongoDB"} · ${activeConnection!.serverMode ? "server browser" : activeConnection!.database}`
+        : "No query run.",
+    );
+    if (scrollElement.current) scrollElement.current.scrollTop = 0;
   }, [
     activeConnection?.id,
     activeConnection?.kind,
     activeConnection?.database,
-    activeConnection?.serverMode
-  ])
+    activeConnection?.serverMode,
+  ]);
 
   useEffect(() => {
-    const element = scrollElement.current
-    if (!element) return
+    const element = scrollElement.current;
+    if (!element) return;
     const update = (): void =>
       setViewport({
         top: element.scrollTop,
-        height: element.clientHeight || 480
-      })
-    update()
-    const observer = new ResizeObserver(update)
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [columns.length > 0])
+        height: element.clientHeight || 480,
+      });
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [columns.length > 0]);
 
   function cancelQueryConnection(): void {
-    queryConnectionTabId.current = null
-    setShowQueryConnection(false)
-    setQueryConnectionServer(null)
-    setQueryConnectionError('')
+    queryConnectionTabId.current = null;
+    setShowQueryConnection(false);
+    setQueryConnectionServer(null);
+    setQueryConnectionError("");
   }
 
   function chooseQueryConnection(): void {
-    if (runState !== 'idle' || !activeTab || !closeRowPanel()) return
-    queryConnectionTabId.current = activeTab.id
-    setQueryConnectionServer(null)
-    setQueryConnectionDatabases([])
-    setQueryConnectionError('')
-    setShowQueryConnection(true)
+    if (runState !== "idle" || !activeTab || !closeRowPanel()) return;
+    queryConnectionTabId.current = activeTab.id;
+    setQueryConnectionServer(null);
+    setQueryConnectionDatabases([]);
+    setQueryConnectionError("");
+    setShowQueryConnection(true);
   }
 
   function bindQueryConnection(connection: DatabaseConnectionSummary): void {
-    const tabId = queryConnectionTabId.current
-    if (!tabId || connection.serverMode) return
+    const tabId = queryConnectionTabId.current;
+    if (!tabId || connection.serverMode) return;
     setWorkspace((current) => ({
       ...current,
       activeTabId: tabId,
@@ -968,69 +974,69 @@ export default function DatabaseWorkspace({
           ? {
               ...tab,
               connectionKey: queryConnectionKey(connection),
-              updatedAt: Date.now()
+              updatedAt: Date.now(),
             }
-          : tab
-      )
-    }))
-    cancelQueryConnection()
-    setRows([])
-    setColumns([])
-    setQueryError('')
-    setQueryPlan(null)
+          : tab,
+      ),
+    }));
+    cancelQueryConnection();
+    setRows([]);
+    setColumns([]);
+    setQueryError("");
+    setQueryPlan(null);
     setNotice(
-      'Query connected. Review the selected database, then run when ready.'
-    )
+      "Query connected. Review the selected database, then run when ready.",
+    );
   }
 
   async function selectQueryConnection(
     source: DatabaseConnectionSummary | SavedConnectionProfile,
     saved = false,
-    database?: string
+    database?: string,
   ): Promise<void> {
-    if (queryConnectionBusy || !queryConnectionTabId.current) return
-    setQueryConnectionBusy(true)
-    setQueryConnectionError('')
+    if (queryConnectionBusy || !queryConnectionTabId.current) return;
+    setQueryConnectionBusy(true);
+    setQueryConnectionError("");
     try {
       let connected = saved
         ? (connections.find(
             (item) =>
-              item.savedConnectionId === source.id && !item.parentConnectionId
+              item.savedConnectionId === source.id && !item.parentConnectionId,
           ) ?? (await window.api.database.connectSaved(source.id)))
-        : (source as DatabaseConnectionSummary)
+        : (source as DatabaseConnectionSummary);
       if (database) {
         connected = await window.api.database.openDatabase(
           connected.id,
-          database
-        )
+          database,
+        );
       }
       if (connected.serverMode) {
         // Keep the original draft active until an actual database is selected.
         setConnections((current) => [
           ...current.filter((item) => item.id !== connected.id),
-          connected
-        ])
-        setQueryConnectionServer(connected)
+          connected,
+        ]);
+        setQueryConnectionServer(connected);
         setQueryConnectionDatabases(
-          await window.api.database.listDatabases(connected.id)
-        )
-        setShowQueryConnection(true)
+          await window.api.database.listDatabases(connected.id),
+        );
+        setShowQueryConnection(true);
       } else {
-        addConnectedConnection(connected)
+        addConnectedConnection(connected);
       }
     } catch (error) {
       setQueryConnectionError(
         error instanceof Error
           ? error.message
-          : 'Could not connect. Try again or choose another connection.'
-      )
+          : "Could not connect. Try again or choose another connection.",
+      );
     } finally {
-      setQueryConnectionBusy(false)
+      setQueryConnectionBusy(false);
     }
   }
 
   function addConnectedConnection(connection: DatabaseConnectionSummary): void {
-    bindQueryConnection(connection)
+    bindQueryConnection(connection);
     setConnections((current) => {
       const withoutDuplicate = current.filter(
         (item) =>
@@ -1039,111 +1045,111 @@ export default function DatabaseWorkspace({
             (connection.parentConnectionId &&
               item.parentConnectionId === connection.parentConnectionId &&
               item.database === connection.database)
-          )
-      )
-      return [...withoutDuplicate, connection]
-    })
-    setActiveId(connection.id)
-    void inspectConnection(connection)
+          ),
+      );
+      return [...withoutDuplicate, connection];
+    });
+    setActiveId(connection.id);
+    void inspectConnection(connection);
   }
 
   async function connect(): Promise<void> {
-    if (runState !== 'idle' || !closeRowPanel()) return
+    if (runState !== "idle" || !closeRowPanel()) return;
     if (queryConnectionTabId.current && form.kind !== activeTab?.kind) {
       setConnectionError(
-        'Choose a connection matching this query’s database type.'
-      )
-      return
+        "Choose a connection matching this query’s database type.",
+      );
+      return;
     }
-    setConnecting(true)
-    setConnectionError('')
+    setConnecting(true);
+    setConnectionError("");
     try {
       const input = {
         ...form,
-        database: form.serverMode ? '' : form.database
-      }
-      const connected = await window.api.database.connect(input, saveProfile)
+        database: form.serverMode ? "" : form.database,
+      };
+      const connected = await window.api.database.connect(input, saveProfile);
       if (queryConnectionTabId.current && connected.serverMode) {
-        await selectQueryConnection(connected)
-      } else addConnectedConnection(connected)
-      if (saveProfile) await refreshSavedConnections()
-      setForm(DEFAULT_FORM)
-      setSaveProfile(true)
-      setShowConnect(false)
+        await selectQueryConnection(connected);
+      } else addConnectedConnection(connected);
+      if (saveProfile) await refreshSavedConnections();
+      setForm(DEFAULT_FORM);
+      setSaveProfile(true);
+      setShowConnect(false);
     } catch (error) {
       setConnectionError(
         error instanceof Error
           ? error.message
-          : 'Could not connect to the database.'
-      )
+          : "Could not connect to the database.",
+      );
     } finally {
-      setConnecting(false)
+      setConnecting(false);
     }
   }
 
   async function connectSaved(profile: SavedConnectionProfile): Promise<void> {
-    if (runState !== 'idle' || !closeRowPanel()) return
-    setConnectionError('')
+    if (runState !== "idle" || !closeRowPanel()) return;
+    setConnectionError("");
     const existing = connections.find(
       (connection) =>
         connection.savedConnectionId === profile.id &&
-        !connection.parentConnectionId
-    )
+        !connection.parentConnectionId,
+    );
     if (existing) {
-      setActiveId(existing.id)
-      return
+      setActiveId(existing.id);
+      return;
     }
     setBrowserLoading((current) => ({
       ...current,
-      [`saved:${profile.id}`]: true
-    }))
+      [`saved:${profile.id}`]: true,
+    }));
     try {
-      const connected = await window.api.database.connectSaved(profile.id)
-      addConnectedConnection(connected)
+      const connected = await window.api.database.connectSaved(profile.id);
+      addConnectedConnection(connected);
     } catch (error) {
       setConnectionError(
         error instanceof Error
           ? error.message
-          : `Could not connect to ${profile.name}.`
-      )
+          : `Could not connect to ${profile.name}.`,
+      );
     } finally {
       setBrowserLoading((current) => ({
         ...current,
-        [`saved:${profile.id}`]: false
-      }))
+        [`saved:${profile.id}`]: false,
+      }));
     }
   }
 
   async function deleteSaved(profile: SavedConnectionProfile): Promise<void> {
     try {
-      await window.api.database.deleteSaved(profile.id)
+      await window.api.database.deleteSaved(profile.id);
       setSavedConnections((current) =>
-        current.filter((item) => item.id !== profile.id)
-      )
+        current.filter((item) => item.id !== profile.id),
+      );
     } catch (error) {
       setConnectionError(
         error instanceof Error
           ? error.message
-          : 'Could not remove the saved connection.'
-      )
+          : "Could not remove the saved connection.",
+      );
     }
   }
 
   async function openDatabase(
     server: DatabaseConnectionSummary,
-    database: DatabaseBrowserDatabase
+    database: DatabaseBrowserDatabase,
   ): Promise<void> {
-    if (runState !== 'idle' || !closeRowPanel()) return
+    if (runState !== "idle" || !closeRowPanel()) return;
     if (!database.canConnect || browserLoading[`${server.id}:${database.name}`])
-      return
-    const loadingKey = `${server.id}:${database.name}`
-    setBrowserLoading((current) => ({ ...current, [loadingKey]: true }))
-    setBrowserErrors((current) => ({ ...current, [loadingKey]: '' }))
+      return;
+    const loadingKey = `${server.id}:${database.name}`;
+    setBrowserLoading((current) => ({ ...current, [loadingKey]: true }));
+    setBrowserErrors((current) => ({ ...current, [loadingKey]: "" }));
     try {
       const connected = await window.api.database.openDatabase(
         server.id,
-        database.name
-      )
+        database.name,
+      );
       setConnections((current) => [
         ...current.filter(
           (item) =>
@@ -1151,39 +1157,39 @@ export default function DatabaseWorkspace({
             !(
               item.parentConnectionId === connected.parentConnectionId &&
               item.database === connected.database
-            )
+            ),
         ),
-        connected
-      ])
-      setActiveId(connected.id)
-      await inspectConnection(connected)
+        connected,
+      ]);
+      setActiveId(connected.id);
+      await inspectConnection(connected);
     } catch (error) {
       setBrowserErrors((current) => ({
         ...current,
         [loadingKey]:
           error instanceof Error
             ? error.message
-            : `Could not open ${database.name}.`
-      }))
+            : `Could not open ${database.name}.`,
+      }));
     } finally {
-      setBrowserLoading((current) => ({ ...current, [loadingKey]: false }))
+      setBrowserLoading((current) => ({ ...current, [loadingKey]: false }));
     }
   }
 
   async function runQuery(
     overrides: {
-      connection?: DatabaseConnectionSummary
-      database?: string
-      collection?: string
-      query?: string
-      mongoMode?: 'find' | 'aggregate'
-      explain?: boolean
-    } = {}
+      connection?: DatabaseConnectionSummary;
+      database?: string;
+      collection?: string;
+      query?: string;
+      mongoMode?: "find" | "aggregate";
+      explain?: boolean;
+    } = {},
   ): Promise<void> {
-    const target = overrides.connection ?? activeConnection
-    const query = overrides.query ?? queryText
-    const targetCollection = overrides.collection ?? collection
-    if (runState !== 'idle' || !query.trim()) return
+    const target = overrides.connection ?? activeConnection;
+    const query = overrides.query ?? queryText;
+    const targetCollection = overrides.collection ?? collection;
+    if (runState !== "idle" || !query.trim()) return;
     if (
       !target ||
       target.serverMode ||
@@ -1192,16 +1198,16 @@ export default function DatabaseWorkspace({
           (activeTab?.connectionKey &&
             activeTab.connectionKey !== queryConnectionKey(target))))
     ) {
-      chooseQueryConnection()
-      return
+      chooseQueryConnection();
+      return;
     }
-    if (!closeRowPanel()) return
-    setSidebarHidden(true)
+    if (!closeRowPanel()) return;
+    setSidebarHidden(true);
     const tableQuery = selectedTable
       ? `SELECT * FROM ${quotePostgresIdentifier(selectedTable.schema)}.${quotePostgresIdentifier(selectedTable.name)} LIMIT 100;`
-      : ''
+      : "";
     setRowSource(
-      target.kind === 'postgres' &&
+      target.kind === "postgres" &&
         selectedTable?.connectionId === target.id &&
         tableDetails &&
         tableDetails.schema === selectedTable.schema &&
@@ -1211,12 +1217,12 @@ export default function DatabaseWorkspace({
             connectionId: target.id,
             schema: selectedTable.schema,
             table: selectedTable.name,
-            details: tableDetails
+            details: tableDetails,
           }
-        : null
-    )
-    const queryId = window.crypto.randomUUID()
-    activeQuery.current = { id: queryId, connectionId: target.id }
+        : null,
+    );
+    const queryId = window.crypto.randomUUID();
+    activeQuery.current = { id: queryId, connectionId: target.id };
     if (rememberQueries)
       setWorkspace((current) => ({
         ...current,
@@ -1228,495 +1234,495 @@ export default function DatabaseWorkspace({
             connectionKey: queryConnectionKey(target),
             connectionName: target.name,
             startedAt: Date.now(),
-            status: 'running' as const
+            status: "running" as const,
           },
-          ...current.history
-        ].slice(0, 200)
-      }))
-    setResultView(overrides.explain ? 'plan' : 'data')
-    setQueryPlan(null)
-    explainPending.current = overrides.explain === true
-    setSort(null)
-    setRows([])
-    setColumns([])
-    setQueryError('')
-    setQuerySummary('Starting query…')
-    setRunState('running')
-    if (scrollElement.current) scrollElement.current.scrollTop = 0
+          ...current.history,
+        ].slice(0, 200),
+      }));
+    setResultView(overrides.explain ? "plan" : "data");
+    setQueryPlan(null);
+    explainPending.current = overrides.explain === true;
+    setSort(null);
+    setRows([]);
+    setColumns([]);
+    setQueryError("");
+    setQuerySummary("Starting query…");
+    setRunState("running");
+    if (scrollElement.current) scrollElement.current.scrollTop = 0;
     try {
       await window.api.database.run({
         connectionId: target.id,
         queryId,
         query,
         maxRows,
-        ...(target.kind === 'mongodb'
+        ...(target.kind === "mongodb"
           ? {
               collection: targetCollection,
               database:
                 overrides.database ??
                 (selectedMongoDatabase || target.database),
-              mongoMode: overrides.mongoMode ?? mongoQueryMode
+              mongoMode: overrides.mongoMode ?? mongoQueryMode,
             }
-          : {})
-      })
+          : {}),
+      });
     } catch (error) {
-      if (activeQuery.current?.id === queryId) activeQuery.current = null
-      setRunState('idle')
+      if (activeQuery.current?.id === queryId) activeQuery.current = null;
+      setRunState("idle");
       setQueryError(
-        error instanceof Error ? error.message : 'Could not start the query.'
-      )
-      setQuerySummary('Query was not started.')
+        error instanceof Error ? error.message : "Could not start the query.",
+      );
+      setQuerySummary("Query was not started.");
       updateHistory(queryId, {
-        status: 'error',
-        error: error instanceof Error ? error.message : 'Could not start query'
-      })
+        status: "error",
+        error: error instanceof Error ? error.message : "Could not start query",
+      });
     }
   }
 
   async function expandMongoDatabase(
     connection: DatabaseConnectionSummary,
-    database: MongoBrowserDatabase
+    database: MongoBrowserDatabase,
   ): Promise<void> {
-    if (runState !== 'idle' || !closeRowPanel()) return
+    if (runState !== "idle" || !closeRowPanel()) return;
     if (selectedMongoDatabase !== database.name) {
-      setSelectedMongoCollection(null)
-      setRows([])
-      setColumns([])
+      setSelectedMongoCollection(null);
+      setRows([]);
+      setColumns([]);
     }
-    setActiveId(connection.id)
-    setSelectedMongoDatabase(database.name)
-    const key = mongoBrowserKey(connection.id, database.name)
+    setActiveId(connection.id);
+    setSelectedMongoDatabase(database.name);
+    const key = mongoBrowserKey(connection.id, database.name);
     if (expandedMongoDatabases[key]) {
-      setExpandedMongoDatabases((current) => ({ ...current, [key]: false }))
-      return
+      setExpandedMongoDatabases((current) => ({ ...current, [key]: false }));
+      return;
     }
-    setExpandedMongoDatabases((current) => ({ ...current, [key]: true }))
-    if (mongoCollections[key]) return
-    setBrowserLoading((current) => ({ ...current, [key]: true }))
-    setBrowserErrors((current) => ({ ...current, [key]: '' }))
+    setExpandedMongoDatabases((current) => ({ ...current, [key]: true }));
+    if (mongoCollections[key]) return;
+    setBrowserLoading((current) => ({ ...current, [key]: true }));
+    setBrowserErrors((current) => ({ ...current, [key]: "" }));
     try {
       const collections = await window.api.database.listMongoCollections(
         connection.id,
-        database.name
-      )
-      setMongoCollections((current) => ({ ...current, [key]: collections }))
+        database.name,
+      );
+      setMongoCollections((current) => ({ ...current, [key]: collections }));
     } catch (error) {
       setBrowserErrors((current) => ({
         ...current,
         [key]:
           error instanceof Error
             ? error.message
-            : 'Could not load MongoDB collections.'
-      }))
+            : "Could not load MongoDB collections.",
+      }));
     } finally {
-      setBrowserLoading((current) => ({ ...current, [key]: false }))
+      setBrowserLoading((current) => ({ ...current, [key]: false }));
     }
   }
 
   async function selectMongoCollection(
     connection: DatabaseConnectionSummary,
     database: string,
-    item: MongoBrowserCollection
+    item: MongoBrowserCollection,
   ): Promise<void> {
-    if (runState !== 'idle' || !closeRowPanel()) return
-    setSidebarHidden(true)
+    if (runState !== "idle" || !closeRowPanel()) return;
+    setSidebarHidden(true);
     const mode =
-      activeConnection?.id === connection.id ? mongoQueryMode : 'find'
-    setActiveId(connection.id)
-    setSelectedMongoDatabase(database)
-    setSelectedMongoCollection(item)
-    setCollection(item.name)
-    setMongoQueryMode(mode)
-    setQueryText(mode === 'aggregate' ? '[]' : '{}')
-    setQueryError('')
-    setQuerySummary(`Loading ${database}.${item.name}…`)
-    setRows([])
-    setColumns([])
-    const key = mongoBrowserKey(connection.id, database)
+      activeConnection?.id === connection.id ? mongoQueryMode : "find";
+    setActiveId(connection.id);
+    setSelectedMongoDatabase(database);
+    setSelectedMongoCollection(item);
+    setCollection(item.name);
+    setMongoQueryMode(mode);
+    setQueryText(mode === "aggregate" ? "[]" : "{}");
+    setQueryError("");
+    setQuerySummary(`Loading ${database}.${item.name}…`);
+    setRows([]);
+    setColumns([]);
+    const key = mongoBrowserKey(connection.id, database);
     try {
       const details = await window.api.database.getMongoCollectionDetails(
         connection.id,
         database,
-        item.name
-      )
+        item.name,
+      );
       setMongoCollections((current) => ({
         ...current,
         [key]: (current[key] ?? []).map((entry) =>
-          entry.name === item.name ? details : entry
-        )
-      }))
-      setSelectedMongoCollection(details)
+          entry.name === item.name ? details : entry,
+        ),
+      }));
+      setSelectedMongoCollection(details);
     } catch (error) {
       setQueryError(
         error instanceof Error
           ? error.message
-          : 'Could not inspect this collection.'
-      )
+          : "Could not inspect this collection.",
+      );
     }
     await runQuery({
       connection,
       database,
       collection: item.name,
-      query: mode === 'aggregate' ? '[]' : '{}',
-      mongoMode: mode
-    })
+      query: mode === "aggregate" ? "[]" : "{}",
+      mongoMode: mode,
+    });
   }
 
   function openMongoOperation(
     operation: MongoOperation,
-    connectionOverride?: DatabaseConnectionSummary
+    connectionOverride?: DatabaseConnectionSummary,
   ): void {
-    const operationConnection = connectionOverride ?? activeConnection
-    if (!operationConnection || operationConnection.kind !== 'mongodb') return
-    setMongoOperation(operation)
-    setMongoOperationError('')
-    setMongoOperationSummary('')
-    setMongoDocument('{}')
-    setMongoFilter('')
-    setMongoUpdate('{"$set":{}}')
-    setMongoMany(false)
-    setMongoUpsert(false)
-    setMongoIndexKeys('{"field":1}')
-    setMongoUniqueIndex(false)
-    setMongoIndexName('')
+    const operationConnection = connectionOverride ?? activeConnection;
+    if (!operationConnection || operationConnection.kind !== "mongodb") return;
+    setMongoOperation(operation);
+    setMongoOperationError("");
+    setMongoOperationSummary("");
+    setMongoDocument("{}");
+    setMongoFilter("");
+    setMongoUpdate('{"$set":{}}');
+    setMongoMany(false);
+    setMongoUpsert(false);
+    setMongoIndexKeys('{"field":1}');
+    setMongoUniqueIndex(false);
+    setMongoIndexName("");
     setMongoCollectionName(
-      operation === 'drop-collection'
-        ? (selectedMongoCollection?.name ?? '')
-        : ''
-    )
-    setMongoDatabaseName(selectedMongoDatabase || operationConnection.database)
-    setMongoCreateNewDatabase(false)
-    setMongoConfirmName('')
-    setMongoDeleteConfirmed(false)
+      operation === "drop-collection"
+        ? (selectedMongoCollection?.name ?? "")
+        : "",
+    );
+    setMongoDatabaseName(selectedMongoDatabase || operationConnection.database);
+    setMongoCreateNewDatabase(false);
+    setMongoConfirmName("");
+    setMongoDeleteConfirmed(false);
   }
 
   async function submitMongoOperation(): Promise<void> {
     if (
       !activeConnection ||
-      activeConnection?.kind !== 'mongodb' ||
+      activeConnection?.kind !== "mongodb" ||
       !mongoOperation
     )
-      return
+      return;
     const database = mongoCreateNewDatabase
       ? mongoDatabaseName.trim()
       : mongoDatabaseName.trim() ||
         selectedMongoDatabase ||
-        activeConnection!.database
+        activeConnection!.database;
     const targetCollection =
       mongoCollectionName.trim() ||
-      (mongoOperation === 'create-collection'
-        ? ''
-        : selectedMongoCollection?.name || collection)
-    let request: MongoMutationRequest
-    const base = { connectionId: activeConnection!.id, database }
-    if (mongoOperation === 'drop-database') {
-      request = { ...base, operation: 'drop-database' }
-    } else if (mongoOperation === 'insert') {
+      (mongoOperation === "create-collection"
+        ? ""
+        : selectedMongoCollection?.name || collection);
+    let request: MongoMutationRequest;
+    const base = { connectionId: activeConnection!.id, database };
+    if (mongoOperation === "drop-database") {
+      request = { ...base, operation: "drop-database" };
+    } else if (mongoOperation === "insert") {
       request = {
         ...base,
-        operation: 'insert',
+        operation: "insert",
         collection: targetCollection,
-        document: mongoDocument
-      }
-    } else if (mongoOperation === 'update') {
+        document: mongoDocument,
+      };
+    } else if (mongoOperation === "update") {
       request = {
         ...base,
-        operation: 'update',
+        operation: "update",
         collection: targetCollection,
         filter: mongoFilter,
         update: mongoUpdate,
         many: mongoMany,
-        upsert: mongoUpsert
-      }
-    } else if (mongoOperation === 'delete') {
+        upsert: mongoUpsert,
+      };
+    } else if (mongoOperation === "delete") {
       request = {
         ...base,
-        operation: 'delete',
+        operation: "delete",
         collection: targetCollection,
         filter: mongoFilter,
-        many: mongoMany
-      }
+        many: mongoMany,
+      };
     } else if (
-      mongoOperation === 'create-collection' ||
-      mongoOperation === 'drop-collection'
+      mongoOperation === "create-collection" ||
+      mongoOperation === "drop-collection"
     ) {
       request = {
         ...base,
         operation: mongoOperation,
-        collection: targetCollection
-      }
-    } else if (mongoOperation === 'create-index') {
+        collection: targetCollection,
+      };
+    } else if (mongoOperation === "create-index") {
       request = {
         ...base,
-        operation: 'create-index',
+        operation: "create-index",
         collection: targetCollection,
         keys: mongoIndexKeys,
-        unique: mongoUniqueIndex
-      }
+        unique: mongoUniqueIndex,
+      };
     } else {
       request = {
         ...base,
-        operation: 'drop-index',
+        operation: "drop-index",
         collection: targetCollection,
-        indexName: mongoIndexName
-      }
+        indexName: mongoIndexName,
+      };
     }
-    setMongoOperationBusy(true)
-    setMongoOperationError('')
+    setMongoOperationBusy(true);
+    setMongoOperationError("");
     try {
-      const result = await window.api.database.mutateMongo(request)
-      setMongoOperation(null)
-      setQueryError('')
+      const result = await window.api.database.mutateMongo(request);
+      setMongoOperation(null);
+      setQueryError("");
       setQuerySummary(
         result.message +
           (result.affectedCount !== undefined
             ? ` · ${result.affectedCount.toLocaleString()} affected`
-            : '')
-      )
-      const browserKey = mongoBrowserKey(activeConnection!.id, database)
-      if (mongoOperation === 'drop-database') {
+            : ""),
+      );
+      const browserKey = mongoBrowserKey(activeConnection!.id, database);
+      if (mongoOperation === "drop-database") {
         try {
           const databases = await window.api.database.listMongoDatabases(
-            activeConnection!.id
-          )
+            activeConnection!.id,
+          );
           setMongoDatabases((current) => ({
             ...current,
-            [activeConnection!.id]: databases
-          }))
+            [activeConnection!.id]: databases,
+          }));
         } catch {
           setMongoDatabases((current) => ({
             ...current,
             [activeConnection!.id]: (
               current[activeConnection!.id] ?? []
-            ).filter((item) => item.name !== database)
-          }))
+            ).filter((item) => item.name !== database),
+          }));
         }
-        setSelectedMongoDatabase('')
-        setSelectedMongoCollection(null)
-        setRows([])
-        setColumns([])
-        return
+        setSelectedMongoDatabase("");
+        setSelectedMongoCollection(null);
+        setRows([]);
+        setColumns([]);
+        return;
       }
 
-      let collections: MongoBrowserCollection[]
+      let collections: MongoBrowserCollection[];
       try {
         collections = await window.api.database.listMongoCollections(
           activeConnection!.id,
-          database
-        )
+          database,
+        );
       } catch (error) {
         setBrowserErrors((current) => ({
           ...current,
           [browserKey]:
             error instanceof Error
               ? error.message
-              : 'The operation succeeded, but collections could not be refreshed.'
-        }))
-        return
+              : "The operation succeeded, but collections could not be refreshed.",
+        }));
+        return;
       }
       setMongoCollections((current) => ({
         ...current,
-        [browserKey]: collections
-      }))
+        [browserKey]: collections,
+      }));
       try {
         const databases = await window.api.database.listMongoDatabases(
-          activeConnection!.id
-        )
+          activeConnection!.id,
+        );
         setMongoDatabases((current) => ({
           ...current,
-          [activeConnection!.id]: databases
-        }))
+          [activeConnection!.id]: databases,
+        }));
       } catch {
         setMongoDatabases((current) => {
-          const known = current[activeConnection!.id] ?? []
-          if (mongoOperation === 'drop-collection' && collections.length === 0)
+          const known = current[activeConnection!.id] ?? [];
+          if (mongoOperation === "drop-collection" && collections.length === 0)
             return {
               ...current,
               [activeConnection!.id]: known.filter(
-                (item) => item.name !== database
-              )
-            }
-          if (known.some((item) => item.name === database)) return current
+                (item) => item.name !== database,
+              ),
+            };
+          if (known.some((item) => item.name === database)) return current;
           return {
             ...current,
-            [activeConnection!.id]: [...known, { name: database }]
-          }
-        })
+            [activeConnection!.id]: [...known, { name: database }],
+          };
+        });
       }
-      if (mongoOperation === 'drop-collection') {
-        setSelectedMongoCollection(null)
-        setRows([])
-        setColumns([])
-        return
+      if (mongoOperation === "drop-collection") {
+        setSelectedMongoCollection(null);
+        setRows([]);
+        setColumns([]);
+        return;
       }
-      setSelectedMongoDatabase(database)
+      setSelectedMongoDatabase(database);
       setExpandedMongoDatabases((current) => ({
         ...current,
-        [browserKey]: true
-      }))
-      const found = collections.find((item) => item.name === targetCollection)
-      if (!found) return
+        [browserKey]: true,
+      }));
+      const found = collections.find((item) => item.name === targetCollection);
+      if (!found) return;
       const details = await window.api.database.getMongoCollectionDetails(
         activeConnection!.id,
         database,
-        targetCollection
-      )
+        targetCollection,
+      );
       setMongoCollections((current) => ({
         ...current,
         [browserKey]: (current[browserKey] ?? []).map((item) =>
-          item.name === targetCollection ? details : item
-        )
-      }))
-      setSelectedMongoCollection(details)
-      if (mongoOperation === 'create-collection') {
-        setMongoQueryMode('find')
-        setQueryText('{}')
+          item.name === targetCollection ? details : item,
+        ),
+      }));
+      setSelectedMongoCollection(details);
+      if (mongoOperation === "create-collection") {
+        setMongoQueryMode("find");
+        setQueryText("{}");
         await runQuery({
           connection: activeConnection,
           database,
           collection: targetCollection,
-          query: '{}',
-          mongoMode: 'find'
-        })
+          query: "{}",
+          mongoMode: "find",
+        });
       } else if (
-        mongoOperation === 'insert' ||
-        mongoOperation === 'update' ||
-        mongoOperation === 'delete'
+        mongoOperation === "insert" ||
+        mongoOperation === "update" ||
+        mongoOperation === "delete"
       ) {
         await runQuery({
           connection: activeConnection,
           database,
           collection: targetCollection,
-          query: queryText || '{}',
-          mongoMode: mongoQueryMode
-        })
+          query: queryText || "{}",
+          mongoMode: mongoQueryMode,
+        });
       }
     } catch (error) {
       setMongoOperationError(
-        error instanceof Error ? error.message : 'MongoDB operation failed.'
-      )
+        error instanceof Error ? error.message : "MongoDB operation failed.",
+      );
     } finally {
-      setMongoOperationBusy(false)
+      setMongoOperationBusy(false);
     }
   }
 
   async function cancelQuery(): Promise<void> {
-    const current = activeQuery.current
-    if (!current) return
-    setRunState('cancelling')
+    const current = activeQuery.current;
+    if (!current) return;
+    setRunState("cancelling");
     try {
-      await window.api.database.cancel(current.connectionId, current.id)
+      await window.api.database.cancel(current.connectionId, current.id);
     } catch (error) {
-      setRunState('idle')
+      setRunState("idle");
       setQueryError(
-        error instanceof Error ? error.message : 'Could not cancel the query.'
-      )
+        error instanceof Error ? error.message : "Could not cancel the query.",
+      );
     }
   }
 
   async function disconnect(
-    connection: DatabaseConnectionSummary
+    connection: DatabaseConnectionSummary,
   ): Promise<void> {
-    if (runState !== 'idle' || !closeRowPanel()) return
+    if (runState !== "idle" || !closeRowPanel()) return;
     try {
-      await window.api.database.disconnect(connection.id)
+      await window.api.database.disconnect(connection.id);
       setConnections((current) =>
         current.filter(
           (item) =>
             item.id !== connection.id &&
-            item.parentConnectionId !== connection.id
-        )
-      )
+            item.parentConnectionId !== connection.id,
+        ),
+      );
       if (
         activeId === connection.id ||
         connections.some(
           (item) =>
-            item.id === activeId && item.parentConnectionId === connection.id
+            item.id === activeId && item.parentConnectionId === connection.id,
         )
       )
-        setActiveId('')
+        setActiveId("");
       setTableLists((current) => {
-        const next = { ...current }
-        delete next[connection.id]
+        const next = { ...current };
+        delete next[connection.id];
         for (const item of connections)
-          if (item.parentConnectionId === connection.id) delete next[item.id]
-        return next
-      })
+          if (item.parentConnectionId === connection.id) delete next[item.id];
+        return next;
+      });
       setServerDatabases((current) => {
-        const next = { ...current }
-        delete next[connection.id]
-        return next
-      })
+        const next = { ...current };
+        delete next[connection.id];
+        return next;
+      });
     } catch (error) {
       setQueryError(
         error instanceof Error
           ? error.message
-          : 'Could not close the connection.'
-      )
+          : "Could not close the connection.",
+      );
     }
   }
 
   function selectTable(
     connection: DatabaseConnectionSummary,
-    table: DatabaseBrowserTable
+    table: DatabaseBrowserTable,
   ): void {
-    if (runState !== 'idle' || !closeRowPanel()) return
-    setSidebarHidden(true)
-    setActiveId(connection.id)
+    if (runState !== "idle" || !closeRowPanel()) return;
+    setSidebarHidden(true);
+    setActiveId(connection.id);
     newTab(
       `SELECT * FROM ${quotePostgresIdentifier(table.schema)}.${quotePostgresIdentifier(table.name)} LIMIT 100;`,
       table.name,
-      connection
-    )
+      connection,
+    );
     setSelectedTable({
       connectionId: connection.id,
       schema: table.schema,
-      name: table.name
-    })
-    setTableDetails(null)
-    setMetadataError('')
-    setMetadataLoading(true)
-    const request = ++metadataRequest.current
+      name: table.name,
+    });
+    setTableDetails(null);
+    setMetadataError("");
+    setMetadataLoading(true);
+    const request = ++metadataRequest.current;
     void window.api.database
       .getPostgresTableDetails(connection.id, table.schema, table.name)
       .then((details) => {
-        if (metadataRequest.current === request) setTableDetails(details)
+        if (metadataRequest.current === request) setTableDetails(details);
       })
       .catch((error) => {
         if (metadataRequest.current === request)
           setMetadataError(
             error instanceof Error
               ? error.message
-              : 'Could not load table structure.'
-          )
+              : "Could not load table structure.",
+          );
       })
       .finally(() => {
-        if (metadataRequest.current === request) setMetadataLoading(false)
-      })
+        if (metadataRequest.current === request) setMetadataLoading(false);
+      });
   }
 
   function updateForm<K extends keyof DatabaseConnectionInput>(
     key: K,
-    value: DatabaseConnectionInput[K]
+    value: DatabaseConnectionInput[K],
   ): void {
-    setForm((current) => ({ ...current, [key]: value }))
+    setForm((current) => ({ ...current, [key]: value }));
   }
 
   function renderTables(
-    connection: DatabaseConnectionSummary
+    connection: DatabaseConnectionSummary,
   ): React.JSX.Element {
     const tables = (tableLists[connection.id] ?? []).filter((table) =>
       `${table.schema}.${table.name}`
         .toLowerCase()
-        .includes(objectSearch.toLowerCase())
-    )
+        .includes(objectSearch.toLowerCase()),
+    );
     const grouped = tables.reduce<Record<string, DatabaseBrowserTable[]>>(
       (groups, table) => {
-        ;(groups[table.schema] ??= []).push(table)
-        return groups
+        (groups[table.schema] ??= []).push(table);
+        return groups;
       },
-      {}
-    )
+      {},
+    );
     return (
       <div className="db-browser-objects">
         {browserLoading[connection.id] && (
@@ -1735,7 +1741,7 @@ export default function DatabaseWorkspace({
                 setCollapsedSchemas((current) => ({
                   ...current,
                   [`${connection.id}:${schema}`]:
-                    !current[`${connection.id}:${schema}`]
+                    !current[`${connection.id}:${schema}`],
                 }))
               }
             >
@@ -1743,20 +1749,20 @@ export default function DatabaseWorkspace({
                 <ChevronRight size={12} />
               ) : (
                 <ChevronDown size={12} />
-              )}{' '}
+              )}{" "}
               {schema} <span>{schemaTables.length}</span>
             </button>
             {!collapsedSchemas[`${connection.id}:${schema}`] &&
               schemaTables.map((table) => (
                 <button
-                  className={`db-browser-object${selectedTable?.connectionId === connection.id && selectedTable.schema === table.schema && selectedTable.name === table.name ? ' active' : ''}`}
+                  className={`db-browser-object${selectedTable?.connectionId === connection.id && selectedTable.schema === table.schema && selectedTable.name === table.name ? " active" : ""}`}
                   key={`${table.schema}.${table.name}`}
                   title={`${table.kind}: ${table.schema}.${table.name}`}
                   onClick={() => selectTable(connection, table)}
                 >
                   <Table2 size={13} />
                   <span>{table.name}</span>
-                  <small>{table.kind === 'view' ? 'view' : ''}</small>
+                  <small>{table.kind === "view" ? "view" : ""}</small>
                 </button>
               ))}
           </div>
@@ -1767,29 +1773,29 @@ export default function DatabaseWorkspace({
             <div className="db-browser-hint">No tables or views found.</div>
           )}
       </div>
-    )
+    );
   }
 
   function renderMongoDatabases(
-    connection: DatabaseConnectionSummary
+    connection: DatabaseConnectionSummary,
   ): React.JSX.Element {
-    const databases = mongoDatabases[connection.id] ?? []
+    const databases = mongoDatabases[connection.id] ?? [];
     return (
       <div className="db-browser-objects db-browser-databases">
         <div className="db-browser-section-title">
-          DATABASES{' '}
+          DATABASES{" "}
           <button
             className="db-inline-add"
             title="Create a database"
             aria-label="Create a database"
             onClick={() => {
-              if (!closeRowPanel()) return
-              setActiveId(connection.id)
-              setSelectedMongoDatabase('')
-              openMongoOperation('create-collection', connection)
-              setMongoDatabaseName('')
-              setMongoCreateNewDatabase(true)
-              setMongoCollectionName('')
+              if (!closeRowPanel()) return;
+              setActiveId(connection.id);
+              setSelectedMongoDatabase("");
+              openMongoOperation("create-collection", connection);
+              setMongoDatabaseName("");
+              setMongoCreateNewDatabase(true);
+              setMongoCollectionName("");
             }}
           >
             ＋
@@ -1804,17 +1810,17 @@ export default function DatabaseWorkspace({
           <div className="db-browser-error">{browserErrors[connection.id]}</div>
         )}
         {databases.map((database) => {
-          const key = mongoBrowserKey(connection.id, database.name)
-          const expanded = Boolean(expandedMongoDatabases[key])
-          const items = mongoCollections[key] ?? []
+          const key = mongoBrowserKey(connection.id, database.name);
+          const expanded = Boolean(expandedMongoDatabases[key]);
+          const items = mongoCollections[key] ?? [];
           return (
             <div className="db-browser-database-group" key={database.name}>
               <button
-                className={`db-browser-database${selectedMongoDatabase === database.name && activeId === connection.id ? ' active' : ''}`}
-                title={`${database.name}${database.sizeOnDisk !== undefined ? ` · ${database.sizeOnDisk.toLocaleString()} bytes` : ''}`}
+                className={`db-browser-database${selectedMongoDatabase === database.name && activeId === connection.id ? " active" : ""}`}
+                title={`${database.name}${database.sizeOnDisk !== undefined ? ` · ${database.sizeOnDisk.toLocaleString()} bytes` : ""}`}
                 onClick={() => void expandMongoDatabase(connection, database)}
               >
-                <span aria-hidden="true">{expanded ? '▾' : '›'}</span>
+                <span aria-hidden="true">{expanded ? "▾" : "›"}</span>
                 <span>{database.name}</span>
                 {database.sizeOnDisk !== undefined && (
                   <small className="db-browser-size">
@@ -1824,17 +1830,17 @@ export default function DatabaseWorkspace({
                   </small>
                 )}
               </button>
-              {!['admin', 'config', 'local'].includes(database.name) && (
+              {!["admin", "config", "local"].includes(database.name) && (
                 <button
                   className="db-child-close"
                   title={`Drop database ${database.name}`}
                   aria-label={`Drop database ${database.name}`}
                   onClick={() => {
-                    if (!closeRowPanel()) return
-                    setActiveId(connection.id)
-                    setSelectedMongoDatabase(database.name)
-                    openMongoOperation('drop-database', connection)
-                    setMongoDatabaseName(database.name)
+                    if (!closeRowPanel()) return;
+                    setActiveId(connection.id);
+                    setSelectedMongoDatabase(database.name);
+                    openMongoOperation("drop-database", connection);
+                    setMongoDatabaseName(database.name);
                   }}
                 >
                   ×
@@ -1844,19 +1850,19 @@ export default function DatabaseWorkspace({
                 <div className="db-browser-mongo-collections">
                   <div className="db-browser-collection-actions">
                     <span>
-                      {items.length}{' '}
-                      {items.length === 1 ? 'collection' : 'collections'}
+                      {items.length}{" "}
+                      {items.length === 1 ? "collection" : "collections"}
                     </span>
                     <button
                       className="db-inline-add"
                       title={`Create collection in ${database.name}`}
                       aria-label={`Create collection in ${database.name}`}
                       onClick={() => {
-                        setSelectedMongoDatabase(database.name)
-                        if (!closeRowPanel()) return
-                        setActiveId(connection.id)
-                        openMongoOperation('create-collection', connection)
-                        setMongoDatabaseName(database.name)
+                        setSelectedMongoDatabase(database.name);
+                        if (!closeRowPanel()) return;
+                        setActiveId(connection.id);
+                        openMongoOperation("create-collection", connection);
+                        setMongoDatabaseName(database.name);
                       }}
                     >
                       ＋
@@ -1872,19 +1878,19 @@ export default function DatabaseWorkspace({
                   )}
                   {items.map((item) => (
                     <button
-                      className={`db-browser-object${selectedMongoCollection?.name === item.name && selectedMongoDatabase === database.name ? ' active' : ''}`}
+                      className={`db-browser-object${selectedMongoCollection?.name === item.name && selectedMongoDatabase === database.name ? " active" : ""}`}
                       key={item.name}
                       title={`${item.type}: ${database.name}.${item.name}`}
                       onClick={() =>
                         void selectMongoCollection(
                           connection,
                           database.name,
-                          item
+                          item,
                         )
                       }
                     >
                       <span aria-hidden="true">
-                        {item.type === 'view' ? '◉' : '▤'}
+                        {item.type === "view" ? "◉" : "▤"}
                       </span>
                       <span>{item.name}</span>
                     </button>
@@ -1897,7 +1903,7 @@ export default function DatabaseWorkspace({
                 </div>
               )}
             </div>
-          )
+          );
         })}
         {!browserLoading[connection.id] &&
           !browserErrors[connection.id] &&
@@ -1907,7 +1913,7 @@ export default function DatabaseWorkspace({
             </div>
           )}
       </div>
-    )
+    );
   }
 
   return (
@@ -1915,12 +1921,12 @@ export default function DatabaseWorkspace({
       ref={workspaceRef}
       style={
         {
-          ['--sidebar-width']: `${layout.sidebar}px`,
-          ['--editor-percent']: `${layout.split}%`,
-          ['--row-panel-width']: `${layout.rowPanel}px`
+          ["--sidebar-width"]: `${layout.sidebar}px`,
+          ["--editor-percent"]: `${layout.split}%`,
+          ["--row-panel-width"]: `${layout.rowPanel}px`,
         } as React.CSSProperties
       }
-      className={`db-workspace${sidebarHidden && !settingsView ? ' sidebar-hidden' : ''}${settingsView ? ' settings-open' : ''}${inspectedRow && !settingsView ? ' has-row-panel' : ''}`}
+      className={`db-workspace${sidebarHidden && !settingsView ? " sidebar-hidden" : ""}${settingsView ? " settings-open" : ""}${inspectedRow && !settingsView ? " has-row-panel" : ""}`}
     >
       <aside
         id="db-explorer-sidebar"
@@ -1945,8 +1951,8 @@ export default function DatabaseWorkspace({
             aria-label="Add connection"
             title="Add connection"
             onClick={() => {
-              setShowConnect(true)
-              setConnectionError('')
+              setShowConnect(true);
+              setConnectionError("");
             }}
           >
             ＋
@@ -1955,8 +1961,8 @@ export default function DatabaseWorkspace({
         <button
           className="db-connect-button"
           onClick={() => {
-            setShowConnect(true)
-            setConnectionError('')
+            setShowConnect(true);
+            setConnectionError("");
           }}
         >
           <span>＋</span> New connection
@@ -1964,16 +1970,16 @@ export default function DatabaseWorkspace({
         <div className="rail-tabs" role="tablist" aria-label="Explorer views">
           {(
             [
-              { id: 'servers', label: 'Servers', Icon: Server },
-              { id: 'saved', label: 'Queries', Icon: BookOpen },
-              { id: 'history', label: 'History', Icon: History }
+              { id: "servers", label: "Servers", Icon: Server },
+              { id: "saved", label: "Queries", Icon: BookOpen },
+              { id: "history", label: "History", Icon: History },
             ] as const
           ).map(({ id, label, Icon }) => (
             <button
               role="tab"
               aria-selected={railView === id}
               key={id}
-              className={railView === id ? 'active' : ''}
+              className={railView === id ? "active" : ""}
               onClick={() => setRailView(id)}
             >
               <Icon size={14} />
@@ -1986,18 +1992,18 @@ export default function DatabaseWorkspace({
           <input
             aria-label="Search explorer"
             placeholder={
-              railView === 'servers'
-                ? 'Filter tables and schemas…'
-                : 'Search queries…'
+              railView === "servers"
+                ? "Filter tables and schemas…"
+                : "Search queries…"
             }
             value={objectSearch}
             onChange={(event) => setObjectSearch(event.target.value)}
           />
-          {railView === 'servers' && (
+          {railView === "servers" && (
             <button
               title="Refresh browser"
               aria-label="Refresh browser"
-              disabled={!activeConnection || runState !== 'idle'}
+              disabled={!activeConnection || runState !== "idle"}
               onClick={() =>
                 activeConnection && void inspectConnection(activeConnection)
               }
@@ -2006,44 +2012,44 @@ export default function DatabaseWorkspace({
             </button>
           )}
         </div>
-        {railView !== 'servers' && (
+        {railView !== "servers" && (
           <div className="query-library">
             <div className="library-heading">
               <span>
-                {railView === 'saved' ? 'SAVED QUERIES' : 'RECENT EXECUTIONS'}
+                {railView === "saved" ? "SAVED QUERIES" : "RECENT EXECUTIONS"}
               </span>
               <button
                 onClick={() => {
-                  if (railView === 'history')
-                    setWorkspace((current) => ({ ...current, history: [] }))
-                  else saveCurrentQuery()
+                  if (railView === "history")
+                    setWorkspace((current) => ({ ...current, history: [] }));
+                  else saveCurrentQuery();
                 }}
               >
-                {railView === 'history' ? 'Clear' : '+ Save'}
+                {railView === "history" ? "Clear" : "+ Save"}
               </button>
             </div>
-            {railView === 'history' && (
+            {railView === "history" && (
               <label className="history-toggle">
                 <input
                   type="checkbox"
                   checked={rememberQueries}
                   onChange={(event) => setRememberQueries(event.target.checked)}
-                />{' '}
+                />{" "}
                 Record query text locally
               </label>
             )}
-            {railView === 'saved'
+            {railView === "saved"
               ? workspace.saved
                   .filter((item) =>
                     `${item.title} ${item.query} ${item.folder}`
                       .toLowerCase()
-                      .includes(objectSearch.toLowerCase())
+                      .includes(objectSearch.toLowerCase()),
                   )
                   .map((item) => (
                     <div className="library-item" key={item.id}>
                       <button
                         onClick={() => {
-                          newTab(item.query, item.title, null, item)
+                          newTab(item.query, item.title, null, item);
                         }}
                       >
                         <span className="library-folder">{item.folder}</span>
@@ -2059,8 +2065,8 @@ export default function DatabaseWorkspace({
                           setWorkspace((current) => ({
                             ...current,
                             saved: current.saved.filter(
-                              (entry) => entry.id !== item.id
-                            )
+                              (entry) => entry.id !== item.id,
+                            ),
                           }))
                         }
                       >
@@ -2072,13 +2078,13 @@ export default function DatabaseWorkspace({
                   .filter((item) =>
                     `${item.query} ${item.connectionName}`
                       .toLowerCase()
-                      .includes(objectSearch.toLowerCase())
+                      .includes(objectSearch.toLowerCase()),
                   )
                   .map((item) => (
                     <div className="library-item" key={item.id}>
                       <button
                         onClick={() => {
-                          newTab(item.query, 'From history', null, item)
+                          newTab(item.query, "From history", null, item);
                         }}
                       >
                         <span className={`history-status ${item.status}`}>
@@ -2089,24 +2095,24 @@ export default function DatabaseWorkspace({
                           {new Date(item.startedAt).toLocaleString()}
                           {item.elapsedMs !== undefined
                             ? ` · ${item.elapsedMs} ms`
-                            : ''}
+                            : ""}
                         </small>
                       </button>
                     </div>
                   ))}
-            {(railView === 'saved' ? workspace.saved : workspace.history)
+            {(railView === "saved" ? workspace.saved : workspace.history)
               .length === 0 && (
               <div className="db-empty-rail">
                 <FileCode2 size={26} />
                 <b>
-                  {railView === 'saved'
-                    ? 'Your query library'
-                    : 'A clean slate'}
+                  {railView === "saved"
+                    ? "Your query library"
+                    : "A clean slate"}
                 </b>
                 <p>
-                  {railView === 'saved'
-                    ? 'Save useful SQL with a name and folder. Your work stays on this device.'
-                    : 'Executed queries appear here with timing and status. Restore one without running it.'}
+                  {railView === "saved"
+                    ? "Save useful SQL with a name and folder. Your work stays on this device."
+                    : "Executed queries appear here with timing and status. Restore one without running it."}
                 </p>
               </div>
             )}
@@ -2114,7 +2120,7 @@ export default function DatabaseWorkspace({
         )}
         <div
           className="db-connection-list"
-          style={{ display: railView === 'servers' ? undefined : 'none' }}
+          style={{ display: railView === "servers" ? undefined : "none" }}
           aria-label="Database server browser"
         >
           {connections
@@ -2122,20 +2128,20 @@ export default function DatabaseWorkspace({
             .map((connection) => (
               <div className="db-browser-server" key={connection.id}>
                 <div
-                  className={`db-connection${activeId === connection.id ? ' selected' : ''}`}
+                  className={`db-connection${activeId === connection.id ? " selected" : ""}`}
                 >
                   <button
                     className="db-connection-select"
-                    disabled={runState !== 'idle'}
+                    disabled={runState !== "idle"}
                     onClick={() => {
-                      if (closeRowPanel()) setActiveId(connection.id)
+                      if (closeRowPanel()) setActiveId(connection.id);
                     }}
                   >
                     <span
                       className={`db-engine-mark ${connection.kind}`}
                       aria-hidden="true"
                     >
-                      {connection.kind === 'postgres' ? 'P' : 'M'}
+                      {connection.kind === "postgres" ? "P" : "M"}
                     </span>
                     <span className="db-connection-copy">
                       <b>{connection.name}</b>
@@ -2152,7 +2158,7 @@ export default function DatabaseWorkspace({
                     ×
                   </button>
                 </div>
-                {connection.kind === 'postgres' && connection.serverMode && (
+                {connection.kind === "postgres" && connection.serverMode && (
                   <div className="db-browser-objects db-browser-databases">
                     <div className="db-browser-section-title">
                       SERVER BROWSER
@@ -2171,9 +2177,9 @@ export default function DatabaseWorkspace({
                       const child = connections.find(
                         (item) =>
                           item.parentConnectionId === connection.id &&
-                          item.database === database.name
-                      )
-                      const loadingKey = `${connection.id}:${database.name}`
+                          item.database === database.name,
+                      );
+                      const loadingKey = `${connection.id}:${database.name}`;
                       return (
                         <div
                           className="db-browser-database-group"
@@ -2193,7 +2199,7 @@ export default function DatabaseWorkspace({
                               void openDatabase(connection, database)
                             }
                           >
-                            <span aria-hidden="true">{child ? '▾' : '›'}</span>
+                            <span aria-hidden="true">{child ? "▾" : "›"}</span>
                             <span>{database.name}</span>
                             {browserLoading[loadingKey] && (
                               <span className="db-spinner small" />
@@ -2221,7 +2227,7 @@ export default function DatabaseWorkspace({
                             </div>
                           )}
                         </div>
-                      )
+                      );
                     })}
                     {!browserLoading[connection.id] &&
                       serverDatabases[connection.id]?.length === 0 && (
@@ -2231,10 +2237,10 @@ export default function DatabaseWorkspace({
                       )}
                   </div>
                 )}
-                {connection.kind === 'postgres' &&
+                {connection.kind === "postgres" &&
                   !connection.serverMode &&
                   renderTables(connection)}
-                {connection.kind === 'mongodb' &&
+                {connection.kind === "mongodb" &&
                   renderMongoDatabases(connection)}
               </div>
             ))}
@@ -2251,18 +2257,18 @@ export default function DatabaseWorkspace({
                 .filter((profile) =>
                   `${profile.name} ${profile.host} ${profile.database}`
                     .toLowerCase()
-                    .includes(objectSearch.toLowerCase())
+                    .includes(objectSearch.toLowerCase()),
                 )
                 .map((profile) => {
                   const active = connections.some(
                     (connection) =>
                       connection.savedConnectionId === profile.id &&
-                      !connection.parentConnectionId
-                  )
-                  const loading = browserLoading[`saved:${profile.id}`]
+                      !connection.parentConnectionId,
+                  );
+                  const loading = browserLoading[`saved:${profile.id}`];
                   return (
                     <div
-                      className={`db-saved-profile${active ? ' active' : ''}`}
+                      className={`db-saved-profile${active ? " active" : ""}`}
                       key={profile.id}
                     >
                       <button
@@ -2274,14 +2280,14 @@ export default function DatabaseWorkspace({
                           className={`db-engine-mark ${profile.kind}`}
                           aria-hidden="true"
                         >
-                          {profile.kind === 'postgres' ? 'P' : 'M'}
+                          {profile.kind === "postgres" ? "P" : "M"}
                         </span>
                         <span className="db-connection-copy">
                           <b>{profile.name}</b>
                           <small>
                             {profile.serverMode
                               ? `${profile.host}:${profile.port} · all databases`
-                              : `${profile.kind === 'postgres' ? 'PostgreSQL' : 'MongoDB'} · ${profile.database}`}
+                              : `${profile.kind === "postgres" ? "PostgreSQL" : "MongoDB"} · ${profile.database}`}
                           </small>
                         </span>
                         {loading && <span className="db-spinner small" />}
@@ -2295,7 +2301,7 @@ export default function DatabaseWorkspace({
                         ×
                       </button>
                     </div>
-                  )
+                  );
                 })}
             </div>
           )}
@@ -2320,7 +2326,7 @@ export default function DatabaseWorkspace({
           value={layout.sidebar}
           min={220}
           max={Math.min(520, window.innerWidth - 360)}
-          onChange={(v) => resizeLayout('sidebar', v)}
+          onChange={(v) => resizeLayout("sidebar", v)}
         />
       )}
       <div className="db-main" hidden={!!settingsView}>
@@ -2328,7 +2334,7 @@ export default function DatabaseWorkspace({
           <button
             className="sidebar-toggle"
             aria-label={
-              sidebarHidden ? 'Open explorer sidebar' : 'Close explorer sidebar'
+              sidebarHidden ? "Open explorer sidebar" : "Close explorer sidebar"
             }
             aria-expanded={!sidebarHidden}
             aria-controls="db-explorer-sidebar"
@@ -2343,20 +2349,20 @@ export default function DatabaseWorkspace({
           <div>
             <span className="db-overline">
               {activeConnection?.serverMode ||
-              activeConnection?.kind === 'mongodb'
-                ? 'SERVER BROWSER'
-                : 'QUERY WORKSPACE'}
+              activeConnection?.kind === "mongodb"
+                ? "SERVER BROWSER"
+                : "QUERY WORKSPACE"}
             </span>
             <h1>
-              {activeConnection?.name ?? 'SQL workspace'}
+              {activeConnection?.name ?? "SQL workspace"}
               {activeConnection && (
                 <span className="connection-badge">Connected</span>
               )}
             </h1>
             <p>
               {activeConnection
-                ? `${activeConnection?.kind !== 'mongodb' ? 'PostgreSQL' : 'MongoDB'} · ${activeConnection!.host}:${activeConnection!.port} · ${activeConnection?.kind === 'mongodb' ? `browse accessible databases · ${selectedMongoDatabase || activeConnection!.database}` : activeConnection!.serverMode ? 'browse databases available to this user' : activeConnection!.database}`
-                : 'Write, organize, and explore. Connect a server when you’re ready to run.'}
+                ? `${activeConnection?.kind !== "mongodb" ? "PostgreSQL" : "MongoDB"} · ${activeConnection!.host}:${activeConnection!.port} · ${activeConnection?.kind === "mongodb" ? `browse accessible databases · ${selectedMongoDatabase || activeConnection!.database}` : activeConnection!.serverMode ? "browse databases available to this user" : activeConnection!.database}`
+                : "Write, organize, and explore. Connect a server when you’re ready to run."}
             </p>
           </div>
           <button
@@ -2369,7 +2375,7 @@ export default function DatabaseWorkspace({
           {activeConnection && (
             <button
               className="db-quiet-button"
-              disabled={runState !== 'idle'}
+              disabled={runState !== "idle"}
               onClick={() => void disconnect(activeConnection)}
             >
               Disconnect
@@ -2377,7 +2383,7 @@ export default function DatabaseWorkspace({
           )}
         </div>
 
-        {activeConnection?.kind === 'mongodb' &&
+        {activeConnection?.kind === "mongodb" &&
           selectedMongoCollection &&
           selectedMongoDatabase && (
             <section
@@ -2393,43 +2399,43 @@ export default function DatabaseWorkspace({
                   {selectedMongoCollection.type}
                   {selectedMongoCollection.estimatedDocuments !== undefined
                     ? ` · approximately ${selectedMongoCollection.estimatedDocuments.toLocaleString()} documents`
-                    : ''}{' '}
+                    : ""}{" "}
                   · {(selectedMongoCollection.indexes ?? []).length} indexes
                 </span>
               </div>
               <div className="db-mongo-actions">
                 <button
                   className="db-quiet-button"
-                  disabled={runState !== 'idle' || mongoOperationBusy}
-                  onClick={() => openMongoOperation('insert')}
+                  disabled={runState !== "idle" || mongoOperationBusy}
+                  onClick={() => openMongoOperation("insert")}
                 >
                   ＋ Insert
                 </button>
                 <button
                   className="db-quiet-button"
-                  disabled={runState !== 'idle' || mongoOperationBusy}
-                  onClick={() => openMongoOperation('update')}
+                  disabled={runState !== "idle" || mongoOperationBusy}
+                  onClick={() => openMongoOperation("update")}
                 >
                   Update
                 </button>
                 <button
                   className="db-quiet-button danger"
-                  disabled={runState !== 'idle' || mongoOperationBusy}
-                  onClick={() => openMongoOperation('delete')}
+                  disabled={runState !== "idle" || mongoOperationBusy}
+                  onClick={() => openMongoOperation("delete")}
                 >
                   Delete
                 </button>
                 <button
                   className="db-quiet-button"
                   disabled={mongoOperationBusy}
-                  onClick={() => openMongoOperation('create-index')}
+                  onClick={() => openMongoOperation("create-index")}
                 >
                   ＋ Index
                 </button>
                 <button
                   className="db-quiet-button danger"
                   disabled={mongoOperationBusy}
-                  onClick={() => openMongoOperation('drop-collection')}
+                  onClick={() => openMongoOperation("drop-collection")}
                 >
                   Drop collection
                 </button>
@@ -2440,20 +2446,20 @@ export default function DatabaseWorkspace({
                     <div className="db-mongo-index" key={index.name}>
                       <span>
                         <b>{index.name}</b>
-                        {index.unique ? ' · unique' : ''}
+                        {index.unique ? " · unique" : ""}
                         {index.expireAfterSeconds !== undefined
                           ? ` · TTL ${index.expireAfterSeconds}s`
-                          : ''}
+                          : ""}
                         <code>{index.keys}</code>
                       </span>
-                      {index.name !== '_id_' && (
+                      {index.name !== "_id_" && (
                         <button
                           className="db-inline-add danger"
                           title={`Drop index ${index.name}`}
                           aria-label={`Drop index ${index.name}`}
                           onClick={() => {
-                            openMongoOperation('drop-index')
-                            setMongoIndexName(index.name)
+                            openMongoOperation("drop-index");
+                            setMongoIndexName(index.name);
                           }}
                         >
                           ×
@@ -2481,7 +2487,7 @@ export default function DatabaseWorkspace({
         {notice && (
           <div className="workspace-notice" role="status">
             {notice}
-            <button aria-label="Dismiss notice" onClick={() => setNotice('')}>
+            <button aria-label="Dismiss notice" onClick={() => setNotice("")}>
               <X size={14} />
             </button>
           </div>
@@ -2491,26 +2497,26 @@ export default function DatabaseWorkspace({
             {workspace.tabs.map((tab) => (
               <div
                 key={tab.id}
-                className={`query-tab${tab.id === activeTab?.id ? ' active' : ''}`}
+                className={`query-tab${tab.id === activeTab?.id ? " active" : ""}`}
               >
                 <button
                   role="tab"
                   aria-selected={tab.id === activeTab?.id}
-                  disabled={runState !== 'idle'}
+                  disabled={runState !== "idle"}
                   onClick={() => {
-                    if (!closeRowPanel()) return
-                    setRowSource(null)
+                    if (!closeRowPanel()) return;
+                    setRowSource(null);
                     setWorkspace((current) => ({
                       ...current,
-                      activeTabId: tab.id
-                    }))
-                    setRows([])
-                    setColumns([])
-                    setQueryError('')
-                    setQuerySummary('Ready to execute.')
-                    setSelectedTable(null)
-                    setTableDetails(null)
-                    setResultView('data')
+                      activeTabId: tab.id,
+                    }));
+                    setRows([]);
+                    setColumns([]);
+                    setQueryError("");
+                    setQuerySummary("Ready to execute.");
+                    setSelectedTable(null);
+                    setTableDetails(null);
+                    setResultView("data");
                   }}
                 >
                   <FileCode2 size={13} />
@@ -2518,7 +2524,7 @@ export default function DatabaseWorkspace({
                   {tab.query.trim() && <i title="Draft autosaved locally" />}
                 </button>
                 <button
-                  disabled={runState !== 'idle'}
+                  disabled={runState !== "idle"}
                   aria-label={`Close ${tab.title}`}
                   onClick={() => closeTab(tab.id)}
                 >
@@ -2530,7 +2536,7 @@ export default function DatabaseWorkspace({
               className="new-tab"
               title="New query tab (Ctrl/Cmd T)"
               aria-label="New query tab"
-              disabled={runState !== 'idle'}
+              disabled={runState !== "idle"}
               onClick={() => newTab()}
             >
               <Plus size={15} />
@@ -2552,29 +2558,29 @@ export default function DatabaseWorkspace({
               <div className="db-editor-topline">
                 <div className="db-editor-tabs">
                   <span className="db-editor-tab active">
-                    {(activeTab?.kind ?? activeConnection?.kind) !== 'mongodb'
-                      ? 'SQL editor'
-                      : mongoQueryMode === 'find'
-                        ? 'Find filter'
-                        : 'Aggregation pipeline'}
+                    {(activeTab?.kind ?? activeConnection?.kind) !== "mongodb"
+                      ? "SQL editor"
+                      : mongoQueryMode === "find"
+                        ? "Find filter"
+                        : "Aggregation pipeline"}
                   </span>
                   <span className="db-editor-language">
-                    {(activeTab?.kind ?? activeConnection?.kind) !== 'mongodb'
-                      ? 'POSTGRESQL'
-                      : 'MONGODB JSON'}
+                    {(activeTab?.kind ?? activeConnection?.kind) !== "mongodb"
+                      ? "POSTGRESQL"
+                      : "MONGODB JSON"}
                   </span>
                 </div>
                 <div className="db-editor-controls">
-                  {activeTab?.kind === 'mongodb' && (
+                  {activeTab?.kind === "mongodb" && (
                     <label className="db-limit-field">
                       <span>Mode</span>
                       <select
                         value={mongoQueryMode}
                         onChange={(event) => {
                           const mode = event.target.value as
-                            'find' | 'aggregate'
-                          setMongoQueryMode(mode)
-                          setQueryText(mode === 'find' ? '{}' : '[]')
+                            "find" | "aggregate";
+                          setMongoQueryMode(mode);
+                          setQueryText(mode === "find" ? "{}" : "[]");
                         }}
                         aria-label="MongoDB query mode"
                       >
@@ -2583,7 +2589,7 @@ export default function DatabaseWorkspace({
                       </select>
                     </label>
                   )}
-                  {activeTab?.kind === 'mongodb' && (
+                  {activeTab?.kind === "mongodb" && (
                     <label className="db-collection-field">
                       <span>Collection</span>
                       <input
@@ -2609,7 +2615,7 @@ export default function DatabaseWorkspace({
                       <option value={10000}>10,000</option>
                     </select>
                   </label>
-                  {runState === 'idle' ? (
+                  {runState === "idle" ? (
                     <button
                       className="db-run-button"
                       onClick={() => void runQuery()}
@@ -2621,9 +2627,9 @@ export default function DatabaseWorkspace({
                     <button
                       className="db-cancel-button"
                       onClick={() => void cancelQuery()}
-                      disabled={runState === 'cancelling'}
+                      disabled={runState === "cancelling"}
                     >
-                      {runState === 'cancelling' ? 'Cancelling…' : '■ Cancel'}
+                      {runState === "cancelling" ? "Cancelling…" : "■ Cancel"}
                     </button>
                   )}
                 </div>
@@ -2631,21 +2637,21 @@ export default function DatabaseWorkspace({
               <div className="query-actions">
                 <span>
                   {activeConnection
-                    ? `${activeConnection.database || 'server'} / ${activeTab?.title ?? 'Query'}`
-                    : 'OFFLINE DRAFT · connect a server to execute'}
+                    ? `${activeConnection.database || "server"} / ${activeTab?.title ?? "Query"}`
+                    : "OFFLINE DRAFT · connect a server to execute"}
                 </span>
                 <button
                   onClick={chooseQueryConnection}
-                  disabled={runState !== 'idle'}
+                  disabled={runState !== "idle"}
                   title="Select or reconnect a database for this query"
                 >
                   {activeConnection
-                    ? 'Change query connection'
-                    : 'Select connection'}
+                    ? "Change query connection"
+                    : "Select connection"}
                 </button>
                 <button
                   onClick={formatQuery}
-                  disabled={activeTab?.kind === 'mongodb' || !queryText.trim()}
+                  disabled={activeTab?.kind === "mongodb" || !queryText.trim()}
                 >
                   Format SQL
                 </button>
@@ -2658,39 +2664,39 @@ export default function DatabaseWorkspace({
                   aria-label="Export query"
                   onClick={() =>
                     downloadText(
-                      `${activeTab?.title ?? 'query'}.${activeTab?.kind === 'mongodb' ? 'json' : 'sql'}`,
+                      `${activeTab?.title ?? "query"}.${activeTab?.kind === "mongodb" ? "json" : "sql"}`,
                       queryText,
-                      'text/plain'
+                      "text/plain",
                     )
                   }
                 >
                   <Download size={13} />
                 </button>
               </div>
-              {activeConnection?.kind === 'postgres' &&
-                activeTab?.kind === 'postgres' && (
+              {activeConnection?.kind === "postgres" &&
+                activeTab?.kind === "postgres" && (
                   <div className="pg-tools-bar">
                     <button
                       type="button"
                       data-testid="explain-query"
                       disabled={
                         !queryText.trim() ||
-                        runState !== 'idle' ||
+                        runState !== "idle" ||
                         activeConnection.serverMode
                       }
                       title="Estimate the selected SQL or single-statement draft without ANALYZE"
                       onClick={() => {
                         try {
                           const explain = buildExplainQuery(
-                            sqlSelection.trim() || queryText
-                          )
-                          void runQuery({ query: explain, explain: true })
+                            sqlSelection.trim() || queryText,
+                          );
+                          void runQuery({ query: explain, explain: true });
                         } catch (error) {
                           setQueryError(
                             error instanceof Error
                               ? error.message
-                              : 'Could not build EXPLAIN query.'
-                          )
+                              : "Could not build EXPLAIN query.",
+                          );
                         }
                       }}
                     >
@@ -2702,13 +2708,13 @@ export default function DatabaseWorkspace({
                         aria-label="PostgreSQL diagnostic query"
                         value=""
                         disabled={
-                          runState !== 'idle' || activeConnection.serverMode
+                          runState !== "idle" || activeConnection.serverMode
                         }
                         onChange={(event) => {
                           const item = postgresDiagnostics.find(
-                            (entry) => entry.id === event.target.value
-                          )
-                          if (item) newTab(item.sql, item.label)
+                            (entry) => entry.id === event.target.value,
+                          );
+                          if (item) newTab(item.sql, item.label);
                         }}
                       >
                         <option value="">Open diagnostic…</option>
@@ -2733,17 +2739,17 @@ export default function DatabaseWorkspace({
                 onRun={(selection) =>
                   void runQuery({ query: selection ?? queryText })
                 }
-                kind={activeTab?.kind ?? activeConnection?.kind ?? 'postgres'}
+                kind={activeTab?.kind ?? activeConnection?.kind ?? "postgres"}
                 tables={autocompleteTables}
-                disabled={runState !== 'idle'}
+                disabled={runState !== "idle"}
               />
               <div className="db-editor-footer">
                 <span>
-                  {(activeTab?.kind ?? activeConnection?.kind) !== 'mongodb'
-                    ? 'Ctrl/⌘ Enter: selection or statement · Shift: run all · 120s timeout'
-                    : mongoQueryMode === 'find'
-                      ? '⌘ Enter to run · $where is disabled · maxTimeMS 120 seconds'
-                      : '⌘ Enter to run · read-only pipeline · $out, $merge and server-side JavaScript disabled'}
+                  {(activeTab?.kind ?? activeConnection?.kind) !== "mongodb"
+                    ? "Ctrl/⌘ Enter: selection or statement · Shift: run all · 120s timeout"
+                    : mongoQueryMode === "find"
+                      ? "⌘ Enter to run · $where is disabled · maxTimeMS 120 seconds"
+                      : "⌘ Enter to run · read-only pipeline · $out, $merge and server-side JavaScript disabled"}
                 </span>
                 <span>
                   Draft autosaved locally · {maxRows.toLocaleString()} rows / 16
@@ -2758,58 +2764,58 @@ export default function DatabaseWorkspace({
               value={layout.split}
               min={20}
               max={78}
-              onChange={(v) => resizeLayout('split', v)}
+              onChange={(v) => resizeLayout("split", v)}
             />
             <div className="db-results-card">
               <div className="db-results-header">
                 <div>
                   <div className="result-tabs">
-                    {(queryPlan !== null || resultView === 'plan') && (
+                    {(queryPlan !== null || resultView === "plan") && (
                       <button
-                        className={resultView === 'plan' ? 'active' : ''}
-                        onClick={() => setResultView('plan')}
+                        className={resultView === "plan" ? "active" : ""}
+                        onClick={() => setResultView("plan")}
                       >
                         <FileCode2 size={14} /> Plan
                       </button>
                     )}
                     <button
-                      className={resultView === 'data' ? 'active' : ''}
-                      onClick={() => setResultView('data')}
+                      className={resultView === "data" ? "active" : ""}
+                      onClick={() => setResultView("data")}
                     >
                       <Table2 size={14} /> Results
                     </button>
                     <button
                       disabled={!selectedTable}
-                      className={resultView === 'structure' ? 'active' : ''}
-                      onClick={() => setResultView('structure')}
+                      className={resultView === "structure" ? "active" : ""}
+                      onClick={() => setResultView("structure")}
                     >
                       <Columns3 size={14} /> Structure
                     </button>
                     <button
                       disabled={!selectedTable}
-                      className={resultView === 'indexes' ? 'active' : ''}
-                      onClick={() => setResultView('indexes')}
+                      className={resultView === "indexes" ? "active" : ""}
+                      onClick={() => setResultView("indexes")}
                     >
                       <KeyRound size={14} /> Indexes & constraints
                     </button>
                   </div>
                   <p className="db-results-summary" aria-live="polite">
-                    {runState !== 'idle'
-                      ? `${runState === 'cancelling' ? 'Cancelling query' : 'Query running'} · ${rows.length.toLocaleString()} rows received`
+                    {runState !== "idle"
+                      ? `${runState === "cancelling" ? "Cancelling query" : "Query running"} · ${rows.length.toLocaleString()} rows received`
                       : querySummary}
                   </p>
                 </div>
-                {resultView === 'plan' ? (
+                {resultView === "plan" ? (
                   <div className="result-actions">
                     <button
-                      disabled={queryPlan === null || runState !== 'idle'}
+                      disabled={queryPlan === null || runState !== "idle"}
                       onClick={() =>
                         downloadText(
-                          'rowfish-plan.json',
-                          typeof rows[0]?.['QUERY PLAN'] === 'string'
-                            ? rows[0]['QUERY PLAN']
+                          "rowfish-plan.json",
+                          typeof rows[0]?.["QUERY PLAN"] === "string"
+                            ? rows[0]["QUERY PLAN"]
                             : JSON.stringify(queryPlan, null, 2),
-                          'application/json'
+                          "application/json",
                         )
                       }
                     >
@@ -2822,30 +2828,30 @@ export default function DatabaseWorkspace({
                       {visibleRows.length.toLocaleString()}
                       {deferredSearch
                         ? ` / ${rows.length.toLocaleString()}`
-                        : ''}{' '}
+                        : ""}{" "}
                       rows
                     </span>
                     <button
-                      disabled={!columns.length || runState !== 'idle'}
+                      disabled={!columns.length || runState !== "idle"}
                       title="Export filtered rows as CSV"
                       onClick={() =>
                         downloadText(
-                          'rowfish-results.csv',
+                          "rowfish-results.csv",
                           exportResultsCsv(columns, visibleRows),
-                          'text/csv'
+                          "text/csv",
                         )
                       }
                     >
                       CSV <Download size={12} />
                     </button>
                     <button
-                      disabled={!columns.length || runState !== 'idle'}
+                      disabled={!columns.length || runState !== "idle"}
                       title="Export filtered rows as JSON"
                       onClick={() =>
                         downloadText(
-                          'rowfish-results.json',
+                          "rowfish-results.json",
                           exportResultsJson(visibleRows),
-                          'application/json'
+                          "application/json",
                         )
                       }
                     >
@@ -2864,17 +2870,17 @@ export default function DatabaseWorkspace({
                   <span />
                 </div>
               )}
-              {resultView === 'plan' ? (
+              {resultView === "plan" ? (
                 queryPlan !== null ? (
                   <QueryPlan result={queryPlan} />
                 ) : (
                   <div className="metadata-panel">
-                    {runState !== 'idle'
-                      ? 'Requesting estimated plan…'
-                      : 'No estimated plan available.'}
+                    {runState !== "idle"
+                      ? "Requesting estimated plan…"
+                      : "No estimated plan available."}
                   </div>
                 )
-              ) : resultView !== 'data' ? (
+              ) : resultView !== "data" ? (
                 <div className="metadata-panel">
                   {metadataLoading ? (
                     <p>Loading table metadata…</p>
@@ -2897,7 +2903,7 @@ export default function DatabaseWorkspace({
                   onScroll={(event) =>
                     setViewport({
                       top: event.currentTarget.scrollTop,
-                      height: event.currentTarget.clientHeight
+                      height: event.currentTarget.clientHeight,
                     })
                   }
                 >
@@ -2915,7 +2921,7 @@ export default function DatabaseWorkspace({
                                     current?.column === column &&
                                     current.direction === 1
                                       ? -1
-                                      : 1
+                                      : 1,
                                 }))
                               }
                             >
@@ -2923,9 +2929,9 @@ export default function DatabaseWorkspace({
                               <span>
                                 {sort?.column === column
                                   ? sort.direction === 1
-                                    ? ' ↑'
-                                    : ' ↓'
-                                  : ' ↕'}
+                                    ? " ↑"
+                                    : " ↓"
+                                  : " ↕"}
                               </span>
                             </button>
                           </th>
@@ -2942,25 +2948,25 @@ export default function DatabaseWorkspace({
                         </tr>
                       )}
                       {windowedRows.map((row, offset) => {
-                        const index = firstVisible + offset
+                        const index = firstVisible + offset;
                         const selected =
                           row === inspectedRow ||
                           !!(
                             inspectedRow &&
                             rowSource &&
                             isSameRow(rowSource.details, row, inspectedRow)
-                          )
+                          );
                         return (
                           <tr
                             key={index}
-                            className={selected ? 'selected-row' : ''}
+                            className={selected ? "selected-row" : ""}
                             tabIndex={0}
                             aria-selected={selected}
                             onClick={() => inspectRow(row)}
                             onKeyDown={(event) => {
-                              if (event.key === 'Enter' || event.key === ' ') {
-                                event.preventDefault()
-                                inspectRow(row)
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                inspectRow(row);
                               }
                             }}
                             title="Click to inspect or edit row"
@@ -2970,15 +2976,15 @@ export default function DatabaseWorkspace({
                               <td
                                 key={column}
                                 className={
-                                  row[column] === null ? 'null-cell' : ''
+                                  row[column] === null ? "null-cell" : ""
                                 }
-                                title={String(row[column] ?? '')}
+                                title={String(row[column] ?? "")}
                               >
-                                {String(row[column] ?? 'NULL')}
+                                {String(row[column] ?? "NULL")}
                               </td>
                             ))}
                           </tr>
-                        )
+                        );
                       })}
                       {lastVisible < visibleRows.length && (
                         <tr aria-hidden="true" className="db-spacer-row">
@@ -2986,7 +2992,7 @@ export default function DatabaseWorkspace({
                             colSpan={columns.length + 1}
                             style={{
                               height:
-                                (visibleRows.length - lastVisible) * ROW_HEIGHT
+                                (visibleRows.length - lastVisible) * ROW_HEIGHT,
                             }}
                           />
                         </tr>
@@ -2996,9 +3002,9 @@ export default function DatabaseWorkspace({
                 </div>
               ) : (
                 <div
-                  className={`db-results-empty${runState !== 'idle' ? ' loading' : ''}`}
+                  className={`db-results-empty${runState !== "idle" ? " loading" : ""}`}
                 >
-                  {runState !== 'idle' ? (
+                  {runState !== "idle" ? (
                     <>
                       <span className="db-spinner" />
                       <b>Query running</b>
@@ -3031,14 +3037,14 @@ export default function DatabaseWorkspace({
                   )}
                 </div>
               )}
-              {columns.length > 0 && resultView === 'data' && (
+              {columns.length > 0 && resultView === "data" && (
                 <div className="db-grid-footer">
                   <span>{rows.length.toLocaleString()} rows</span>
                   <span>
-                    Click a row to inspect / edit ·{' '}
+                    Click a row to inspect / edit ·{" "}
                     {serverInfo
                       ? `${serverInfo.database} / ${serverInfo.user}`
-                      : 'Filtered exports'}
+                      : "Filtered exports"}
                   </span>
                 </div>
               )}
@@ -3057,13 +3063,13 @@ export default function DatabaseWorkspace({
             value={layout.rowPanel}
             min={300}
             max={Math.min(560, window.innerWidth - 360)}
-            onChange={(v) => resizeLayout('rowPanel', v)}
+            onChange={(v) => resizeLayout("rowPanel", v)}
           />
           <RowSidePanel
             row={inspectedRow}
             source={rowSource}
             onClose={() => {
-              closeRowPanel()
+              closeRowPanel();
             }}
             onDirtyChange={setRowDirty}
             onBusyChange={setRowBusy}
@@ -3072,9 +3078,9 @@ export default function DatabaseWorkspace({
                 current.map((row) =>
                   rowSource && isSameRow(rowSource.details, row, inspectedRow)
                     ? updated
-                    : row
-                )
-              )
+                    : row,
+                ),
+              );
             }}
           />
         </>
@@ -3084,40 +3090,41 @@ export default function DatabaseWorkspace({
         <div
           className="db-modal-backdrop"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setSaveDialog(false)
+            if (event.target === event.currentTarget) setSaveDialog(false);
           }}
         >
           <form
             className="db-modal compact-modal"
             onClick={(event) => event.stopPropagation()}
             onSubmit={(event) => {
-              event.preventDefault()
-              const title = queryName.trim()
-              if (!title) return
+              event.preventDefault();
+              const title = queryName.trim();
+              if (!title) return;
               const item: SavedQuery = {
                 id: crypto.randomUUID(),
                 title,
                 query: queryText,
-                kind: activeTab?.kind ?? 'postgres',
-                connectionKey: activeTab?.connectionKey ?? '',
-                folder: queryFolder.trim() || 'General',
-                updatedAt: Date.now()
-              }
+                kind: activeTab?.kind ?? "postgres",
+                connectionKey: activeTab?.connectionKey ?? "",
+                folder: queryFolder.trim() || "General",
+                updatedAt: Date.now(),
+              };
               setWorkspace((current) => ({
                 ...current,
                 saved: [
                   item,
                   ...current.saved.filter(
                     (entry) =>
-                      entry.title !== item.title || entry.folder !== item.folder
-                  )
+                      entry.title !== item.title ||
+                      entry.folder !== item.folder,
+                  ),
                 ].slice(0, 500),
                 tabs: current.tabs.map((tab) =>
-                  tab.id === current.activeTabId ? { ...tab, title } : tab
-                )
-              }))
-              setSaveDialog(false)
-              setRailView('saved')
+                  tab.id === current.activeTabId ? { ...tab, title } : tab,
+                ),
+              }));
+              setSaveDialog(false);
+              setRailView("saved");
             }}
             role="dialog"
             aria-modal="true"
@@ -3166,7 +3173,7 @@ export default function DatabaseWorkspace({
         <div
           className="db-modal-backdrop"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setShowHelp(false)
+            if (event.target === event.currentTarget) setShowHelp(false);
           }}
         >
           <section
@@ -3213,8 +3220,8 @@ export default function DatabaseWorkspace({
         <div
           className="db-modal-backdrop"
           onMouseDown={(event) => {
-            if (event.target !== event.currentTarget) return
-            if (!queryConnectionBusy) cancelQueryConnection()
+            if (event.target !== event.currentTarget) return;
+            if (!queryConnectionBusy) cancelQueryConnection();
           }}
         >
           <section
@@ -3236,9 +3243,9 @@ export default function DatabaseWorkspace({
               </button>
             </div>
             <p className="db-modal-copy">
-              Select a{' '}
-              {activeTab?.kind === 'mongodb' ? 'MongoDB' : 'PostgreSQL'}{' '}
-              connection for {activeTab?.title ?? 'this query'}. Your draft
+              Select a{" "}
+              {activeTab?.kind === "mongodb" ? "MongoDB" : "PostgreSQL"}{" "}
+              connection for {activeTab?.title ?? "this query"}. Your draft
               stays intact. Connecting does not run the query.
             </p>
             <div className="query-connection-options">
@@ -3256,7 +3263,7 @@ export default function DatabaseWorkspace({
                           void selectQueryConnection(
                             queryConnectionServer,
                             false,
-                            database.name
+                            database.name,
                           )
                         }
                       >
@@ -3264,7 +3271,7 @@ export default function DatabaseWorkspace({
                       </button>
                     ))}
                   {!queryConnectionDatabases.some(
-                    (database) => database.canConnect
+                    (database) => database.canConnect,
                   ) &&
                     !queryConnectionBusy && (
                       <p>
@@ -3298,8 +3305,8 @@ export default function DatabaseWorkspace({
                         aria-label={`Use ${connection.name}`}
                         onClick={() => void selectQueryConnection(connection)}
                       >
-                        <Database size={15} /> {connection.name} ·{' '}
-                        {connection.database || 'choose database'} · connected
+                        <Database size={15} /> {connection.name} ·{" "}
+                        {connection.database || "choose database"} · connected
                       </button>
                     ))}
                   {savedConnections
@@ -3313,15 +3320,15 @@ export default function DatabaseWorkspace({
                           void selectQueryConnection(profile, true)
                         }
                       >
-                        <RefreshCw size={15} /> {profile.name} ·{' '}
-                        {profile.database || 'choose database'} · saved
+                        <RefreshCw size={15} /> {profile.name} ·{" "}
+                        {profile.database || "choose database"} · saved
                       </button>
                     ))}
                   {!connections.some(
-                    (connection) => connection.kind === activeTab?.kind
+                    (connection) => connection.kind === activeTab?.kind,
                   ) &&
                     !savedConnections.some(
-                      (profile) => profile.kind === activeTab?.kind
+                      (profile) => profile.kind === activeTab?.kind,
                     ) && (
                       <p>
                         No matching connections yet. Add a connection to use
@@ -3349,17 +3356,17 @@ export default function DatabaseWorkspace({
                 className="db-run-button"
                 disabled={queryConnectionBusy}
                 onClick={() => {
-                  setShowQueryConnection(false)
-                  setConnectionError('')
-                  setMongoUriMode(false)
+                  setShowQueryConnection(false);
+                  setConnectionError("");
+                  setMongoUriMode(false);
                   setForm({
                     ...DEFAULT_FORM,
-                    kind: activeTab?.kind ?? 'postgres',
-                    port: activeTab?.kind === 'mongodb' ? 27017 : 5432,
+                    kind: activeTab?.kind ?? "postgres",
+                    port: activeTab?.kind === "mongodb" ? 27017 : 5432,
                     database:
-                      activeTab?.kind === 'mongodb' ? 'admin' : 'postgres'
-                  })
-                  setShowConnect(true)
+                      activeTab?.kind === "mongodb" ? "admin" : "postgres",
+                  });
+                  setShowConnect(true);
                 }}
               >
                 New connection
@@ -3372,12 +3379,12 @@ export default function DatabaseWorkspace({
         <div
           className="db-modal-backdrop"
           onMouseDown={(event) => {
-            if (event.target !== event.currentTarget) return
+            if (event.target !== event.currentTarget) return;
             if (!connecting) {
-              setShowConnect(false)
-              cancelQueryConnection()
-              setForm(DEFAULT_FORM)
-              setConnectionError('')
+              setShowConnect(false);
+              cancelQueryConnection();
+              setForm(DEFAULT_FORM);
+              setConnectionError("");
             }
           }}
         >
@@ -3398,10 +3405,10 @@ export default function DatabaseWorkspace({
                 aria-label="Close"
                 disabled={connecting}
                 onClick={() => {
-                  setShowConnect(false)
-                  cancelQueryConnection()
-                  setForm(DEFAULT_FORM)
-                  setConnectionError('')
+                  setShowConnect(false);
+                  cancelQueryConnection();
+                  setForm(DEFAULT_FORM);
+                  setConnectionError("");
                 }}
               >
                 ×
@@ -3416,7 +3423,7 @@ export default function DatabaseWorkspace({
                 <span>Connection name</span>
                 <input
                   value={form.name}
-                  onChange={(event) => updateForm('name', event.target.value)}
+                  onChange={(event) => updateForm("name", event.target.value)}
                   maxLength={80}
                   autoFocus
                 />
@@ -3427,33 +3434,33 @@ export default function DatabaseWorkspace({
                   value={form.kind}
                   onChange={(event) => {
                     const kind = event.target
-                      .value as DatabaseConnectionInput['kind']
-                    setMongoUriMode(false)
+                      .value as DatabaseConnectionInput["kind"];
+                    setMongoUriMode(false);
                     setForm((current) => ({
                       ...current,
                       kind,
-                      port: kind === 'postgres' ? 5432 : 27017,
-                      database: kind === 'postgres' ? 'postgres' : 'admin',
+                      port: kind === "postgres" ? 5432 : 27017,
+                      database: kind === "postgres" ? "postgres" : "admin",
                       serverMode: false,
-                      connectionString: ''
-                    }))
+                      connectionString: "",
+                    }));
                   }}
                 >
                   <option value="postgres">PostgreSQL</option>
                   <option value="mongodb">MongoDB</option>
                 </select>
               </label>
-              {form.kind === 'mongodb' && (
+              {form.kind === "mongodb" && (
                 <label className="db-tls-toggle db-uri-toggle">
                   <input
                     type="checkbox"
                     checked={mongoUriMode}
                     onChange={(event) => {
-                      setMongoUriMode(event.target.checked)
+                      setMongoUriMode(event.target.checked);
                       setForm((current) => ({
                         ...current,
-                        connectionString: ''
-                      }))
+                        connectionString: "",
+                      }));
                     }}
                   />
                   <span>
@@ -3467,9 +3474,9 @@ export default function DatabaseWorkspace({
                   <span>MongoDB connection string</span>
                   <input
                     type="password"
-                    value={form.connectionString ?? ''}
+                    value={form.connectionString ?? ""}
                     onChange={(event) =>
-                      updateForm('connectionString', event.target.value)
+                      updateForm("connectionString", event.target.value)
                     }
                     placeholder="mongodb+srv://user:password@cluster.example/database"
                     autoComplete="off"
@@ -3482,7 +3489,7 @@ export default function DatabaseWorkspace({
                     <input
                       value={form.host}
                       onChange={(event) =>
-                        updateForm('host', event.target.value)
+                        updateForm("host", event.target.value)
                       }
                       placeholder="localhost"
                       autoComplete="off"
@@ -3496,40 +3503,40 @@ export default function DatabaseWorkspace({
                       max={65535}
                       value={form.port}
                       onChange={(event) =>
-                        updateForm('port', Number(event.target.value))
+                        updateForm("port", Number(event.target.value))
                       }
                     />
                   </label>
-                  {form.kind === 'postgres' && (
+                  {form.kind === "postgres" && (
                     <label className="db-form-field">
                       <span>
-                        Database{' '}
+                        Database{" "}
                         {form.serverMode && (
                           <small>not required for server browser</small>
                         )}
                       </span>
                       <input
-                        value={form.serverMode ? '' : form.database}
+                        value={form.serverMode ? "" : form.database}
                         onChange={(event) =>
-                          updateForm('database', event.target.value)
+                          updateForm("database", event.target.value)
                         }
                         placeholder={
                           form.serverMode
-                            ? 'Browse all accessible databases'
-                            : 'Database name'
+                            ? "Browse all accessible databases"
+                            : "Database name"
                         }
                         disabled={form.serverMode}
                         autoComplete="off"
                       />
                     </label>
                   )}
-                  {form.kind === 'mongodb' && (
+                  {form.kind === "mongodb" && (
                     <label className="db-form-field">
                       <span>Database</span>
                       <input
                         value={form.database}
                         onChange={(event) =>
-                          updateForm('database', event.target.value)
+                          updateForm("database", event.target.value)
                         }
                         autoComplete="off"
                       />
@@ -3543,7 +3550,7 @@ export default function DatabaseWorkspace({
                       <input
                         value={form.username}
                         onChange={(event) =>
-                          updateForm('username', event.target.value)
+                          updateForm("username", event.target.value)
                         }
                         autoComplete="username"
                       />
@@ -3558,7 +3565,7 @@ export default function DatabaseWorkspace({
                         type="password"
                         value={form.password}
                         onChange={(event) =>
-                          updateForm('password', event.target.value)
+                          updateForm("password", event.target.value)
                         }
                         autoComplete="new-password"
                       />
@@ -3567,13 +3574,13 @@ export default function DatabaseWorkspace({
                 </>
               )}
             </div>
-            {form.kind === 'postgres' && (
+            {form.kind === "postgres" && (
               <label className="db-tls-toggle">
                 <input
                   type="checkbox"
                   checked={form.serverMode}
                   onChange={(event) =>
-                    updateForm('serverMode', event.target.checked)
+                    updateForm("serverMode", event.target.checked)
                   }
                 />
                 <span>
@@ -3591,7 +3598,7 @@ export default function DatabaseWorkspace({
                 <input
                   type="checkbox"
                   checked={form.tls}
-                  onChange={(event) => updateForm('tls', event.target.checked)}
+                  onChange={(event) => updateForm("tls", event.target.checked)}
                 />
                 <span>
                   <b>Require TLS</b>
@@ -3620,10 +3627,10 @@ export default function DatabaseWorkspace({
                 className="db-quiet-button"
                 disabled={connecting}
                 onClick={() => {
-                  setShowConnect(false)
-                  cancelQueryConnection()
-                  setForm(DEFAULT_FORM)
-                  setConnectionError('')
+                  setShowConnect(false);
+                  cancelQueryConnection();
+                  setForm(DEFAULT_FORM);
+                  setConnectionError("");
                 }}
               >
                 Cancel
@@ -3638,19 +3645,19 @@ export default function DatabaseWorkspace({
                     <span className="db-spinner small" /> Connecting…
                   </>
                 ) : (
-                  'Connect'
+                  "Connect"
                 )}
               </button>
             </div>
           </div>
         </div>
       )}
-      {mongoOperation && activeConnection?.kind === 'mongodb' && (
+      {mongoOperation && activeConnection?.kind === "mongodb" && (
         <div
           className="db-modal-backdrop"
           onMouseDown={(event) => {
-            if (event.target !== event.currentTarget) return
-            if (!mongoOperationBusy) setMongoOperation(null)
+            if (event.target !== event.currentTarget) return;
+            if (!mongoOperationBusy) setMongoOperation(null);
           }}
         >
           <div
@@ -3666,14 +3673,14 @@ export default function DatabaseWorkspace({
                 <h2 id="mongo-operation-title">
                   {
                     {
-                      insert: 'Insert document',
-                      update: 'Update documents',
-                      delete: 'Delete documents',
-                      'create-collection': 'Create collection',
-                      'drop-collection': 'Drop collection',
-                      'create-index': 'Create index',
-                      'drop-index': 'Drop index',
-                      'drop-database': 'Drop database'
+                      insert: "Insert document",
+                      update: "Update documents",
+                      delete: "Delete documents",
+                      "create-collection": "Create collection",
+                      "drop-collection": "Drop collection",
+                      "create-index": "Create index",
+                      "drop-index": "Drop index",
+                      "drop-database": "Drop database",
                     }[mongoOperation]
                   }
                 </h2>
@@ -3688,7 +3695,7 @@ export default function DatabaseWorkspace({
               </button>
             </div>
             <div className="db-mongo-operation-context">
-              {mongoOperation === 'create-collection' ? (
+              {mongoOperation === "create-collection" ? (
                 <label className="db-form-field">
                   <span>Database</span>
                   <input
@@ -3709,8 +3716,8 @@ export default function DatabaseWorkspace({
                   </b>
                 </div>
               )}
-              {mongoOperation === 'create-collection' ||
-              mongoOperation === 'drop-collection' ? (
+              {mongoOperation === "create-collection" ||
+              mongoOperation === "drop-collection" ? (
                 <label className="db-form-field">
                   <span>Collection name</span>
                   <input
@@ -3723,7 +3730,7 @@ export default function DatabaseWorkspace({
                   />
                 </label>
               ) : (
-                mongoOperation !== 'drop-database' && (
+                mongoOperation !== "drop-database" && (
                   <div>
                     <span>Collection</span>
                     <b>{selectedMongoCollection?.name ?? collection}</b>
@@ -3731,13 +3738,13 @@ export default function DatabaseWorkspace({
                 )
               )}
             </div>
-            {mongoOperation === 'create-collection' && (
+            {mongoOperation === "create-collection" && (
               <p className="db-modal-copy">
                 A new database is created automatically when its first
                 collection is created.
               </p>
             )}
-            {mongoOperation === 'insert' && (
+            {mongoOperation === "insert" && (
               <label className="db-form-field">
                 <span>Document (JSON / Extended JSON)</span>
                 <textarea
@@ -3749,7 +3756,7 @@ export default function DatabaseWorkspace({
                 />
               </label>
             )}
-            {(mongoOperation === 'update' || mongoOperation === 'delete') && (
+            {(mongoOperation === "update" || mongoOperation === "delete") && (
               <>
                 <label className="db-form-field">
                   <span>Match filter (JSON)</span>
@@ -3762,7 +3769,7 @@ export default function DatabaseWorkspace({
                     placeholder={'{ "_id": { "$oid": "..." } }'}
                   />
                 </label>
-                {mongoOperation === 'update' && (
+                {mongoOperation === "update" && (
                   <label className="db-form-field">
                     <span>Update operators (JSON)</span>
                     <textarea
@@ -3784,13 +3791,13 @@ export default function DatabaseWorkspace({
                     />
                     <span>
                       <b>
-                        {mongoOperation === 'delete'
-                          ? 'Delete all matches'
-                          : 'Update all matches'}
+                        {mongoOperation === "delete"
+                          ? "Delete all matches"
+                          : "Update all matches"}
                       </b>
                     </span>
                   </label>
-                  {mongoOperation === 'update' && (
+                  {mongoOperation === "update" && (
                     <label className="db-tls-toggle">
                       <input
                         type="checkbox"
@@ -3805,7 +3812,7 @@ export default function DatabaseWorkspace({
                     </label>
                   )}
                 </div>
-                {mongoOperation === 'delete' && (
+                {mongoOperation === "delete" && (
                   <label className="db-tls-toggle db-destructive-confirm">
                     <input
                       type="checkbox"
@@ -3824,7 +3831,7 @@ export default function DatabaseWorkspace({
                 )}
               </>
             )}
-            {mongoOperation === 'create-index' && (
+            {mongoOperation === "create-index" && (
               <>
                 <label className="db-form-field">
                   <span>Index keys (JSON)</span>
@@ -3851,7 +3858,7 @@ export default function DatabaseWorkspace({
                 </label>
               </>
             )}
-            {mongoOperation === 'drop-index' && (
+            {mongoOperation === "drop-index" && (
               <label className="db-form-field">
                 <span>Index name</span>
                 <input
@@ -3862,24 +3869,24 @@ export default function DatabaseWorkspace({
                 />
               </label>
             )}
-            {(mongoOperation === 'drop-collection' ||
-              mongoOperation === 'drop-database') && (
+            {(mongoOperation === "drop-collection" ||
+              mongoOperation === "drop-database") && (
               <>
                 <p className="db-query-error">
-                  This permanently drops{' '}
-                  {mongoOperation === 'drop-database'
-                    ? 'the database and all its collections'
-                    : 'the collection and all its documents'}
+                  This permanently drops{" "}
+                  {mongoOperation === "drop-database"
+                    ? "the database and all its collections"
+                    : "the collection and all its documents"}
                   .
                 </p>
                 <label className="db-form-field">
                   <span>
-                    Type{' '}
-                    {mongoOperation === 'drop-database'
+                    Type{" "}
+                    {mongoOperation === "drop-database"
                       ? mongoDatabaseName ||
                         selectedMongoDatabase ||
                         activeConnection!.database
-                      : mongoCollectionName}{' '}
+                      : mongoCollectionName}{" "}
                     to confirm
                   </span>
                   <input
@@ -3910,29 +3917,29 @@ export default function DatabaseWorkspace({
               </button>
               <button
                 className={
-                  mongoOperation === 'delete' ||
-                  mongoOperation === 'drop-collection' ||
-                  mongoOperation === 'drop-database'
-                    ? 'db-cancel-button'
-                    : 'db-run-button'
+                  mongoOperation === "delete" ||
+                  mongoOperation === "drop-collection" ||
+                  mongoOperation === "drop-database"
+                    ? "db-cancel-button"
+                    : "db-run-button"
                 }
                 disabled={
                   mongoOperationBusy ||
-                  (mongoOperation === 'create-collection' &&
+                  (mongoOperation === "create-collection" &&
                     (!mongoCollectionName.trim() ||
                       (mongoCreateNewDatabase && !mongoDatabaseName.trim()))) ||
-                  (mongoOperation === 'delete' &&
+                  (mongoOperation === "delete" &&
                     (!mongoFilter.trim() ||
-                      mongoFilter.trim() === '{}' ||
+                      mongoFilter.trim() === "{}" ||
                       !mongoDeleteConfirmed)) ||
-                  (mongoOperation === 'update' &&
-                    (!mongoFilter.trim() || mongoFilter.trim() === '{}')) ||
-                  (mongoOperation === 'create-index' &&
+                  (mongoOperation === "update" &&
+                    (!mongoFilter.trim() || mongoFilter.trim() === "{}")) ||
+                  (mongoOperation === "create-index" &&
                     !mongoIndexKeys.trim()) ||
-                  (mongoOperation === 'drop-index' && !mongoIndexName.trim()) ||
-                  (mongoOperation === 'drop-collection' &&
+                  (mongoOperation === "drop-index" && !mongoIndexName.trim()) ||
+                  (mongoOperation === "drop-collection" &&
                     mongoConfirmName !== mongoCollectionName) ||
-                  (mongoOperation === 'drop-database' &&
+                  (mongoOperation === "drop-database" &&
                     mongoConfirmName !==
                       (mongoDatabaseName ||
                         selectedMongoDatabase ||
@@ -3941,35 +3948,35 @@ export default function DatabaseWorkspace({
                 onClick={() => void submitMongoOperation()}
               >
                 {mongoOperationBusy
-                  ? 'Working…'
-                  : mongoOperation === 'delete' ||
-                      mongoOperation === 'drop-collection' ||
-                      mongoOperation === 'drop-database'
-                    ? 'Confirm destructive action'
-                    : 'Run operation'}
+                  ? "Working…"
+                  : mongoOperation === "delete" ||
+                      mongoOperation === "drop-collection" ||
+                      mongoOperation === "drop-database"
+                    ? "Confirm destructive action"
+                    : "Run operation"}
               </button>
             </div>
           </div>
         </div>
       )}
     </section>
-  )
+  );
 }
 
 function TableMetadata({
   details,
-  view
+  view,
 }: {
-  details: PostgresTableDetails
-  view: 'structure' | 'indexes'
+  details: PostgresTableDetails;
+  view: "structure" | "indexes";
 }): React.JSX.Element {
   return (
     <>
       <h3>
-        {details.schema}.{details.name}{' '}
+        {details.schema}.{details.name}{" "}
         <span className="db-overline">{details.kind}</span>
       </h3>
-      {view === 'structure' ? (
+      {view === "structure" ? (
         <table className="metadata-table">
           <thead>
             <tr>
@@ -3995,9 +4002,9 @@ function TableMetadata({
                 <td>
                   <code>{column.dataType}</code>
                 </td>
-                <td>{column.nullable ? 'Yes' : 'No'}</td>
+                <td>{column.nullable ? "Yes" : "No"}</td>
                 <td>
-                  <code>{column.defaultValue ?? '—'}</code>
+                  <code>{column.defaultValue ?? "—"}</code>
                 </td>
               </tr>
             ))}
@@ -4023,10 +4030,10 @@ function TableMetadata({
                   </td>
                   <td>
                     {index.primary
-                      ? 'Primary key'
+                      ? "Primary key"
                       : index.unique
-                        ? 'Unique'
-                        : 'Index'}
+                        ? "Unique"
+                        : "Index"}
                   </td>
                 </tr>
               ))}
@@ -4058,5 +4065,5 @@ function TableMetadata({
         </>
       )}
     </>
-  )
+  );
 }

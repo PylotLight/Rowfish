@@ -1,32 +1,32 @@
-import { useState } from 'react'
+import { useState } from "react";
 import {
   ACCENTS,
   DEFAULT_UI_PREFERENCES,
   THEMES,
-  type UiPreferences
-} from '../lib/ui-preferences'
-import '../components/settings.css'
+  type UiPreferences,
+} from "../lib/ui-preferences";
+import "../components/settings.css";
 
 type Props = {
-  prefs: UiPreferences
-  onChange: (prefs: UiPreferences) => void
-  onBack: () => void
-}
-type Section = 'appearance' | 'editor'
+  prefs: UiPreferences;
+  onChange: (prefs: UiPreferences) => void;
+  onBack: () => void;
+};
+type Section = "appearance" | "editor";
 
 export default function Settings({
   prefs,
   onChange,
-  onBack
+  onBack,
 }: Props): React.JSX.Element {
-  const [section, setSection] = useState<Section>('appearance')
+  const [section, setSection] = useState<Section>("appearance");
   const set = (patch: Partial<UiPreferences>) =>
-    onChange({ ...prefs, ...patch })
+    onChange({ ...prefs, ...patch });
   const radio = <T extends string>(
     label: string,
     value: T,
     options: readonly T[],
-    update: (v: T) => void
+    update: (v: T) => void,
   ) => (
     <div className="settings-choice" role="radiogroup" aria-label={label}>
       {options.map((option) => (
@@ -35,14 +35,14 @@ export default function Settings({
           key={option}
           role="radio"
           aria-checked={value === option}
-          className={`settings-chip${value === option ? ' selected' : ''}`}
+          className={`settings-chip${value === option ? " selected" : ""}`}
           onClick={() => update(option)}
         >
           {option.charAt(0).toUpperCase() + option.slice(1)}
         </button>
       ))}
     </div>
-  )
+  );
   return (
     <section
       className="settings-page"
@@ -51,35 +51,35 @@ export default function Settings({
       onKeyDown={(event) => {
         if (
           ![
-            'ArrowLeft',
-            'ArrowRight',
-            'ArrowUp',
-            'ArrowDown',
-            'Home',
-            'End'
+            "ArrowLeft",
+            "ArrowRight",
+            "ArrowUp",
+            "ArrowDown",
+            "Home",
+            "End",
           ].includes(event.key)
         )
-          return
-        const target = event.target as HTMLElement
-        if (target.getAttribute('role') !== 'radio') return
+          return;
+        const target = event.target as HTMLElement;
+        if (target.getAttribute("role") !== "radio") return;
         const items = Array.from(
           target
             .closest('[role="radiogroup"]')
-            ?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? []
-        )
-        const index = items.indexOf(target as HTMLButtonElement)
+            ?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [],
+        );
+        const index = items.indexOf(target as HTMLButtonElement);
         const next =
-          event.key === 'Home'
+          event.key === "Home"
             ? 0
-            : event.key === 'End'
+            : event.key === "End"
               ? items.length - 1
               : (index +
-                  (['ArrowLeft', 'ArrowUp'].includes(event.key) ? -1 : 1) +
+                  (["ArrowLeft", "ArrowUp"].includes(event.key) ? -1 : 1) +
                   items.length) %
-                items.length
-        event.preventDefault()
-        items[next]?.focus()
-        items[next]?.click()
+                items.length;
+        event.preventDefault();
+        items[next]?.focus();
+        items[next]?.click();
       }}
     >
       <header className="settings-header">
@@ -95,18 +95,18 @@ export default function Settings({
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="Settings sections">
           <span className="settings-nav-caption">PREFERENCES</span>
-          {(['appearance', 'editor'] as const).map((item) => (
+          {(["appearance", "editor"] as const).map((item) => (
             <button
               type="button"
               key={item}
-              className={`settings-nav-button${section === item ? ' active' : ''}`}
-              aria-current={section === item ? 'page' : undefined}
+              className={`settings-nav-button${section === item ? " active" : ""}`}
+              aria-current={section === item ? "page" : undefined}
               onClick={() => setSection(item)}
             >
               <span aria-hidden="true">
-                {item === 'appearance' ? '◐' : '⌘'}
+                {item === "appearance" ? "◐" : "⌘"}
               </span>
-              {item === 'appearance' ? 'Appearance' : 'Editor'}
+              {item === "appearance" ? "Appearance" : "Editor"}
             </button>
           ))}
           <button
@@ -118,7 +118,7 @@ export default function Settings({
           </button>
         </nav>
         <div className="settings-content">
-          {section === 'appearance' ? (
+          {section === "appearance" ? (
             <>
               <section className="settings-section">
                 <h2>Appearance</h2>
@@ -139,7 +139,7 @@ export default function Settings({
                         role="radio"
                         aria-label={theme.name}
                         aria-checked={prefs.theme === theme.id}
-                        className={`settings-theme-card${prefs.theme === theme.id ? ' selected' : ''}`}
+                        className={`settings-theme-card${prefs.theme === theme.id ? " selected" : ""}`}
                         onClick={() => set({ theme: theme.id })}
                       >
                         <span
@@ -173,7 +173,7 @@ export default function Settings({
                         key={accent.id}
                         role="radio"
                         aria-checked={prefs.accent === accent.id}
-                        className={`settings-accent${prefs.accent === accent.id ? ' selected' : ''}`}
+                        className={`settings-accent${prefs.accent === accent.id ? " selected" : ""}`}
                         onClick={() => set({ accent: accent.id })}
                       >
                         <span
@@ -186,9 +186,9 @@ export default function Settings({
                     <button
                       type="button"
                       role="radio"
-                      aria-checked={prefs.accent === 'custom'}
-                      className={`settings-accent${prefs.accent === 'custom' ? ' selected' : ''}`}
-                      onClick={() => set({ accent: 'custom' })}
+                      aria-checked={prefs.accent === "custom"}
+                      className={`settings-accent${prefs.accent === "custom" ? " selected" : ""}`}
+                      onClick={() => set({ accent: "custom" })}
                     >
                       <span
                         style={{ background: prefs.customAccent }}
@@ -197,7 +197,7 @@ export default function Settings({
                       <span>Custom</span>
                     </button>
                   </div>
-                  {prefs.accent === 'custom' && (
+                  {prefs.accent === "custom" && (
                     <label className="settings-color-label">
                       Custom accent color
                       <input
@@ -206,7 +206,7 @@ export default function Settings({
                         onChange={(e) =>
                           set({
                             customAccent: e.target.value,
-                            accent: 'custom'
+                            accent: "custom",
                           })
                         }
                       />
@@ -219,10 +219,10 @@ export default function Settings({
                     <p>Choose the density that suits your workspace.</p>
                   </div>
                   {radio(
-                    'Text size',
+                    "Text size",
                     prefs.density,
-                    ['comfortable', 'compact'] as const,
-                    (density) => set({ density })
+                    ["comfortable", "compact"] as const,
+                    (density) => set({ density }),
                   )}
                 </div>
                 <div className="settings-field settings-field-inline">
@@ -238,7 +238,7 @@ export default function Settings({
                       onChange={(e) =>
                         set({
                           interfaceFont: e.target
-                            .value as UiPreferences['interfaceFont']
+                            .value as UiPreferences["interfaceFont"],
                         })
                       }
                     >
@@ -271,10 +271,10 @@ export default function Settings({
                     <p>System follows your operating-system preference.</p>
                   </div>
                   {radio(
-                    'Motion',
+                    "Motion",
                     prefs.motion,
-                    ['full', 'reduced', 'system'] as const,
-                    (motion) => set({ motion })
+                    ["full", "reduced", "system"] as const,
+                    (motion) => set({ motion }),
                   )}
                 </div>
               </section>
@@ -298,7 +298,7 @@ export default function Settings({
                     onChange={(e) =>
                       set({
                         editorFont: e.target
-                          .value as UiPreferences['editorFont']
+                          .value as UiPreferences["editorFont"],
                       })
                     }
                   >
@@ -326,8 +326,8 @@ export default function Settings({
                       set({
                         editorFontSize: Math.max(
                           11,
-                          Math.min(24, Number(e.target.value))
-                        )
+                          Math.min(24, Number(e.target.value)),
+                        ),
                       })
                     }
                   />
@@ -372,11 +372,11 @@ export default function Settings({
                   className="settings-code-preview"
                   style={{
                     fontFamily:
-                      prefs.editorFont === 'system'
-                        ? 'ui-monospace, monospace'
+                      prefs.editorFont === "system"
+                        ? "ui-monospace, monospace"
                         : `'${prefs.editorFont}', monospace`,
                     fontSize: `${prefs.editorFontSize}px`,
-                    whiteSpace: prefs.lineWrapping ? 'pre-wrap' : 'pre'
+                    whiteSpace: prefs.lineWrapping ? "pre-wrap" : "pre",
                   }}
                 >
                   <span className="settings-code-line">
@@ -418,5 +418,5 @@ export default function Settings({
         </div>
       </div>
     </section>
-  )
+  );
 }

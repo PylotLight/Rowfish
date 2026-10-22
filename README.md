@@ -68,3 +68,7 @@ For macOS test builds, run `bun run dist:mac`. See [Mac testing](docs/mac-testin
 - [Troubleshooting](docs/troubleshooting.md)
 
 MIT licensed. See [LICENSE](LICENSE).
+
+## Development
+
+Use Bun 1.4.4 or newer. Install dependencies with `bun install --frozen-lockfile`; run `bun run format` to format files and `bun run format:check` to verify formatting. Run `bun run typecheck`, `bun run test` and `bun run build` for validation.

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer } from "electron";
 import type {
   DatabaseBrowserDatabase,
   DatabaseBrowserTable,
@@ -15,112 +15,112 @@ import type {
   PostgresRowDetails,
   PostgresRowRequest,
   UpdatePostgresRowRequest,
-  SavedConnectionProfile
-} from '../shared/database'
+  SavedConnectionProfile,
+} from "../shared/database";
 
 const api = {
   app: {
-    quit: (): Promise<void> => ipcRenderer.invoke('app:quit'),
+    quit: (): Promise<void> => ipcRenderer.invoke("app:quit"),
     setBlur: (enabled: boolean): Promise<void> =>
-      ipcRenderer.invoke('app:set-blur', enabled)
+      ipcRenderer.invoke("app:set-blur", enabled),
   },
   database: {
     connect: (
       input: DatabaseConnectionInput,
-      save: boolean
+      save: boolean,
     ): Promise<DatabaseConnectionSummary> =>
-      ipcRenderer.invoke('database:connect', input, save),
+      ipcRenderer.invoke("database:connect", input, save),
     saved: (): Promise<SavedConnectionProfile[]> =>
-      ipcRenderer.invoke('database:saved'),
+      ipcRenderer.invoke("database:saved"),
     connectSaved: (profileId: string): Promise<DatabaseConnectionSummary> =>
-      ipcRenderer.invoke('database:connect-saved', profileId),
+      ipcRenderer.invoke("database:connect-saved", profileId),
     deleteSaved: (profileId: string): Promise<boolean> =>
-      ipcRenderer.invoke('database:delete-saved', profileId),
+      ipcRenderer.invoke("database:delete-saved", profileId),
     listDatabases: (connectionId: string): Promise<DatabaseBrowserDatabase[]> =>
-      ipcRenderer.invoke('database:list-databases', connectionId),
+      ipcRenderer.invoke("database:list-databases", connectionId),
     listTables: (connectionId: string): Promise<DatabaseBrowserTable[]> =>
-      ipcRenderer.invoke('database:list-tables', connectionId),
+      ipcRenderer.invoke("database:list-tables", connectionId),
     getPostgresTableDetails: (
       connectionId: string,
       schema: string,
-      table: string
+      table: string,
     ): Promise<PostgresTableDetails> =>
       ipcRenderer.invoke(
-        'database:postgres-table-details',
+        "database:postgres-table-details",
         connectionId,
         schema,
-        table
+        table,
       ),
     getPostgresRow: (
-      request: PostgresRowRequest
+      request: PostgresRowRequest,
     ): Promise<PostgresRowDetails> =>
-      ipcRenderer.invoke('database:postgres-row-get', request),
+      ipcRenderer.invoke("database:postgres-row-get", request),
     updatePostgresRow: (
-      request: UpdatePostgresRowRequest
+      request: UpdatePostgresRowRequest,
     ): Promise<PostgresRowDetails> =>
-      ipcRenderer.invoke('database:postgres-row-update', request),
+      ipcRenderer.invoke("database:postgres-row-update", request),
     getPostgresServerInfo: (
-      connectionId: string
+      connectionId: string,
     ): Promise<PostgresServerInfo> =>
-      ipcRenderer.invoke('database:postgres-server-info', connectionId),
+      ipcRenderer.invoke("database:postgres-server-info", connectionId),
     listPostgresColumns: (
-      connectionId: string
+      connectionId: string,
     ): Promise<{ schema: string; table: string; name: string }[]> =>
-      ipcRenderer.invoke('database:postgres-columns', connectionId),
+      ipcRenderer.invoke("database:postgres-columns", connectionId),
     listMongoDatabases: (
-      connectionId: string
+      connectionId: string,
     ): Promise<MongoBrowserDatabase[]> =>
-      ipcRenderer.invoke('database:mongo-databases', connectionId),
+      ipcRenderer.invoke("database:mongo-databases", connectionId),
     listMongoCollections: (
       connectionId: string,
-      database: string
+      database: string,
     ): Promise<MongoBrowserCollection[]> =>
-      ipcRenderer.invoke('database:mongo-collections', connectionId, database),
+      ipcRenderer.invoke("database:mongo-collections", connectionId, database),
     getMongoCollectionDetails: (
       connectionId: string,
       database: string,
-      collection: string
+      collection: string,
     ): Promise<MongoBrowserCollection> =>
       ipcRenderer.invoke(
-        'database:mongo-collection-details',
+        "database:mongo-collection-details",
         connectionId,
         database,
-        collection
+        collection,
       ),
     openDatabase: (
       connectionId: string,
-      database: string
+      database: string,
     ): Promise<DatabaseConnectionSummary> =>
-      ipcRenderer.invoke('database:open-database', connectionId, database),
+      ipcRenderer.invoke("database:open-database", connectionId, database),
     mutateMongo: (
-      request: MongoMutationRequest
+      request: MongoMutationRequest,
     ): Promise<MongoMutationResult> =>
-      ipcRenderer.invoke('database:mongo-mutate', request),
+      ipcRenderer.invoke("database:mongo-mutate", request),
     run: (request: DatabaseQueryRequest): Promise<{ queryId: string }> =>
-      ipcRenderer.invoke('database:run', request),
+      ipcRenderer.invoke("database:run", request),
     cancel: (connectionId: string, queryId: string): Promise<boolean> =>
-      ipcRenderer.invoke('database:cancel', connectionId, queryId),
+      ipcRenderer.invoke("database:cancel", connectionId, queryId),
     disconnect: (connectionId: string): Promise<boolean> =>
-      ipcRenderer.invoke('database:disconnect', connectionId),
+      ipcRenderer.invoke("database:disconnect", connectionId),
     onEvent: (handler: (event: DatabaseEvent) => void): (() => void) => {
       const listener = (
         _ipcEvent: Electron.IpcRendererEvent,
-        event: DatabaseEvent
-      ): void => handler(event)
-      ipcRenderer.on('database:event', listener)
-      return () => ipcRenderer.removeListener('database:event', listener)
-    }
-  }
-}
+        event: DatabaseEvent,
+      ): void => handler(event);
+      ipcRenderer.on("database:event", listener);
+      return () => ipcRenderer.removeListener("database:event", listener);
+    },
+  },
+};
 
 if (process.contextIsolated) {
   try {
-    contextBridge.exposeInMainWorld('api', api)
+    contextBridge.exposeInMainWorld("api", api);
   } catch (error) {
-    console.error(error)
+    console.error(error);
   }
 } else {
-  window.api = api
+  window.api = api;
 }
 
-export type PreloadAPI = typeof api
+export type PreloadAPI = typeof api;

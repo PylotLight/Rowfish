@@ -300,7 +300,7 @@
   transition: background 0.15s;
 }
 .settings-toggle > span:last-child:after {
-  content: '';
+  content: "";
   display: block;
   width: 16px;
   height: 16px;

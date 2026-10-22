@@ -2,13 +2,13 @@ name: Electron bump
 
 on:
   schedule:
-    - cron: '17 20 * * 1'
+    - cron: "17 20 * * 1"
   workflow_dispatch:
     inputs:
       version:
         description: Exact stable Electron version (optional; defaults to npm latest)
         type: string
-        default: ''
+        default: ""
       dry_run:
         description: Calculate and report without changing files or remote branches
         type: boolean

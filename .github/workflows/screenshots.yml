@@ -45,7 +45,7 @@ jobs:
       - name: Run desktop smoke test and capture screenshots
         env:
           PGHOST: 127.0.0.1
-          PGPORT: '5432'
+          PGPORT: "5432"
           PGDATABASE: rowfish_fixture
           PGUSER: rowfish_test
           PGPASSWORD: rowfish_local_fixture

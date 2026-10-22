@@ -1,18 +1,18 @@
-import { useState } from 'react'
-import { ChevronDown, ChevronRight, GitBranch } from 'lucide-react'
-import { parsePlanResult, type PlanNode } from '../lib/postgres-tools'
-import './postgres-tools.css'
+import { useState } from "react";
+import { ChevronDown, ChevronRight, GitBranch } from "lucide-react";
+import { parsePlanResult, type PlanNode } from "../lib/postgres-tools";
+import "./postgres-tools.css";
 
 function PlanTree({ node }: { node: PlanNode }): React.JSX.Element {
-  const [open, setOpen] = useState(true)
-  const subject = [node.schema, node.relation].filter(Boolean).join('.')
+  const [open, setOpen] = useState(true);
+  const subject = [node.schema, node.relation].filter(Boolean).join(".");
   return (
     <li className="pg-plan-node">
       <div className="pg-plan-row">
         {node.children.length ? (
           <button
             type="button"
-            aria-label={`${open ? 'Collapse' : 'Expand'} ${node.nodeType}`}
+            aria-label={`${open ? "Collapse" : "Expand"} ${node.nodeType}`}
             aria-expanded={open}
             onClick={() => setOpen(!open)}
           >
@@ -28,17 +28,17 @@ function PlanTree({ node }: { node: PlanNode }): React.JSX.Element {
               {subject}
               {node.alias && node.alias !== node.relation
                 ? ` as ${node.alias}`
-                : ''}
+                : ""}
             </span>
           )}
         </div>
         <span className="pg-plan-metric">
           <small>Cost</small>
-          {node.startupCost ?? '?'}…{node.totalCost ?? '?'}
+          {node.startupCost ?? "?"}…{node.totalCost ?? "?"}
         </span>
         <span className="pg-plan-metric">
           <small>Est. rows</small>
-          {node.planRows?.toLocaleString() ?? '?'}
+          {node.planRows?.toLocaleString() ?? "?"}
         </span>
       </div>
       {open && node.children.length > 0 && (
@@ -49,30 +49,30 @@ function PlanTree({ node }: { node: PlanNode }): React.JSX.Element {
         </ul>
       )}
     </li>
-  )
+  );
 }
 
 function rawPlanJson(result: unknown): string {
-  let document = result
-  if (document && typeof document === 'object' && 'QUERY PLAN' in document)
-    document = document['QUERY PLAN']
-  if (typeof document === 'string') {
-    const text = document
+  let document = result;
+  if (document && typeof document === "object" && "QUERY PLAN" in document)
+    document = document["QUERY PLAN"];
+  if (typeof document === "string") {
+    const text = document;
     try {
-      document = JSON.parse(text)
+      document = JSON.parse(text);
     } catch {
-      return text
+      return text;
     }
   }
-  return JSON.stringify(document, null, 2) ?? ''
+  return JSON.stringify(document, null, 2) ?? "";
 }
 
 export default function QueryPlan({
-  result
+  result,
 }: {
-  result: unknown
+  result: unknown;
 }): React.JSX.Element {
-  const plan = parsePlanResult(result)
+  const plan = parsePlanResult(result);
   return (
     <section className="pg-query-plan" aria-label="Query execution plan">
       <header className="pg-plan-heading">
@@ -101,5 +101,5 @@ export default function QueryPlan({
         <pre>{rawPlanJson(result)}</pre>
       </details>
     </section>
-  )
+  );
 }
