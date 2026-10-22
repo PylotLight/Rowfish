@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build Mac packages
+    name: "Rowfish · Release · mac build · ${{ github.ref_name }}"
     runs-on: macos-14
     timeout-minutes: 60
     steps:
@@ -59,7 +59,7 @@ jobs:
           retention-days: 7
 
   publish:
-    name: Publish GitHub Release
+    name: "Rowfish · Release · github release · ${{ github.ref_name }}"
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   package:
-    name: macOS arm64 + x64
+    name: "Rowfish · Mac package · arm64 + x64 · ${{ github.ref_name }}"
     runs-on: macos-14
     timeout-minutes: 45
     steps:
