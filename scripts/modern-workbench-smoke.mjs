@@ -270,6 +270,24 @@ try {
     await page.keyboard.press("Escape");
     await ensureSidebar();
     await page.getByRole("button", { name: "orders", exact: true }).click();
+    // Clicking a table runs its SELECT straight away.
+    await expect(page.locator(".db-results-summary")).toContainText(
+      /\d+ rows/,
+      { timeout: 15000 },
+    );
+    await expect(page.getByRole("button", { name: /Run query/ })).toBeEnabled();
+    // Each tab keeps its own results: a new tab is empty, going back restores.
+    const ordersSummary = await page
+      .locator(".db-results-summary")
+      .textContent();
+    await page.getByRole("button", { name: "New query tab" }).click();
+    await expect(page.locator(".db-results-summary")).not.toContainText(
+      /\d+ rows/,
+    );
+    await page.getByRole("tab", { name: /orders/ }).click();
+    await expect(page.locator(".db-results-summary")).toHaveText(
+      ordersSummary ?? "",
+    );
     await inputQuery(
       "SELECT id, customer_id, total, status FROM public.orders ORDER BY id LIMIT 30;",
     );
