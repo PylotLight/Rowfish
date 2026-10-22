@@ -46,6 +46,7 @@ import {
   startTransition,
   useDeferredValue,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -234,8 +235,9 @@ export default function DatabaseWorkspace({
   useEffect(() => clearPeekTimer, []);
   // Leaving Settings returns focus to its gear in the rail footer, so keep the
   // rail peeked out until the pointer moves away or it is dismissed.
+  // Layout effect so the rail is out before App's rAF focus lands on the gear.
   const hadSettings = useRef(!!settingsView);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (hadSettings.current && !settingsView && sidebarHidden) revealSidebar();
     hadSettings.current = !!settingsView;
   }, [settingsView]);
