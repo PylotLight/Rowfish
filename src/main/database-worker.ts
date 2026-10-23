@@ -1,4 +1,8 @@
 import { readFileSync } from "node:fs";
+import {
+  collectMongoFieldPaths,
+  normalizeMongoQuery,
+} from "../shared/mongo-shell";
 import { parentPort, workerData } from "node:worker_threads";
 import { BSON, MongoClient, type Db } from "mongodb";
 import { Client as PostgresClient } from "pg";
@@ -537,15 +541,22 @@ async function readMongo(request: DatabaseQueryRequest): Promise<void> {
   let cursor;
   if (request.mongoMode === "aggregate") {
     parseMongoPipeline(request.query);
-    const pipeline = EJSON.parse(request.query);
+    const pipeline = EJSON.parse(
+      normalizeMongoQuery(request.query.trim() || "[]"),
+    );
     cursor = selectedCollection
       .aggregate(pipeline as never, { maxTimeMS: QUERY_TIMEOUT_MS })
       .batchSize(BATCH_SIZE)
       .limit(request.maxRows + 1);
   } else {
-    const parsed = parseMongoFilter(request.query);
+    parseMongoFilter(request.query);
+    // EJSON so {"$oid": …}, ObjectId("…"), ISODate("…") and regexes become
+    // real BSON values instead of literal operator objects.
+    const filter = EJSON.parse(
+      normalizeMongoQuery(request.query.trim() || "{}"),
+    ) as Record<string, unknown>;
     cursor = selectedCollection
-      .find(parsed as Record<string, unknown>)
+      .find(filter)
       .maxTimeMS(QUERY_TIMEOUT_MS)
       .batchSize(BATCH_SIZE)
       .limit(request.maxRows + 1);
@@ -847,6 +858,13 @@ async function inspect(
           ? undefined
           : await collection.estimatedDocumentCount().catch(() => undefined);
       const validator = definition.options?.validator;
+      const fields = collectMongoFieldPaths(
+        await collection
+          .find({}, { maxTimeMS: 5_000 })
+          .limit(100)
+          .toArray()
+          .catch(() => []),
+      );
       post({
         type: "inspection-result",
         requestId: request.requestId,
@@ -854,6 +872,7 @@ async function inspect(
           name,
           type: definition.type ?? "collection",
           ...(estimatedDocuments !== undefined ? { estimatedDocuments } : {}),
+          ...(fields.length ? { fields } : {}),
           ...(validator
             ? { validator: EJSON.stringify(validator, { relaxed: false }) }
             : {}),
@@ -1062,7 +1081,7 @@ function parseMongoObject(
   source: string,
   label: string,
 ): Record<string, unknown> {
-  const parsed: unknown = EJSON.parse(source);
+  const parsed: unknown = EJSON.parse(normalizeMongoQuery(source));
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
     throw new Error(`${label} must be a JSON object.`);
   return parsed as Record<string, unknown>;

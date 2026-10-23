@@ -1,3 +1,4 @@
+import { normalizeMongoQuery } from "./mongo-shell";
 import type { PostgresSslMode } from "./database";
 export const DATABASE_LIMITS = {
   minRows: 1,
@@ -595,8 +596,20 @@ function containsWhereOperator(value: unknown): boolean {
   );
 }
 
+/** Parses mongosh-style or JSON query text, with a readable error. */
+function parseMongoText(source: string): unknown {
+  const normalized = normalizeMongoQuery(source);
+  try {
+    return JSON.parse(normalized);
+  } catch (error) {
+    throw new Error(
+      `Could not read the MongoDB query: ${error instanceof Error ? error.message : "invalid syntax"}`,
+    );
+  }
+}
+
 export function parseMongoFilter(source: string): Record<string, unknown> {
-  const parsed: unknown = JSON.parse(source);
+  const parsed: unknown = parseMongoText(source.trim() || "{}");
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error(
       'MongoDB filter must be a JSON object, for example: {"status":"active"}.',
@@ -611,7 +624,7 @@ export function parseMongoFilter(source: string): Record<string, unknown> {
 }
 
 export function parseMongoPipeline(source: string): Record<string, unknown>[] {
-  const parsed: unknown = JSON.parse(source);
+  const parsed: unknown = parseMongoText(source.trim() || "[]");
   if (
     !Array.isArray(parsed) ||
     parsed.some(

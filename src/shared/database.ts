@@ -139,6 +139,8 @@ export interface MongoBrowserCollection {
   indexes?: MongoBrowserIndex[];
   validator?: string;
   options?: string;
+  /** Dotted field paths seen in a small sample of documents, for autocomplete. */
+  fields?: string[];
 }
 
 export type MongoMutationRequest =

@@ -3645,6 +3645,254 @@ textarea:focus-visible,
   opacity: 1;
 }
 
+/* Excel-style column filters on the results grid. */
+.db-result-table th button:not(.db-column-filter-button) {
+  padding-right: 18px;
+}
+.db-result-table th .db-column-filter-button {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  color: var(--muted);
+  opacity: 0;
+  transform: translateY(-50%);
+}
+.db-result-table th:hover .db-column-filter-button,
+.db-result-table th .db-column-filter-button[aria-expanded="true"],
+.db-result-table th.filtered .db-column-filter-button {
+  opacity: 1;
+}
+.db-result-table th.filtered .db-column-filter-button {
+  color: var(--mint);
+  background: var(--mint-dim);
+}
+.db-result-table th .db-column-filter-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+.db-column-menu {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 280px;
+  max-height: 410px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+}
+.db-column-menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.db-column-menu-head b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.db-column-menu-head span {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+.db-column-menu button {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.db-column-menu button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.db-column-menu button.primary {
+  border-color: transparent;
+  background: var(--mint);
+  color: var(--mint-ink);
+  font-weight: 600;
+}
+.db-column-menu input:not([type="checkbox"]) {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  font: inherit;
+}
+.db-column-menu label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 2px 0;
+  cursor: pointer;
+}
+.db-column-menu label span {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.db-column-menu label small {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.db-column-menu-all {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px !important;
+}
+.db-column-menu-values {
+  flex: 1 1 auto;
+  min-height: 60px;
+  overflow: auto;
+}
+.db-column-menu-values p,
+.db-column-menu-note {
+  margin: 4px 0;
+  color: var(--muted);
+}
+.db-column-menu-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* MongoDB collection bar: picker, folded details, actions menu. */
+.db-collection-picker {
+  font-size: 11px;
+}
+.db-collection-picker span {
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.db-collection-picker select {
+  min-width: 150px;
+  max-width: 240px;
+  padding: 6px 26px 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--mint) 45%, transparent);
+  border-radius: 8px;
+  background: var(--mint-dim);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.db-collection-picker select:focus-visible {
+  outline: 2px solid var(--mint);
+  outline-offset: 1px;
+}
+.db-mongo-details {
+  padding: 8px 12px;
+}
+.db-mongo-details-bar {
+  display: flex;
+  flex: 1 1 100%;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.db-mongo-details-toggle {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.db-mongo-details-toggle svg {
+  flex: 0 0 auto;
+  align-self: center;
+  color: var(--muted);
+  transition: transform 120ms ease;
+}
+.db-mongo-details-toggle svg.open {
+  transform: rotate(90deg);
+}
+.db-mongo-details-toggle strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 650;
+}
+.db-mongo-details-toggle span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 10px;
+}
+.db-mongo-more {
+  position: relative;
+}
+.db-mongo-more-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.db-mongo-more-menu button {
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.db-mongo-more-menu button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+}
+.db-mongo-more-menu button.danger {
+  color: var(--danger);
+}
+.db-mongo-more-menu button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.db-mongo-more-label {
+  margin: 6px 9px 2px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 /* Edit saved connections and fold a connection's tree. */
 .db-connection-chevron {
   flex: 0 0 auto;
