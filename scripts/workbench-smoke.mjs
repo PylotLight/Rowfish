@@ -108,14 +108,6 @@ try {
       "postgresql://rowfish_test:••••••@localhost:5432/rowfish_fixture",
     );
   });
-  await check("test connection against real PostgreSQL", async () => {
-    await modal.getByRole("button", { name: "Test connection" }).click();
-    await expect(modal.getByRole("status")).toContainText(
-      "Connection succeeded",
-      { timeout: 20000 },
-    );
-    await expect(modal.getByRole("status")).toContainText("PostgreSQL");
-  });
   await check("PostgreSQL connection string mode syncs fields", async () => {
     const toggle = modal.getByRole("checkbox", {
       name: /Connect with a connection string/,
@@ -132,10 +124,8 @@ try {
     await uri.fill(
       "postgresql://rowfish_test:rowfish_local_fixture@localhost:5432/rowfish_fixture?application_name=rowfish-smoke",
     );
-    await modal.getByRole("button", { name: "Test connection" }).click();
-    await expect(modal.getByRole("status")).toContainText(
-      "Connection succeeded",
-      { timeout: 20000 },
+    await expect(modal.locator(".db-uri-hint")).toContainText(
+      "application_name",
     );
     await toggle.uncheck();
     await expect(modal.getByLabel("Host", { exact: true })).toHaveValue(
@@ -148,6 +138,65 @@ try {
       "rowfish_local_fixture",
     );
   });
+  await check("Test & Save against real PostgreSQL", async () => {
+    // The test probe hits the real server; saving is recorded instead of
+    // written because CI's Linux session has no OS credential store.
+    await app.evaluate(({ ipcMain }) => {
+      globalThis.__workbenchSaved = [];
+      ipcMain.removeHandler("database:save-connection");
+      ipcMain.handle("database:save-connection", (_event, input) => {
+        globalThis.__workbenchSaved.push(input);
+        return {
+          id: "smoke-saved",
+          name: input.name,
+          kind: input.kind,
+          host: input.host,
+          port: input.port,
+          database: input.database,
+          username: input.username,
+          tls: input.tls,
+          serverMode: input.serverMode,
+          hasSecret: true,
+        };
+      });
+    });
+    await modal
+      .getByRole("checkbox", { name: /Connect with a connection string/ })
+      .check();
+    await modal
+      .getByLabel("PostgreSQL connection string", { exact: true })
+      .fill(
+        "postgresql://rowfish_test:rowfish_local_fixture@localhost:5432/rowfish_fixture?application_name=rowfish-smoke",
+      );
+    await modal.getByRole("button", { name: "Test & Save" }).click();
+    await expect(modal).not.toBeVisible({ timeout: 20000 });
+    const notice = page.locator(".workspace-notice");
+    await expect(notice).toContainText(
+      "Saved “Local development”: connection succeeded",
+    );
+    await expect(notice).toContainText("PostgreSQL");
+    const saved = await app.evaluate(() => globalThis.__workbenchSaved);
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({
+      name: "Local development",
+      kind: "postgres",
+      connectionString: expect.stringContaining(
+        "application_name=rowfish-smoke",
+      ),
+    });
+    await notice.getByRole("button", { name: "Dismiss notice" }).click();
+  });
+  await sidebarTab("Servers");
+  await page.getByRole("button", { name: /New connection/ }).click();
+  await expect(modal).toBeVisible();
+  await modal
+    .getByLabel("Connection name", { exact: true })
+    .fill("Local development");
+  await modal.getByLabel("Host", { exact: true }).fill("localhost");
+  await modal.getByLabel("Database", { exact: true }).fill("rowfish_fixture");
+  await modal.getByLabel(/^Username/).fill("rowfish_test");
+  await modal.getByLabel(/^Password/).fill("rowfish_local_fixture");
+  if (await saveLabel.count()) await saveLabel.locator("input").uncheck();
   await modal.getByRole("button", { name: /^Connect$/ }).click();
   await check("real PostgreSQL connect and schema browser", async () => {
     await expect(modal).not.toBeVisible({ timeout: 20000 });

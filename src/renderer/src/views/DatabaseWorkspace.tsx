@@ -61,6 +61,7 @@ import type {
   DatabaseBrowserTable,
   DatabaseConnectionInput,
   DatabaseConnectionSummary,
+  DatabaseConnectionTestResult,
   DatabaseEvent,
   DatabaseRow,
   MongoBrowserCollection,
@@ -187,14 +188,11 @@ export default function DatabaseWorkspace({
   const [uriCopied, setUriCopied] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [connectionError, setConnectionError] = useState("");
-  const [testingConnection, setTestingConnection] = useState(false);
-  const [connectionTest, setConnectionTest] = useState<{
-    ok: boolean;
-    message: string;
-  } | null>(null);
-  const [offerSaveAnyway, setOfferSaveAnyway] = useState(false);
-  const [savingAnyway, setSavingAnyway] = useState(false);
-  const connectBusy = connecting || testingConnection || savingAnyway;
+  /** Which save action is running: Test & Save, Save without testing, or Save anyway. */
+  const [saveBusy, setSaveBusy] = useState<"" | "test" | "save" | "anyway">("");
+  /** Error from the last Test & Save attempt; offers Save anyway beside it. */
+  const [testFailure, setTestFailure] = useState("");
+  const connectBusy = connecting || saveBusy !== "";
   const generatedConnectionString = useMemo(
     () => buildConnectionString(form),
     [form],
@@ -228,8 +226,7 @@ export default function DatabaseWorkspace({
     }
   }, [form.connectionString, form.kind, uriMode]);
   useEffect(() => {
-    setConnectionTest(null);
-    setOfferSaveAnyway(false);
+    setTestFailure("");
     setRevealUri(false);
     setUriCopied(false);
     if (!showConnect) setUriMode(false);
@@ -1298,8 +1295,7 @@ export default function DatabaseWorkspace({
     if (!input) return;
     setConnecting(true);
     setConnectionError("");
-    setConnectionTest(null);
-    setOfferSaveAnyway(false);
+    setTestFailure("");
     try {
       const connected = await window.api.database.connect(input, saveProfile);
       if (queryConnectionTabId.current && connected.serverMode) {
@@ -1315,7 +1311,6 @@ export default function DatabaseWorkspace({
           ? error.message
           : "Could not connect to the database.",
       );
-      setOfferSaveAnyway(true);
     } finally {
       setConnecting(false);
     }
@@ -1338,68 +1333,84 @@ export default function DatabaseWorkspace({
     };
   }
 
-  async function testConnection(): Promise<void> {
+  /** Close the dialog after a profile was saved from it. */
+  async function finishSavedConnection(message: string): Promise<void> {
+    await refreshSavedConnections();
+    setNotice(message);
+    setForm(DEFAULT_FORM);
+    setSaveProfile(true);
+    setShowConnect(false);
+    cancelQueryConnection();
+  }
+
+  /** Test & Save: probe the server, save the profile only when it answers. */
+  async function testAndSaveConnection(): Promise<void> {
     const input = connectionInput();
     if (!input) return;
-    setTestingConnection(true);
+    setSaveBusy("test");
     setConnectionError("");
-    setOfferSaveAnyway(false);
-    setConnectionTest(null);
+    setTestFailure("");
     try {
-      const result = await window.api.database.testConnection(input);
-      setConnectionTest({
-        ok: true,
-        message: [
-          "Connection succeeded",
-          result.serverVersion,
-          `${result.latencyMs} ms round trip`,
-          `${result.connectMs} ms total`,
-        ]
-          .filter(Boolean)
-          .join(" · "),
-      });
-    } catch (error) {
-      setConnectionTest({
-        ok: false,
-        message:
+      let result: DatabaseConnectionTestResult;
+      try {
+        result = await window.api.database.testConnection(input);
+      } catch (error) {
+        setTestFailure(
           error instanceof Error
             ? error.message
             : "Could not connect to the database.",
-      });
+        );
+        return;
+      }
+      const tested = [
+        "connection succeeded",
+        result.serverVersion,
+        `${result.latencyMs} ms round trip`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      try {
+        const profile = await window.api.database.saveConnection(input);
+        await finishSavedConnection(`Saved “${profile.name}”: ${tested}.`);
+      } catch (error) {
+        setConnectionError(
+          `The test passed (${tested}) but the connection was not saved: ${
+            error instanceof Error ? error.message : "unknown error."
+          }`,
+        );
+      }
     } finally {
-      setTestingConnection(false);
+      setSaveBusy("");
     }
   }
 
-  async function saveConnectionAnyway(): Promise<void> {
+  /** Save the profile with no connection attempt (Save without testing / Save anyway). */
+  async function saveConnectionWithoutTesting(
+    source: "save" | "anyway",
+  ): Promise<void> {
     const input = connectionInput();
     if (!input) return;
-    setSavingAnyway(true);
+    setSaveBusy(source);
+    setConnectionError("");
     try {
       const profile = await window.api.database.saveConnection(input);
-      await refreshSavedConnections();
-      setNotice(
-        `Saved “${profile.name}” without connecting. Open it from saved connections when the server is reachable.`,
+      setTestFailure("");
+      await finishSavedConnection(
+        `Saved “${profile.name}” without testing. Open it from saved connections when the server is reachable.`,
       );
-      setForm(DEFAULT_FORM);
-      setSaveProfile(true);
-      setShowConnect(false);
-      cancelQueryConnection();
     } catch (error) {
       setConnectionError(
         error instanceof Error
           ? error.message
           : "Could not save the connection.",
       );
-      setOfferSaveAnyway(false);
     } finally {
-      setSavingAnyway(false);
+      setSaveBusy("");
     }
   }
 
   function updateConnectionString(value: string): void {
-    setConnectionTest(null);
-    setOfferSaveAnyway(false);
+    setTestFailure("");
     setForm((current) => {
       const next = { ...current, connectionString: value };
       try {
@@ -2049,8 +2060,7 @@ export default function DatabaseWorkspace({
     key: K,
     value: DatabaseConnectionInput[K],
   ): void {
-    setConnectionTest(null);
-    setOfferSaveAnyway(false);
+    setTestFailure("");
     setForm((current) => ({ ...current, [key]: value }));
   }
 
@@ -3816,8 +3826,7 @@ export default function DatabaseWorkspace({
                     const kind = event.target
                       .value as DatabaseConnectionInput["kind"];
                     setUriMode(false);
-                    setConnectionTest(null);
-                    setOfferSaveAnyway(false);
+                    setTestFailure("");
                     setForm((current) => ({
                       ...current,
                       kind,
@@ -3840,8 +3849,7 @@ export default function DatabaseWorkspace({
                     const enabled = event.target.checked;
                     setUriMode(enabled);
                     setRevealUri(false);
-                    setConnectionTest(null);
-                    setOfferSaveAnyway(false);
+                    setTestFailure("");
                     // Start the string from the current fields; the fields
                     // already mirror the string when switching back.
                     setForm((current) => ({
@@ -4078,58 +4086,50 @@ export default function DatabaseWorkspace({
               />
               <span>
                 <b>Save this connection</b>
-                <small>Keep it available between app sessions</small>
+                <small>When connecting, keep it between app sessions</small>
               </span>
             </label>
-            {connectionTest && (
-              <div
-                className={
-                  connectionTest.ok ? "db-connect-success" : "db-query-error"
-                }
-                role={connectionTest.ok ? "status" : "alert"}
-              >
-                {connectionTest.ok
-                  ? connectionTest.message
-                  : `Test failed: ${connectionTest.message}`}
+            {testFailure && (
+              <div className="db-query-error" role="alert">
+                Test failed: {testFailure}
+                <div className="db-save-anyway">
+                  <span>Save it anyway and connect when the server is up.</span>
+                  <button
+                    type="button"
+                    className="db-quiet-button"
+                    disabled={connectBusy}
+                    onClick={() => void saveConnectionWithoutTesting("anyway")}
+                  >
+                    {saveBusy === "anyway" ? (
+                      <>
+                        <span className="db-spinner small" /> Saving…
+                      </>
+                    ) : (
+                      "Save anyway"
+                    )}
+                  </button>
+                </div>
               </div>
             )}
             {connectionError && (
               <div className="db-query-error" role="alert">
                 {connectionError}
-                {offerSaveAnyway && (
-                  <div className="db-save-anyway">
-                    <span>Keep it in saved connections and connect later.</span>
-                    <button
-                      type="button"
-                      className="db-quiet-button"
-                      disabled={connectBusy}
-                      onClick={() => void saveConnectionAnyway()}
-                    >
-                      {savingAnyway ? (
-                        <>
-                          <span className="db-spinner small" /> Saving…
-                        </>
-                      ) : (
-                        "Save anyway"
-                      )}
-                    </button>
-                  </div>
-                )}
               </div>
             )}
             <div className="db-modal-actions">
               <button
                 type="button"
-                className="db-quiet-button db-test-connection"
+                className="db-quiet-button db-save-untested"
                 disabled={connectBusy}
-                onClick={() => void testConnection()}
+                title="Save the profile without connecting"
+                onClick={() => void saveConnectionWithoutTesting("save")}
               >
-                {testingConnection ? (
+                {saveBusy === "save" ? (
                   <>
-                    <span className="db-spinner small" /> Testing…
+                    <span className="db-spinner small" /> Saving…
                   </>
                 ) : (
-                  "Test connection"
+                  "Save without testing"
                 )}
               </button>
               <button
@@ -4143,6 +4143,21 @@ export default function DatabaseWorkspace({
                 }}
               >
                 Cancel
+              </button>
+              <button
+                type="button"
+                className="db-quiet-button"
+                disabled={connectBusy}
+                title="Test the connection, then save it"
+                onClick={() => void testAndSaveConnection()}
+              >
+                {saveBusy === "test" ? (
+                  <>
+                    <span className="db-spinner small" /> Testing…
+                  </>
+                ) : (
+                  "Test & Save"
+                )}
               </button>
               <button
                 className="db-run-button"

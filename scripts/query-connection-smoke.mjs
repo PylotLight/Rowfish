@@ -495,11 +495,16 @@ try {
       expect((await calls()).filter((x) => x[0] === "run")).toHaveLength(0);
     },
   );
-  await check("unreachable connection string can be saved anyway", async () => {
+  await check("Test & Save failure offers Save anyway", async () => {
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler("database:connect");
       ipcMain.handle("database:connect", (_event, input, save) => {
         globalThis.__querySmokeState.calls.push(["connect", input, save]);
+        throw new Error("connect ECONNREFUSED 10.0.0.9:6543");
+      });
+      ipcMain.removeHandler("database:test-connection");
+      ipcMain.handle("database:test-connection", (_event, input) => {
+        globalThis.__querySmokeState.calls.push(["testConnection", input]);
         throw new Error("connect ECONNREFUSED 10.0.0.9:6543");
       });
       ipcMain.removeHandler("database:save-connection");
@@ -545,8 +550,23 @@ try {
     );
     await connect.getByRole("button", { name: /^Connect$/ }).click();
     await expect(connect.getByRole("alert")).toContainText("ECONNREFUSED");
+    // A failed Connect no longer offers Save anyway; the footer's
+    // Save without testing covers that.
+    await expect(
+      connect.getByRole("button", { name: "Save anyway" }),
+    ).toHaveCount(0);
+    await connect.getByRole("button", { name: "Test & Save" }).click();
+    await expect(connect.getByRole("alert").first()).toContainText(
+      "Test failed: connect ECONNREFUSED",
+    );
+    expect(
+      (await calls()).filter((x) => x[0] === "saveConnection"),
+    ).toHaveLength(0);
     await connect.getByRole("button", { name: "Save anyway" }).click();
     await expect(connect).toHaveCount(0);
+    expect(
+      (await calls()).filter((x) => x[0] === "testConnection"),
+    ).toHaveLength(1);
     const saved = (await calls()).find((x) => x[0] === "saveConnection");
     expect(saved?.[1]).toMatchObject({
       name: "Offline warehouse",
@@ -554,6 +574,36 @@ try {
       connectionString: target,
     });
     expect((await calls()).filter((x) => x[0] === "run")).toHaveLength(0);
+  });
+  await check("Save without testing skips the connection attempt", async () => {
+    await fixture();
+    await run().click();
+    await dialog().getByRole("button", { name: "New connection" }).click();
+    const connect = page.getByRole("dialog", { name: "Connect a database" });
+    await connect
+      .getByLabel("Connection name", { exact: true })
+      .fill("Later warehouse");
+    await connect.getByLabel("Host", { exact: true }).fill("10.0.0.10");
+    await connect.getByLabel("Database", { exact: true }).fill("warehouse");
+    await connect.getByLabel(/^Username/).fill("analyst");
+    await connect.getByRole("button", { name: "Save without testing" }).click();
+    await expect(connect).toHaveCount(0);
+    await expect(page.locator(".workspace-notice")).toContainText(
+      "Saved “Later warehouse” without testing",
+    );
+    const recorded = await calls();
+    expect(
+      recorded.filter((x) => x[0] === "connect" || x[0] === "testConnection"),
+    ).toHaveLength(0);
+    expect(recorded.find((x) => x[0] === "saveConnection")?.[1]).toMatchObject({
+      name: "Later warehouse",
+      kind: "postgres",
+      host: "10.0.0.10",
+      database: "warehouse",
+      username: "analyst",
+      connectionString: "",
+    });
+    expect(recorded.filter((x) => x[0] === "run")).toHaveLength(0);
   });
   await page.waitForTimeout(700);
   expect(errors).toEqual([]);

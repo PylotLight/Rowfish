@@ -35,7 +35,7 @@ These previews show Rowfish with synthetic local order data, not production data
 - Open ready-to-review PostgreSQL diagnostic drafts for active sessions, table/index sizes, index usage, and blocking locks. Diagnostics never run automatically.
 - Save PostgreSQL or MongoDB connection profiles between sessions; passwords and MongoDB URI secrets are encrypted with the operating system credential store.
 - Quickly connect by pasting a `postgres://`/`postgresql://` or `mongodb://`/`mongodb+srv://` URI; the dialog keeps the fields and the connection string in sync.
-- **Test connection** before connecting, and **Save anyway** to keep a profile for a server that is not reachable yet.
+- **Test & Save** checks the server before saving a profile (with **Save anyway** if the test fails), or **Save without testing** to store a profile for a server that is not reachable yet.
 - Browse accessible PostgreSQL databases on a server, inspect schemas and tables in the sidebar, and load a table query with one click.
 - Browse accessible MongoDB databases and collections, inspect collection estimates, validators and indexes, and open a collection with one click.
 - Keep SQL drafts in persistent in-app tabs; organize named queries in folders and search execution history. External SQL files are optional exports.

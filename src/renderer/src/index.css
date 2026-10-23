@@ -1186,17 +1186,6 @@ select option {
 .db-form-field small.db-uri-hint.error {
   color: #ffb4bb;
 }
-.db-connect-success {
-  margin: 10px 14px 0;
-  padding: 9px 11px;
-  border: 1px solid rgba(126, 226, 168, 0.25);
-  border-radius: 9px;
-  background: rgba(126, 226, 168, 0.08);
-  color: #81d3ac;
-  font-size: 11px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
 .db-save-anyway {
   display: flex;
   align-items: center;
@@ -1209,7 +1198,7 @@ select option {
   flex: 0 0 auto;
   color: var(--text);
 }
-.db-modal-actions .db-test-connection {
+.db-modal-actions .db-save-untested {
   margin-right: auto;
 }
 .db-form-field small {
