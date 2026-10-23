@@ -24,10 +24,17 @@ import {
   Copy,
   Eye,
   EyeOff,
+  ListFilter,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import "../components/query-connection.css";
 import type { UiPreferences } from "../lib/ui-preferences";
+import ColumnFilterMenu from "../components/ColumnFilterMenu";
+import {
+  applyColumnFilters,
+  isColumnFilterActive,
+  type ColumnFilters,
+} from "../lib/column-filters";
 import SqlEditor from "../components/SqlEditor";
 import QueryPlan from "../components/QueryPlan";
 import { buildExplainQuery, postgresDiagnostics } from "../lib/postgres-tools";
@@ -48,6 +55,7 @@ import {
 } from "../lib/query-workspace";
 import {
   startTransition,
+  useCallback,
   useDeferredValue,
   useEffect,
   useLayoutEffect,
@@ -99,6 +107,7 @@ function parseConnectionStringFields(
 }
 
 const CONNECT_MODE_KEY = "rowfish.connect-mode";
+const MONGO_DETAILS_KEY = "rowfish.mongo-details";
 
 /** The connection dialog's last used mode: true for connection string. */
 function loadConnectStringMode(): boolean {
@@ -471,6 +480,12 @@ export default function DatabaseWorkspace({
     column: string;
     direction: 1 | -1;
   } | null>(null);
+  const [columnFilters, setColumnFilters] = useState<ColumnFilters>({});
+  const [filterMenu, setFilterMenu] = useState<{
+    column: string;
+    left: number;
+    top: number;
+  } | null>(null);
   const [inspectedRow, setInspectedRow] = useState<DatabaseRow | null>(null);
   const [rowSource, setRowSource] = useState<RowSource | null>(null);
   const [rowDirty, setRowDirty] = useState(false);
@@ -597,6 +612,42 @@ export default function DatabaseWorkspace({
   const [mongoDatabaseName, setMongoDatabaseName] = useState("");
   const [mongoCreateNewDatabase, setMongoCreateNewDatabase] = useState(false);
   const [mongoConfirmName, setMongoConfirmName] = useState("");
+  /** Indexes, validator and options under the collection bar; folded by default. */
+  const [mongoDetailsOpen, setMongoDetailsOpen] = useState(() => {
+    try {
+      return localStorage.getItem(MONGO_DETAILS_KEY) === "open";
+    } catch {
+      return false;
+    }
+  });
+  const [mongoMoreOpen, setMongoMoreOpen] = useState(false);
+  const mongoMoreRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!mongoMoreOpen) return;
+    const close = (event: MouseEvent): void => {
+      if (!mongoMoreRef.current?.contains(event.target as Node))
+        setMongoMoreOpen(false);
+    };
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setMongoMoreOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [mongoMoreOpen]);
+  function toggleMongoDetails(): void {
+    setMongoDetailsOpen((open) => {
+      try {
+        localStorage.setItem(MONGO_DETAILS_KEY, open ? "closed" : "open");
+      } catch {
+        // Only a display preference.
+      }
+      return !open;
+    });
+  }
   const [mongoDeleteConfirmed, setMongoDeleteConfirmed] = useState(false);
   const [viewport, setViewport] = useState({ top: 0, height: 480 });
   const scrollElement = useRef<HTMLDivElement>(null);
@@ -620,6 +671,8 @@ export default function DatabaseWorkspace({
     setQueryError(saved?.queryError ?? "");
     setQueryPlan(saved?.queryPlan ?? null);
     setSqlSelection("");
+    setColumnFilters({});
+    setFilterMenu(null);
     setRowSource(saved?.rowSource ?? null);
     setQuerySummary(saved?.querySummary ?? "Ready to execute.");
     explainPending.current = false;
@@ -683,16 +736,61 @@ export default function DatabaseWorkspace({
       columns: byTable.get(JSON.stringify([table.schema, table.name])) ?? [],
     }));
   }, [tableLists, completionColumns, activeId]);
+  const mongoCompletion = useMemo(() => {
+    const fields = new Set(selectedMongoCollection?.fields ?? []);
+    if (activeConnection?.kind === "mongodb")
+      for (const column of columns) fields.add(column);
+    return {
+      mode: mongoQueryMode,
+      fields: [...fields],
+      collections: activeId
+        ? (
+            mongoCollections[
+              mongoBrowserKey(activeId, selectedMongoDatabase)
+            ] ?? []
+          ).map((item) => item.name)
+        : [],
+    };
+  }, [
+    selectedMongoCollection,
+    columns,
+    activeConnection?.kind,
+    mongoQueryMode,
+    mongoCollections,
+    activeId,
+    selectedMongoDatabase,
+  ]);
+  const searchedRows = useMemo(
+    () =>
+      deferredSearch
+        ? deferredRows.filter((row) =>
+            Object.values(row).some((value) =>
+              String(value ?? "")
+                .toLocaleLowerCase()
+                .includes(deferredSearch),
+            ),
+          )
+        : deferredRows,
+    [deferredRows, deferredSearch],
+  );
+  const filtersActive = Object.values(columnFilters).some(isColumnFilterActive);
+  // Rows the open column menu lists values from: every other filter applied.
+  const filterMenuRows = useMemo(() => {
+    if (!filterMenu) return searchedRows;
+    const { [filterMenu.column]: _own, ...others } = columnFilters;
+    return applyColumnFilters(searchedRows, others);
+  }, [filterMenu, columnFilters, searchedRows]);
+  const closeFilterMenu = useCallback(() => setFilterMenu(null), []);
+  const pickerCollections = useMemo(
+    () =>
+      activeId && selectedMongoDatabase
+        ? (mongoCollections[mongoBrowserKey(activeId, selectedMongoDatabase)] ??
+          [])
+        : [],
+    [activeId, selectedMongoDatabase, mongoCollections],
+  );
   const visibleRows = useMemo(() => {
-    const filtered = deferredSearch
-      ? deferredRows.filter((row) =>
-          Object.values(row).some((value) =>
-            String(value ?? "")
-              .toLocaleLowerCase()
-              .includes(deferredSearch),
-          ),
-        )
-      : deferredRows;
+    const filtered = applyColumnFilters(searchedRows, columnFilters);
     if (!sort) return filtered;
     return [...filtered].sort((a, b) => {
       const x = a[sort.column],
@@ -708,7 +806,7 @@ export default function DatabaseWorkspace({
             })) * sort.direction
       );
     });
-  }, [deferredRows, deferredSearch, sort]);
+  }, [searchedRows, columnFilters, sort]);
   const { start: firstVisible, end: lastVisible } = getVirtualRowRange(
     visibleRows.length,
     viewport.top,
@@ -1136,6 +1234,8 @@ export default function DatabaseWorkspace({
     }
     setResultView("data");
     setSort(null);
+    setColumnFilters({});
+    setFilterMenu(null);
     if (activeConnection && !activeConnection!.serverMode) {
       const key = queryConnectionKey(activeConnection);
       setWorkspace((current) => {
@@ -1656,7 +1756,14 @@ export default function DatabaseWorkspace({
     } = {},
   ): Promise<void> {
     const target = overrides.connection ?? activeConnection;
-    const query = overrides.query ?? queryText;
+    const rawQuery = overrides.query ?? queryText;
+    // An empty MongoDB query reads the whole collection, like {} / [].
+    const query =
+      !rawQuery.trim() && (activeTab?.kind ?? target?.kind) === "mongodb"
+        ? (overrides.mongoMode ?? mongoQueryMode) === "aggregate"
+          ? "[]"
+          : "{}"
+        : rawQuery;
     const targetCollection = overrides.collection ?? collection;
     if (runState !== "idle" || !query.trim()) return;
     if (
@@ -1712,6 +1819,8 @@ export default function DatabaseWorkspace({
     setQueryPlan(null);
     explainPending.current = overrides.explain === true;
     setSort(null);
+    setColumnFilters({});
+    setFilterMenu(null);
     setRows([]);
     setColumns([]);
     setQueryError("");
@@ -1792,17 +1901,24 @@ export default function DatabaseWorkspace({
     connection: DatabaseConnectionSummary,
     database: string,
     item: MongoBrowserCollection,
+    { keepQuery = false } = {},
   ): Promise<void> {
     if (runState !== "idle" || !closeRowPanel()) return;
     dismissPeek();
     const mode =
       activeConnection?.id === connection.id ? mongoQueryMode : "find";
+    const query =
+      keepQuery && queryText.trim()
+        ? queryText
+        : mode === "aggregate"
+          ? "[]"
+          : "{}";
     setActiveId(connection.id);
     setSelectedMongoDatabase(database);
     setSelectedMongoCollection(item);
     setCollection(item.name);
     setMongoQueryMode(mode);
-    setQueryText(mode === "aggregate" ? "[]" : "{}");
+    setQueryText(query);
     setQueryError("");
     setQuerySummary(`Loading ${database}.${item.name}…`);
     setRows([]);
@@ -1832,7 +1948,7 @@ export default function DatabaseWorkspace({
       connection,
       database,
       collection: item.name,
-      query: mode === "aggregate" ? "[]" : "{}",
+      query,
       mongoMode: mode,
     });
   }
@@ -3077,96 +3193,142 @@ export default function DatabaseWorkspace({
               className="db-mongo-details"
               aria-label="MongoDB collection details"
             >
-              <div className="db-mongo-details-copy">
-                <span className="db-overline">COLLECTION DETAILS</span>
-                <strong>
-                  {selectedMongoDatabase}.{selectedMongoCollection.name}
-                </strong>
-                <span>
-                  {selectedMongoCollection.type}
-                  {selectedMongoCollection.estimatedDocuments !== undefined
-                    ? ` · approximately ${selectedMongoCollection.estimatedDocuments.toLocaleString()} documents`
-                    : ""}{" "}
-                  · {(selectedMongoCollection.indexes ?? []).length} indexes
-                </span>
-              </div>
-              <div className="db-mongo-actions">
+              <div className="db-mongo-details-bar">
                 <button
-                  className="db-quiet-button"
-                  disabled={runState !== "idle" || mongoOperationBusy}
-                  onClick={() => openMongoOperation("insert")}
+                  type="button"
+                  className="db-mongo-details-toggle"
+                  aria-expanded={mongoDetailsOpen}
+                  onClick={() => toggleMongoDetails()}
+                  title={
+                    mongoDetailsOpen
+                      ? "Hide collection details"
+                      : "Show indexes, validator and options"
+                  }
                 >
-                  ＋ Insert
+                  <ChevronRight
+                    size={13}
+                    className={mongoDetailsOpen ? "open" : undefined}
+                    aria-hidden="true"
+                  />
+                  <strong>
+                    {selectedMongoDatabase}.{selectedMongoCollection.name}
+                  </strong>
+                  <span>
+                    {selectedMongoCollection.type}
+                    {selectedMongoCollection.estimatedDocuments !== undefined
+                      ? ` · ~${selectedMongoCollection.estimatedDocuments.toLocaleString()} docs`
+                      : ""}{" "}
+                    · {(selectedMongoCollection.indexes ?? []).length} indexes
+                  </span>
                 </button>
-                <button
-                  className="db-quiet-button"
-                  disabled={runState !== "idle" || mongoOperationBusy}
-                  onClick={() => openMongoOperation("update")}
-                >
-                  Update
-                </button>
-                <button
-                  className="db-quiet-button danger"
-                  disabled={runState !== "idle" || mongoOperationBusy}
-                  onClick={() => openMongoOperation("delete")}
-                >
-                  Delete
-                </button>
-                <button
-                  className="db-quiet-button"
-                  disabled={mongoOperationBusy}
-                  onClick={() => openMongoOperation("create-index")}
-                >
-                  ＋ Index
-                </button>
-                <button
-                  className="db-quiet-button danger"
-                  disabled={mongoOperationBusy}
-                  onClick={() => openMongoOperation("drop-collection")}
-                >
-                  Drop collection
-                </button>
-              </div>
-              {(selectedMongoCollection.indexes?.length ?? 0) > 0 && (
-                <div className="db-mongo-indexes">
-                  {selectedMongoCollection.indexes?.map((index) => (
-                    <div className="db-mongo-index" key={index.name}>
-                      <span>
-                        <b>{index.name}</b>
-                        {index.unique ? " · unique" : ""}
-                        {index.expireAfterSeconds !== undefined
-                          ? ` · TTL ${index.expireAfterSeconds}s`
-                          : ""}
-                        <code>{index.keys}</code>
-                      </span>
-                      {index.name !== "_id_" && (
+                <div className="db-mongo-actions">
+                  <button
+                    className="db-quiet-button"
+                    disabled={runState !== "idle" || mongoOperationBusy}
+                    onClick={() => openMongoOperation("insert")}
+                  >
+                    ＋ Insert
+                  </button>
+                  <button
+                    className="db-quiet-button"
+                    disabled={runState !== "idle" || mongoOperationBusy}
+                    onClick={() => openMongoOperation("update")}
+                  >
+                    Update
+                  </button>
+                  <div className="db-mongo-more" ref={mongoMoreRef}>
+                    <button
+                      className="db-quiet-button"
+                      aria-label="More collection actions"
+                      aria-haspopup="menu"
+                      aria-expanded={mongoMoreOpen}
+                      disabled={mongoOperationBusy}
+                      onClick={() => setMongoMoreOpen((open) => !open)}
+                    >
+                      ⋯
+                    </button>
+                    {mongoMoreOpen && (
+                      <div className="db-mongo-more-menu" role="menu">
                         <button
-                          className="db-inline-add danger"
-                          title={`Drop index ${index.name}`}
-                          aria-label={`Drop index ${index.name}`}
+                          role="menuitem"
                           onClick={() => {
-                            openMongoOperation("drop-index");
-                            setMongoIndexName(index.name);
+                            setMongoMoreOpen(false);
+                            openMongoOperation("create-index");
                           }}
                         >
-                          ×
+                          ＋ Create index
                         </button>
-                      )}
-                    </div>
-                  ))}
+                        <div className="db-mongo-more-label">Danger zone</div>
+                        <button
+                          role="menuitem"
+                          className="danger"
+                          disabled={runState !== "idle"}
+                          onClick={() => {
+                            setMongoMoreOpen(false);
+                            openMongoOperation("delete");
+                          }}
+                        >
+                          Delete documents…
+                        </button>
+                        <button
+                          role="menuitem"
+                          className="danger"
+                          onClick={() => {
+                            setMongoMoreOpen(false);
+                            openMongoOperation("drop-collection");
+                          }}
+                        >
+                          Drop collection…
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
-              {selectedMongoCollection.validator && (
-                <details className="db-mongo-validator">
-                  <summary>Collection validator</summary>
-                  <code>{selectedMongoCollection.validator}</code>
-                </details>
-              )}
-              {selectedMongoCollection.options && (
-                <details className="db-mongo-validator">
-                  <summary>Collection options</summary>
-                  <code>{selectedMongoCollection.options}</code>
-                </details>
+              </div>
+              {mongoDetailsOpen && (
+                <>
+                  {(selectedMongoCollection.indexes?.length ?? 0) > 0 && (
+                    <div className="db-mongo-indexes">
+                      {selectedMongoCollection.indexes?.map((index) => (
+                        <div className="db-mongo-index" key={index.name}>
+                          <span>
+                            <b>{index.name}</b>
+                            {index.unique ? " · unique" : ""}
+                            {index.expireAfterSeconds !== undefined
+                              ? ` · TTL ${index.expireAfterSeconds}s`
+                              : ""}
+                            <code>{index.keys}</code>
+                          </span>
+                          {index.name !== "_id_" && (
+                            <button
+                              className="db-inline-add danger"
+                              title={`Drop index ${index.name}`}
+                              aria-label={`Drop index ${index.name}`}
+                              onClick={() => {
+                                openMongoOperation("drop-index");
+                                setMongoIndexName(index.name);
+                              }}
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {selectedMongoCollection.validator && (
+                    <details className="db-mongo-validator">
+                      <summary>Collection validator</summary>
+                      <code>{selectedMongoCollection.validator}</code>
+                    </details>
+                  )}
+                  {selectedMongoCollection.options && (
+                    <details className="db-mongo-validator">
+                      <summary>Collection options</summary>
+                      <code>{selectedMongoCollection.options}</code>
+                    </details>
+                  )}
+                </>
               )}
             </section>
           )}
@@ -3276,17 +3438,54 @@ export default function DatabaseWorkspace({
                       </select>
                     </label>
                   )}
-                  {activeTab?.kind === "mongodb" && (
-                    <label className="db-collection-field">
-                      <span>Collection</span>
-                      <input
-                        value={collection}
-                        onChange={(event) => setCollection(event.target.value)}
-                        aria-label="MongoDB collection name"
-                        maxLength={128}
-                      />
-                    </label>
-                  )}
+                  {activeTab?.kind === "mongodb" &&
+                    (pickerCollections.length > 0 &&
+                    activeConnection?.kind === "mongodb" ? (
+                      <label className="db-collection-field db-collection-picker">
+                        <span title={selectedMongoDatabase}>
+                          {selectedMongoDatabase} ›
+                        </span>
+                        <select
+                          value={collection}
+                          disabled={runState !== "idle"}
+                          aria-label="MongoDB collection"
+                          onChange={(event) => {
+                            const item = pickerCollections.find(
+                              (entry) => entry.name === event.target.value,
+                            );
+                            if (item)
+                              void selectMongoCollection(
+                                activeConnection,
+                                selectedMongoDatabase,
+                                item,
+                                { keepQuery: true },
+                              );
+                          }}
+                        >
+                          {!pickerCollections.some(
+                            (entry) => entry.name === collection,
+                          ) && <option value={collection}>{collection}</option>}
+                          {pickerCollections.map((entry) => (
+                            <option key={entry.name} value={entry.name}>
+                              {entry.name}
+                              {entry.type === "view" ? " (view)" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      <label className="db-collection-field">
+                        <span>Collection</span>
+                        <input
+                          value={collection}
+                          onChange={(event) =>
+                            setCollection(event.target.value)
+                          }
+                          aria-label="MongoDB collection name"
+                          maxLength={128}
+                        />
+                      </label>
+                    ))}
                   <label className="db-limit-field">
                     <span>Max rows</span>
                     <select
@@ -3306,7 +3505,11 @@ export default function DatabaseWorkspace({
                     <button
                       className="db-run-button"
                       onClick={() => void runQuery()}
-                      disabled={!queryText.trim()}
+                      disabled={
+                        !queryText.trim() &&
+                        (activeTab?.kind ?? activeConnection?.kind) !==
+                          "mongodb"
+                      }
                     >
                       <span>▶</span> Run query
                     </button>
@@ -3428,6 +3631,7 @@ export default function DatabaseWorkspace({
                 }
                 kind={activeTab?.kind ?? activeConnection?.kind ?? "postgres"}
                 tables={autocompleteTables}
+                mongo={mongoCompletion}
                 disabled={runState !== "idle"}
               />
               <div className="db-editor-footer">
@@ -3513,11 +3717,19 @@ export default function DatabaseWorkspace({
                   <div className="result-actions">
                     <span className="db-row-count">
                       {visibleRows.length.toLocaleString()}
-                      {deferredSearch
+                      {deferredSearch || filtersActive
                         ? ` / ${rows.length.toLocaleString()}`
                         : ""}{" "}
                       rows
                     </span>
+                    {filtersActive && (
+                      <button
+                        title="Clear every column filter"
+                        onClick={() => setColumnFilters({})}
+                      >
+                        Clear filters <X size={12} />
+                      </button>
+                    )}
                     <button
                       disabled={!columns.length || runState !== "idle"}
                       title="Export filtered rows as CSV"
@@ -3599,7 +3811,37 @@ export default function DatabaseWorkspace({
                       <tr>
                         <th className="db-row-index-head">#</th>
                         {columns.map((column) => (
-                          <th key={column} title={`Sort ${column}`}>
+                          <th
+                            key={column}
+                            title={`Sort ${column}`}
+                            className={
+                              isColumnFilterActive(columnFilters[column])
+                                ? "filtered"
+                                : undefined
+                            }
+                          >
+                            <button
+                              className="db-column-filter-button"
+                              title={`Filter ${column}`}
+                              aria-label={`Filter ${column}`}
+                              aria-expanded={filterMenu?.column === column}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                const box =
+                                  event.currentTarget.getBoundingClientRect();
+                                setFilterMenu((current) =>
+                                  current?.column === column
+                                    ? null
+                                    : {
+                                        column,
+                                        left: box.left - 240,
+                                        top: box.bottom + 4,
+                                      },
+                                );
+                              }}
+                            >
+                              <ListFilter size={11} />
+                            </button>
                             <button
                               onClick={() =>
                                 setSort((current) => ({
@@ -3686,6 +3928,24 @@ export default function DatabaseWorkspace({
                       )}
                     </tbody>
                   </table>
+                  {filterMenu && columns.includes(filterMenu.column) && (
+                    <ColumnFilterMenu
+                      column={filterMenu.column}
+                      rows={filterMenuRows}
+                      filter={columnFilters[filterMenu.column]}
+                      position={filterMenu}
+                      onChange={(filter) =>
+                        setColumnFilters((current) => ({
+                          ...current,
+                          [filterMenu.column]: filter,
+                        }))
+                      }
+                      onSort={(direction) =>
+                        setSort({ column: filterMenu.column, direction })
+                      }
+                      onClose={closeFilterMenu}
+                    />
+                  )}
                 </div>
               ) : (
                 <div
@@ -4711,15 +4971,29 @@ export default function DatabaseWorkspace({
               </>
             )}
             {mongoOperation === "drop-index" && (
-              <label className="db-form-field">
-                <span>Index name</span>
-                <input
-                  value={mongoIndexName}
-                  onChange={(event) => setMongoIndexName(event.target.value)}
-                  maxLength={128}
-                  autoFocus
-                />
-              </label>
+              <>
+                <label className="db-form-field">
+                  <span>Index name</span>
+                  <input
+                    value={mongoIndexName}
+                    onChange={(event) => setMongoIndexName(event.target.value)}
+                    maxLength={128}
+                    autoFocus
+                  />
+                </label>
+                <label className="db-tls-toggle db-destructive-confirm">
+                  <input
+                    type="checkbox"
+                    checked={mongoDeleteConfirmed}
+                    onChange={(event) =>
+                      setMongoDeleteConfirmed(event.target.checked)
+                    }
+                  />
+                  <span>
+                    <b>Queries relying on this index may slow down. Drop it.</b>
+                  </span>
+                </label>
+              </>
             )}
             {(mongoOperation === "drop-collection" ||
               mongoOperation === "drop-database") && (
@@ -4771,7 +5045,8 @@ export default function DatabaseWorkspace({
                 className={
                   mongoOperation === "delete" ||
                   mongoOperation === "drop-collection" ||
-                  mongoOperation === "drop-database"
+                  mongoOperation === "drop-database" ||
+                  mongoOperation === "drop-index"
                     ? "db-cancel-button"
                     : "db-run-button"
                 }
@@ -4788,7 +5063,8 @@ export default function DatabaseWorkspace({
                     (!mongoFilter.trim() || mongoFilter.trim() === "{}")) ||
                   (mongoOperation === "create-index" &&
                     !mongoIndexKeys.trim()) ||
-                  (mongoOperation === "drop-index" && !mongoIndexName.trim()) ||
+                  (mongoOperation === "drop-index" &&
+                    (!mongoIndexName.trim() || !mongoDeleteConfirmed)) ||
                   (mongoOperation === "drop-collection" &&
                     mongoConfirmName !== mongoCollectionName) ||
                   (mongoOperation === "drop-database" &&

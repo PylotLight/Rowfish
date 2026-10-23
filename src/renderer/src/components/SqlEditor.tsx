@@ -11,7 +11,14 @@ import {
   schemaCompletionSource,
   keywordCompletionSource,
 } from "@codemirror/lang-sql";
-import { acceptCompletion, autocompletion } from "@codemirror/autocomplete";
+import {
+  acceptCompletion,
+  autocompletion,
+  snippetCompletion,
+  type Completion,
+  type CompletionContext,
+  type CompletionResult,
+} from "@codemirror/autocomplete";
 import { json } from "@codemirror/lang-json";
 import {
   defaultKeymap,
@@ -19,6 +26,10 @@ import {
   indentWithTab,
 } from "@codemirror/commands";
 import { getSqlStatement } from "../lib/query-workspace";
+import {
+  mongoCompletionAt,
+  type MongoCompletionOptions,
+} from "../lib/mongo-completion";
 
 export interface SqlEditorProps {
   value: string;
@@ -30,6 +41,8 @@ export interface SqlEditorProps {
   onSelectionChange?: (selection: string) => void;
   lineNumbers?: boolean;
   lineWrapping?: boolean;
+  /** Collection fields and query mode for MongoDB suggestions. */
+  mongo?: MongoCompletionOptions;
 }
 
 const syntaxColors = syntaxHighlighting(
@@ -113,6 +126,40 @@ function schemaConfig(
   return { dialect, schema, defaultSchema: "public" };
 }
 
+const EMPTY_MONGO: MongoCompletionOptions = { mode: "find", fields: [] };
+
+/** Operators, stages, fields and helpers for MongoDB queries, by cursor context. */
+function mongoAutocomplete(get: () => MongoCompletionOptions) {
+  const source = (context: CompletionContext): CompletionResult | null => {
+    const result = mongoCompletionAt(
+      context.state.doc.toString(),
+      context.pos,
+      get(),
+    );
+    // Only pop up unprompted once something was typed (Ctrl-Space always).
+    if (!result || (result.from === context.pos && !context.explicit))
+      return null;
+    return {
+      from: result.from,
+      to: result.to,
+      filter: false,
+      options: result.options.slice(0, 200).map((item): Completion => {
+        const base = {
+          label: item.label,
+          type: item.type,
+          ...(item.detail ? { detail: item.detail } : {}),
+          ...(item.info ? { info: item.info } : {}),
+          ...(item.boost ? { boost: item.boost } : {}),
+        };
+        return item.snippet
+          ? snippetCompletion(item.snippet, base)
+          : { ...base, apply: item.label };
+      }),
+    };
+  };
+  return autocompletion({ override: [source], icons: true });
+}
+
 export default function SqlEditor({
   value,
   onChange,
@@ -123,8 +170,11 @@ export default function SqlEditor({
   onSelectionChange,
   lineNumbers = true,
   lineWrapping = false,
+  mongo,
 }: SqlEditorProps): React.JSX.Element {
   const container = useRef<HTMLDivElement>(null);
+  const mongoOptions = useRef(mongo ?? EMPTY_MONGO);
+  mongoOptions.current = mongo ?? EMPTY_MONGO;
   const view = useRef<EditorView | null>(null);
   const latest = useRef({ onChange, onRun, onSelectionChange, disabled });
   latest.current = { onChange, onRun, onSelectionChange, disabled };
@@ -170,7 +220,7 @@ export default function SqlEditor({
         languageCompartment.of(language),
         schemaCompartment.of(
           kind === "mongodb"
-            ? []
+            ? mongoAutocomplete(() => mongoOptions.current)
             : autocompletion({
                 override: [
                   schemaCompletionSource(schema),
@@ -229,7 +279,7 @@ export default function SqlEditor({
         ),
         schemaCompartment.reconfigure(
           kind === "mongodb"
-            ? []
+            ? mongoAutocomplete(() => mongoOptions.current)
             : autocompletion({
                 override: [
                   schemaCompletionSource(schema),

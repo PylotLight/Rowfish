@@ -656,6 +656,24 @@ try {
       "result capped",
     );
   });
+  await check("column filter narrows rows Excel-style", async () => {
+    await page
+      .locator(".db-result-table th")
+      .filter({ hasText: "number" })
+      .hover();
+    await page.getByRole("button", { name: "Filter number" }).click();
+    const menu = page.getByRole("dialog", { name: "Filter number" });
+    await menu.getByLabel("Condition").fill(">490");
+    await expect(page.locator(".db-row-count")).toContainText("10 / 500");
+    await menu.getByLabel("Condition").fill("");
+    await menu.getByRole("checkbox", { name: /Select all/ }).uncheck();
+    await menu.getByRole("checkbox", { name: /^1\b/ }).first().check();
+    await expect(page.locator(".db-row-count")).toContainText("1 / 500");
+    await menu.getByRole("button", { name: "Done" }).click();
+    await expect(menu).toHaveCount(0);
+    await page.getByRole("button", { name: /Clear filters/ }).click();
+    await expect(page.locator(".db-row-count")).not.toContainText("/");
+  });
   await ensureSidebar();
   await page.getByRole("button", { name: "orders", exact: true }).click();
   await inputQuery(

@@ -75,6 +75,14 @@ Rowfish executes the SQL you submit, including write statements. Review a statem
 
 Choose a collection in the sidebar, then enter a JSON filter for `find` or switch the query mode to **Aggregate** and enter a JSON array of pipeline stages. Rowfish reads documents in batches and keeps the configured row and byte limits. `$where`, `$function`, `$accumulator`, `$out` and `$merge` are blocked; aggregation pipelines cannot write data or invoke server-side JavaScript.
 
+Pick the collection from the **database › collection** dropdown in the editor toolbar (it lists the collections of the database open in the sidebar; switching keeps your query and reruns it there), or click one in the sidebar. An empty editor runs as `{}` in Find (the whole collection) or `[]` in Aggregate.
+
+The editor takes strict JSON or mongosh-style syntax: unquoted keys, single quotes, trailing commas, `//` comments, `ObjectId("…")`, `ISODate("…")` / `new Date("…")`, `NumberLong`, `NumberInt`, `NumberDecimal`, `UUID` and `/regex/i`. Extended JSON (`{"$oid": "…"}`, `{"$date": "…"}`) works too, so filtering by `_id` or a date matches real BSON values.
+
+Autocomplete knows where the cursor is: field names (sampled from the collection plus the current results) and query operators in Find and `$match`, operators like `$gt`/`$in` under a field, pipeline stages at the top of an Aggregate (with templates for `$lookup`, `$group` and friends), accumulators inside `$group` outputs, `"$field"` paths in expressions, collection names for `$lookup.from`, and value helpers like `{ "$in": [] }` or `ObjectId("…")`. Ctrl-Space opens it anywhere.
+
+The collection bar above the tabs shows the collection, its type, rough document count and index count; click it to unfold indexes, validator and options (folded by default, remembered). **Insert** and **Update** sit beside it; **Create index**, **Delete documents** and **Drop collection** live in the ⋯ menu, and each destructive one still needs its own confirmation (a review tick, or typing the collection name).
+
 For the included demo collection, enter `orders` as the collection and use:
 
 ```json
@@ -87,7 +95,7 @@ The MongoDB driver returns matching documents, including each document's `_id` f
 
 Results arrive in batches and are shown in a virtualized grid. Choose a row limit from `500`, `1,000`, `5,000` or `10,000`; the default is `1,000`. The renderer retains no more than 10,000 rows and the normalized result payload is capped at **16 MB**. Individual cells are truncated at 8,192 characters, and the grid displays at most 100 columns.
 
-The top-bar search filters rows already received in the current result set; it does not issue another database query. PostgreSQL statements use a 120-second `statement_timeout`; MongoDB reads use `maxTimeMS(120000)`.
+The top-bar search filters rows already received in the current result set; it does not issue another database query. Each column header also has a filter button (Excel-style): sort either way, type a condition (plain text means contains; `>10`, `<=2026-01-01`, `!=ready`, `=null` compare), and tick or untick values from the list of distinct values with their counts. Filters combine across columns and with the search, the row count shows filtered / total, and **Clear filters** resets them. CSV/JSON export uses the filtered rows. A new query clears the filters. PostgreSQL statements use a 120-second `statement_timeout`; MongoDB reads use `maxTimeMS(120000)`.
 
 Choosing **Cancel** terminates the worker to interrupt server-side work. Rowfish also closes that connection, so reconnect before running another query on it.
 
