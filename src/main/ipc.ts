@@ -20,6 +20,8 @@ import {
   removeSavedDatabaseConnection,
   runMongoMutation,
   runDatabaseQuery,
+  saveDatabaseConnection,
+  testDatabaseConnection,
 } from "./database";
 
 export function registerIpc(): void {
@@ -48,6 +50,12 @@ export function registerIpc(): void {
   });
   ipcMain.handle("database:connect", (event, input: unknown, save: unknown) =>
     connectDatabase(event, input, save as boolean),
+  );
+  ipcMain.handle("database:save-connection", (event, input: unknown) =>
+    saveDatabaseConnection(event, input),
+  );
+  ipcMain.handle("database:test-connection", (event, input: unknown) =>
+    testDatabaseConnection(event, input),
   );
   ipcMain.handle("database:saved", (event) =>
     listSavedDatabaseConnections(event),

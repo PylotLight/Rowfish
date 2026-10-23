@@ -1137,8 +1137,69 @@ select option {
 .db-form-field.full {
   grid-column: 1 / -1;
 }
-.db-form-field > span {
+.db-form-field > span,
+.db-form-field > label {
   font-weight: 600;
+}
+.db-uri-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.db-uri-input-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.db-uri-input-row .db-icon-button {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  color: var(--muted);
+}
+.db-uri-input-row .db-icon-button:hover:not(:disabled) {
+  color: var(--text);
+}
+.db-uri-preview {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 36px;
+  padding: 9px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.14);
+  color: #c9e7d6;
+  font:
+    10.5px/1.45 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.db-form-field small.db-uri-hint {
+  color: var(--muted);
+  font-size: 9.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.db-form-field small.db-uri-hint.error {
+  color: #ffb4bb;
+}
+.db-save-anyway {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  color: var(--muted);
+}
+.db-save-anyway .db-quiet-button {
+  flex: 0 0 auto;
+  color: var(--text);
+}
+.db-modal-actions .db-save-untested {
+  margin-right: auto;
 }
 .db-form-field small {
   color: rgba(242, 244, 246, 0.38);

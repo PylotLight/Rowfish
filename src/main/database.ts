@@ -9,6 +9,7 @@ import type {
   DatabaseConnectionSummary,
   DatabaseEvent,
   DatabaseQueryRequest,
+  DatabaseConnectionTestResult,
   DatabaseRow,
   PostgresServerInfo,
   PostgresTableDetails,
@@ -22,6 +23,7 @@ import {
   DATABASE_LIMITS,
   isValidRowLimit,
   parseMongoConnectionString,
+  parsePostgresConnectionString,
 } from "../shared/database-helpers";
 import {
   deleteSavedConnection,
@@ -64,6 +66,7 @@ interface WorkerMessage {
   truncated?: boolean;
   affectedRows?: number;
   statementCount?: number;
+  serverVersion?: string;
 }
 
 interface PendingInspection {
@@ -149,14 +152,27 @@ function validateConnectionInput(value: unknown): DatabaseConnectionInput {
   const connectionString =
     value.connectionString === undefined
       ? ""
-      : validateText(
-          value.connectionString,
-          "MongoDB connection string",
-          4_096,
-        );
+      : validateText(value.connectionString, "Connection string", 4_096);
   if (connectionString) {
-    if (kind !== "mongodb")
-      throw new Error("Connection strings are supported only for MongoDB.");
+    if (kind === "postgres") {
+      // The password stays inside the connection string (and its encrypted
+      // saved secret); only display fields are copied into the config.
+      const details = parsePostgresConnectionString(connectionString);
+      return {
+        name,
+        kind,
+        host: details.host,
+        port: details.port,
+        database: serverMode
+          ? ""
+          : details.database || details.username || "postgres",
+        username: details.username,
+        password: "",
+        tls: details.tls,
+        serverMode,
+        connectionString,
+      };
+    }
     const details = parseMongoConnectionString(connectionString);
     return {
       name,
@@ -521,6 +537,80 @@ export async function connectDatabase(
     }
   }
   return summary;
+}
+
+export async function saveDatabaseConnection(
+  event: IpcMainInvokeEvent,
+  rawInput: unknown,
+): Promise<SavedConnectionProfile> {
+  assertAllowedSender(event.sender);
+  return saveConnectionProfile(validateConnectionInput(rawInput));
+}
+
+export async function testDatabaseConnection(
+  event: IpcMainInvokeEvent,
+  rawInput: unknown,
+): Promise<DatabaseConnectionTestResult> {
+  assertAllowedSender(event.sender);
+  const config = validateConnectionInput(rawInput);
+  const startedAt = Date.now();
+  const worker = createDatabaseWorker({
+    workerData: { ...config, probe: true },
+    resourceLimits: {
+      maxOldGenerationSizeMb: 128,
+      maxYoungGenerationSizeMb: 16,
+    },
+  });
+  try {
+    return await new Promise<DatabaseConnectionTestResult>(
+      (resolve, reject) => {
+        const timeout = setTimeout(
+          () =>
+            reject(
+              new Error(
+                "Connection timed out after 12 seconds. Check the host, port, network, and database availability.",
+              ),
+            ),
+          CONNECT_TIMEOUT_MS,
+        );
+        const settle = (error?: Error, result?: WorkerMessage): void => {
+          clearTimeout(timeout);
+          if (error) reject(error);
+          else
+            resolve({
+              connectMs: Date.now() - startedAt,
+              latencyMs: result?.elapsedMs ?? 0,
+              ...(result?.serverVersion
+                ? { serverVersion: result.serverVersion }
+                : {}),
+            });
+        };
+        worker.on("message", (message: WorkerMessage) => {
+          if (message.type === "probe-result") settle(undefined, message);
+          else if (message.type === "connect-error")
+            settle(
+              new Error(
+                message.message || "Could not connect to the database.",
+              ),
+            );
+        });
+        worker.on("error", (error) =>
+          settle(
+            error instanceof Error
+              ? error
+              : new Error("Database worker failed to start."),
+          ),
+        );
+        worker.on("exit", () =>
+          settle(
+            new Error("Database worker stopped before the test finished."),
+          ),
+        );
+      },
+    );
+  } finally {
+    void worker.terminate();
+  }
 }
 
 export async function connectSavedDatabase(

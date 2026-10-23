@@ -20,6 +20,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   CircleHelp,
+  Copy,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import "../components/query-connection.css";
@@ -58,6 +61,7 @@ import type {
   DatabaseBrowserTable,
   DatabaseConnectionInput,
   DatabaseConnectionSummary,
+  DatabaseConnectionTestResult,
   DatabaseEvent,
   DatabaseRow,
   MongoBrowserCollection,
@@ -67,11 +71,49 @@ import type {
 } from "../../../shared/database";
 import {
   DATABASE_LIMITS,
+  buildMongoConnectionString,
+  buildPostgresConnectionString,
   getVirtualRowRange,
+  maskConnectionStringPassword,
+  parseMongoConnectionFields,
+  parsePostgresConnectionString,
   quotePostgresIdentifier,
+  type ConnectionStringFields,
 } from "../../../shared/database-helpers";
 
 const ROW_HEIGHT = 36;
+
+function parseConnectionStringFields(
+  kind: DatabaseConnectionInput["kind"],
+  source: string,
+): ConnectionStringFields {
+  return kind === "postgres"
+    ? parsePostgresConnectionString(source)
+    : parseMongoConnectionFields(source);
+}
+
+/** An IPC error's own message, without Electron's "Error invoking remote method" prefix. */
+function dialogErrorMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof Error) || !error.message) return fallback;
+  return error.message.replace(
+    /^Error invoking remote method '[^']+': (?:Error: )?/,
+    "",
+  );
+}
+
+function buildConnectionString(form: DatabaseConnectionInput): string {
+  const fields = {
+    host: form.host.trim(),
+    port: form.port,
+    database: form.kind === "postgres" && form.serverMode ? "" : form.database,
+    username: form.username.trim(),
+    password: form.password,
+    tls: form.tls,
+  };
+  return form.kind === "postgres"
+    ? buildPostgresConnectionString(fields)
+    : buildMongoConnectionString(fields);
+}
 const DEFAULT_FORM: DatabaseConnectionInput = {
   name: "Local database",
   kind: "postgres",
@@ -150,9 +192,54 @@ export default function DatabaseWorkspace({
   >([]);
   const [form, setForm] = useState<DatabaseConnectionInput>(DEFAULT_FORM);
   const [saveProfile, setSaveProfile] = useState(true);
-  const [mongoUriMode, setMongoUriMode] = useState(false);
+  const [uriMode, setUriMode] = useState(false);
+  const [revealUri, setRevealUri] = useState(false);
+  const [uriCopied, setUriCopied] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [connectionError, setConnectionError] = useState("");
+  /** Which save action is running: Test & Save, Save without testing, or Save anyway. */
+  const [saveBusy, setSaveBusy] = useState<"" | "test" | "save" | "anyway">("");
+  /** Error from the last Test & Save attempt; offers Save anyway beside it. */
+  const [testFailure, setTestFailure] = useState("");
+  const connectBusy = connecting || saveBusy !== "";
+  const generatedConnectionString = useMemo(
+    () => buildConnectionString(form),
+    [form],
+  );
+  const connectionStringStatus = useMemo((): {
+    text: string;
+    error: boolean;
+  } | null => {
+    const source = (form.connectionString ?? "").trim();
+    if (!uriMode || !source) return null;
+    try {
+      const parsed = parseConnectionStringFields(form.kind, source);
+      const target = `${parsed.host}:${parsed.port}${parsed.database ? `/${parsed.database}` : ""}`;
+      const summary = [
+        parsed.username ? `${target} as ${parsed.username}` : target,
+        parsed.tls ? "TLS on" : "TLS off",
+      ].join(" · ");
+      if (parsed.representable) return { text: summary, error: false };
+      const extras = parsed.extraOptions.length
+        ? `options ${parsed.extraOptions.join(", ")}`
+        : "multiple hosts or SRV lookup";
+      return {
+        text: `${summary}. The ${extras} apply only while connecting with the string.`,
+        error: false,
+      };
+    } catch (error) {
+      return {
+        text: `${error instanceof Error ? error.message : "This connection string is not valid."} The fields keep their last valid values.`,
+        error: true,
+      };
+    }
+  }, [form.connectionString, form.kind, uriMode]);
+  useEffect(() => {
+    setTestFailure("");
+    setRevealUri(false);
+    setUriCopied(false);
+    if (!showConnect) setUriMode(false);
+  }, [showConnect]);
   const [workspace, setWorkspace] = useState(() => {
     const loaded = loadQueryWorkspace();
     if (!loaded.tabs.length) {
@@ -720,7 +807,7 @@ export default function DatabaseWorkspace({
     const onKey = (event: KeyboardEvent): void => {
       if (
         event.key === "Escape" &&
-        !connecting &&
+        !connectBusy &&
         !queryConnectionBusy &&
         !mongoOperationBusy
       ) {
@@ -760,7 +847,7 @@ export default function DatabaseWorkspace({
     saveDialog,
     showHelp,
     mongoOperation,
-    connecting,
+    connectBusy,
     mongoOperationBusy,
   ]);
 
@@ -1213,13 +1300,12 @@ export default function DatabaseWorkspace({
       );
       return;
     }
+    const input = connectionInput();
+    if (!input) return;
     setConnecting(true);
     setConnectionError("");
+    setTestFailure("");
     try {
-      const input = {
-        ...form,
-        database: form.serverMode ? "" : form.database,
-      };
       const connected = await window.api.database.connect(input, saveProfile);
       if (queryConnectionTabId.current && connected.serverMode) {
         await selectQueryConnection(connected);
@@ -1230,13 +1316,136 @@ export default function DatabaseWorkspace({
       setShowConnect(false);
     } catch (error) {
       setConnectionError(
-        error instanceof Error
-          ? error.message
-          : "Could not connect to the database.",
+        dialogErrorMessage(error, "Could not connect to the database."),
       );
     } finally {
       setConnecting(false);
     }
+  }
+
+  /** The dialog's details as sent to the main process, or null when incomplete. */
+  function connectionInput(): DatabaseConnectionInput | null {
+    if (uriMode) {
+      const connectionString = (form.connectionString ?? "").trim();
+      if (!connectionString) {
+        setConnectionError("Paste a connection string to continue.");
+        return null;
+      }
+      return { ...form, connectionString };
+    }
+    return {
+      ...form,
+      database: form.serverMode ? "" : form.database,
+      connectionString: "",
+    };
+  }
+
+  /** Close the dialog after a profile was saved from it. */
+  async function finishSavedConnection(message: string): Promise<void> {
+    await refreshSavedConnections();
+    setNotice(message);
+    setForm(DEFAULT_FORM);
+    setSaveProfile(true);
+    setShowConnect(false);
+    cancelQueryConnection();
+  }
+
+  /** Test & Save: probe the server, save the profile only when it answers. */
+  async function testAndSaveConnection(): Promise<void> {
+    const input = connectionInput();
+    if (!input) return;
+    setSaveBusy("test");
+    setConnectionError("");
+    setTestFailure("");
+    try {
+      let result: DatabaseConnectionTestResult;
+      try {
+        result = await window.api.database.testConnection(input);
+      } catch (error) {
+        setTestFailure(
+          dialogErrorMessage(error, "Could not connect to the database."),
+        );
+        return;
+      }
+      const tested = [
+        "connection succeeded",
+        result.serverVersion,
+        `${result.latencyMs} ms round trip`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      try {
+        const profile = await window.api.database.saveConnection(input);
+        await finishSavedConnection(`Saved “${profile.name}”: ${tested}.`);
+      } catch (error) {
+        setConnectionError(
+          `The test passed (${tested}) but the connection was not saved: ${dialogErrorMessage(
+            error,
+            "unknown error.",
+          )}`,
+        );
+      }
+    } finally {
+      setSaveBusy("");
+    }
+  }
+
+  /** Save the profile with no connection attempt (Save without testing / Save anyway). */
+  async function saveConnectionWithoutTesting(
+    source: "save" | "anyway",
+  ): Promise<void> {
+    const input = connectionInput();
+    if (!input) return;
+    setSaveBusy(source);
+    setConnectionError("");
+    try {
+      const profile = await window.api.database.saveConnection(input);
+      setTestFailure("");
+      await finishSavedConnection(
+        `Saved “${profile.name}” without testing. Open it from saved connections when the server is reachable.`,
+      );
+    } catch (error) {
+      setConnectionError(
+        dialogErrorMessage(error, "Could not save the connection."),
+      );
+    } finally {
+      setSaveBusy("");
+    }
+  }
+
+  function updateConnectionString(value: string): void {
+    setTestFailure("");
+    setForm((current) => {
+      const next = { ...current, connectionString: value };
+      try {
+        const parsed = parseConnectionStringFields(current.kind, value.trim());
+        return {
+          ...next,
+          host: parsed.host,
+          port: parsed.port,
+          database:
+            current.kind === "postgres"
+              ? parsed.database || parsed.username || "postgres"
+              : parsed.database,
+          username: parsed.username,
+          password: parsed.password,
+          tls: parsed.tls,
+        };
+      } catch {
+        // Keep the last valid fields while the string is being edited.
+        return next;
+      }
+    });
+  }
+
+  function copyConnectionString(value: string): void {
+    void navigator.clipboard
+      .writeText(value)
+      .then(() => {
+        setUriCopied(true);
+        window.setTimeout(() => setUriCopied(false), 1_400);
+      })
+      .catch(() => setConnectionError("Could not copy the connection string."));
   }
 
   async function connectSaved(profile: SavedConnectionProfile): Promise<void> {
@@ -1855,6 +2064,7 @@ export default function DatabaseWorkspace({
     key: K,
     value: DatabaseConnectionInput[K],
   ): void {
+    setTestFailure("");
     setForm((current) => ({ ...current, [key]: value }));
   }
 
@@ -3542,7 +3752,7 @@ export default function DatabaseWorkspace({
                 onClick={() => {
                   setShowQueryConnection(false);
                   setConnectionError("");
-                  setMongoUriMode(false);
+                  setUriMode(false);
                   setForm({
                     ...DEFAULT_FORM,
                     kind: activeTab?.kind ?? "postgres",
@@ -3564,7 +3774,7 @@ export default function DatabaseWorkspace({
           className="db-modal-backdrop"
           onMouseDown={(event) => {
             if (event.target !== event.currentTarget) return;
-            if (!connecting) {
+            if (!connectBusy) {
               setShowConnect(false);
               cancelQueryConnection();
               setForm(DEFAULT_FORM);
@@ -3587,7 +3797,7 @@ export default function DatabaseWorkspace({
               <button
                 className="db-icon-button"
                 aria-label="Close"
-                disabled={connecting}
+                disabled={connectBusy}
                 onClick={() => {
                   setShowConnect(false);
                   cancelQueryConnection();
@@ -3619,7 +3829,8 @@ export default function DatabaseWorkspace({
                   onChange={(event) => {
                     const kind = event.target
                       .value as DatabaseConnectionInput["kind"];
-                    setMongoUriMode(false);
+                    setUriMode(false);
+                    setTestFailure("");
                     setForm((current) => ({
                       ...current,
                       kind,
@@ -3634,38 +3845,93 @@ export default function DatabaseWorkspace({
                   <option value="mongodb">MongoDB</option>
                 </select>
               </label>
-              {form.kind === "mongodb" && (
-                <label className="db-tls-toggle db-uri-toggle">
-                  <input
-                    type="checkbox"
-                    checked={mongoUriMode}
-                    onChange={(event) => {
-                      setMongoUriMode(event.target.checked);
-                      setForm((current) => ({
-                        ...current,
-                        connectionString: "",
-                      }));
-                    }}
-                  />
-                  <span>
-                    <b>Connect with a connection string</b>
-                    <small>Paste a mongodb:// or mongodb+srv:// URI</small>
-                  </span>
-                </label>
-              )}
-              {mongoUriMode ? (
-                <label className="db-form-field full">
-                  <span>MongoDB connection string</span>
-                  <input
-                    type="password"
-                    value={form.connectionString ?? ""}
-                    onChange={(event) =>
-                      updateForm("connectionString", event.target.value)
-                    }
-                    placeholder="mongodb+srv://user:password@cluster.example/database"
-                    autoComplete="off"
-                  />
-                </label>
+              <label className="db-tls-toggle db-uri-toggle">
+                <input
+                  type="checkbox"
+                  checked={uriMode}
+                  onChange={(event) => {
+                    const enabled = event.target.checked;
+                    setUriMode(enabled);
+                    setRevealUri(false);
+                    setTestFailure("");
+                    // Start the string from the current fields; the fields
+                    // already mirror the string when switching back.
+                    setForm((current) => ({
+                      ...current,
+                      connectionString: enabled
+                        ? buildConnectionString(current)
+                        : "",
+                    }));
+                  }}
+                />
+                <span>
+                  <b>Connect with a connection string</b>
+                  <small>
+                    {form.kind === "postgres"
+                      ? "Paste a postgres:// or postgresql:// URI, options like sslmode included"
+                      : "Paste a mongodb:// or mongodb+srv:// URI"}
+                  </small>
+                </span>
+              </label>
+              {uriMode ? (
+                <div className="db-form-field full">
+                  <label htmlFor="db-connection-string">
+                    {form.kind === "postgres" ? "PostgreSQL" : "MongoDB"}{" "}
+                    connection string
+                  </label>
+                  <div className="db-uri-input-row">
+                    <input
+                      id="db-connection-string"
+                      type={revealUri ? "text" : "password"}
+                      value={form.connectionString ?? ""}
+                      onChange={(event) =>
+                        updateConnectionString(event.target.value)
+                      }
+                      placeholder={
+                        form.kind === "postgres"
+                          ? "postgresql://user:password@db.example:5432/database?sslmode=require"
+                          : "mongodb+srv://user:password@cluster.example/database"
+                      }
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <button
+                      type="button"
+                      className="db-icon-button"
+                      aria-label={
+                        revealUri
+                          ? "Hide connection string"
+                          : "Show connection string"
+                      }
+                      title={revealUri ? "Hide" : "Show"}
+                      onClick={() => setRevealUri((current) => !current)}
+                    >
+                      {revealUri ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                    <button
+                      type="button"
+                      className="db-icon-button"
+                      aria-label="Copy connection string"
+                      title={uriCopied ? "Copied" : "Copy"}
+                      disabled={!form.connectionString?.trim()}
+                      onClick={() =>
+                        copyConnectionString(
+                          (form.connectionString ?? "").trim(),
+                        )
+                      }
+                    >
+                      <Copy size={14} />
+                    </button>
+                  </div>
+                  {connectionStringStatus && (
+                    <small
+                      className={`db-uri-hint${connectionStringStatus.error ? " error" : ""}`}
+                      role={connectionStringStatus.error ? "alert" : undefined}
+                    >
+                      {connectionStringStatus.text}
+                    </small>
+                  )}
+                </div>
               ) : (
                 <>
                   <label className="db-form-field">
@@ -3726,7 +3992,7 @@ export default function DatabaseWorkspace({
                       />
                     </label>
                   )}
-                  {!mongoUriMode && (
+                  {!uriMode && (
                     <label className="db-form-field">
                       <span>
                         Username <small>optional</small>
@@ -3740,7 +4006,7 @@ export default function DatabaseWorkspace({
                       />
                     </label>
                   )}
-                  {!mongoUriMode && (
+                  {!uriMode && (
                     <label className="db-form-field">
                       <span>
                         Password <small>optional</small>
@@ -3755,6 +4021,32 @@ export default function DatabaseWorkspace({
                       />
                     </label>
                   )}
+                  <div className="db-form-field full">
+                    <span>
+                      Connection string <small>updates as you type</small>
+                    </span>
+                    <div className="db-uri-input-row">
+                      <code
+                        className="db-uri-preview"
+                        aria-label="Generated connection string, password hidden"
+                      >
+                        {maskConnectionStringPassword(
+                          generatedConnectionString,
+                        )}
+                      </code>
+                      <button
+                        type="button"
+                        className="db-icon-button"
+                        aria-label="Copy connection string"
+                        title={uriCopied ? "Copied" : "Copy"}
+                        onClick={() =>
+                          copyConnectionString(generatedConnectionString)
+                        }
+                      >
+                        <Copy size={14} />
+                      </button>
+                    </div>
+                  </div>
                 </>
               )}
             </div>
@@ -3777,7 +4069,7 @@ export default function DatabaseWorkspace({
                 </span>
               </label>
             )}
-            {!mongoUriMode && (
+            {!uriMode && (
               <label className="db-tls-toggle">
                 <input
                   type="checkbox"
@@ -3798,9 +4090,31 @@ export default function DatabaseWorkspace({
               />
               <span>
                 <b>Save this connection</b>
-                <small>Keep it available between app sessions</small>
+                <small>When connecting, keep it between app sessions</small>
               </span>
             </label>
+            {testFailure && (
+              <div className="db-query-error" role="alert">
+                Test failed: {testFailure}
+                <div className="db-save-anyway">
+                  <span>Save it anyway and connect when the server is up.</span>
+                  <button
+                    type="button"
+                    className="db-quiet-button"
+                    disabled={connectBusy}
+                    onClick={() => void saveConnectionWithoutTesting("anyway")}
+                  >
+                    {saveBusy === "anyway" ? (
+                      <>
+                        <span className="db-spinner small" /> Saving…
+                      </>
+                    ) : (
+                      "Save anyway"
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
             {connectionError && (
               <div className="db-query-error" role="alert">
                 {connectionError}
@@ -3808,8 +4122,23 @@ export default function DatabaseWorkspace({
             )}
             <div className="db-modal-actions">
               <button
+                type="button"
+                className="db-quiet-button db-save-untested"
+                disabled={connectBusy}
+                title="Save the profile without connecting"
+                onClick={() => void saveConnectionWithoutTesting("save")}
+              >
+                {saveBusy === "save" ? (
+                  <>
+                    <span className="db-spinner small" /> Saving…
+                  </>
+                ) : (
+                  "Save without testing"
+                )}
+              </button>
+              <button
                 className="db-quiet-button"
-                disabled={connecting}
+                disabled={connectBusy}
                 onClick={() => {
                   setShowConnect(false);
                   cancelQueryConnection();
@@ -3820,8 +4149,23 @@ export default function DatabaseWorkspace({
                 Cancel
               </button>
               <button
+                type="button"
+                className="db-quiet-button"
+                disabled={connectBusy}
+                title="Test the connection, then save it"
+                onClick={() => void testAndSaveConnection()}
+              >
+                {saveBusy === "test" ? (
+                  <>
+                    <span className="db-spinner small" /> Testing…
+                  </>
+                ) : (
+                  "Test & Save"
+                )}
+              </button>
+              <button
                 className="db-run-button"
-                disabled={connecting}
+                disabled={connectBusy}
                 onClick={() => void connect()}
               >
                 {connecting ? (

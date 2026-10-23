@@ -10,6 +10,14 @@ Profile metadata is stored in Rowfish's app-specific user-data directory. If you
 
 For a quick MongoDB connection, choose MongoDB, enable **Connect with a connection string**, paste a standard `mongodb://` or `mongodb+srv://` URI, enter a display name, and choose **Connect**. The URI is passed to the MongoDB driver intact so options such as replica sets, Atlas SRV discovery, authentication source and TLS settings are retained. When saving is enabled, the full URI is encrypted as a secret and is never returned to the renderer after connection.
 
+PostgreSQL works the same way: enable **Connect with a connection string** and paste a `postgres://` or `postgresql://` URI. Query options such as `sslmode`, `application_name` or `connect_timeout` are passed to node-postgres as written, and the string is saved as an encrypted secret like a MongoDB URI. While you edit the regular fields, the dialog shows the matching connection string (password hidden, **Copy** copies the real value); switching to connection-string mode starts from that string, and editing or pasting a string fills the fields back in. An invalid string shows an inline hint and leaves the fields at their last valid values. Options the fields cannot express (extra query options, SRV lookup, multiple MongoDB hosts) apply only while connecting with the string.
+
+The dialog footer has three ways to finish:
+
+- **Connect** opens the connection now; with **Save this connection** ticked it also saves the profile once connected. A failed Connect just shows the error.
+- **Test & Save** opens a throwaway connection, runs `SELECT 1` (PostgreSQL) or `ping` (MongoDB) and closes it again. If the server answers, the profile is saved (password or connection string encrypted with the OS credential store) and the dialog closes with the server version and round trip; nothing is added to the workspace. If the test fails, the error appears inline with **Save anyway**, which saves the profile as entered.
+- **Save without testing** saves the profile straight away with no connection attempt, for a server that is not reachable yet (VPN down, staging not up). Open it later from saved connections.
+
 Each live connection uses a worker. Rowfish supports up to **8 active connections**, including PostgreSQL server-browser and opened database sessions.
 
 ## PostgreSQL server browser

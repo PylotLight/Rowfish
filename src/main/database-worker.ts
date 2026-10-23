@@ -20,7 +20,10 @@ import type {
 } from "../shared/database";
 import {
   DATABASE_LIMITS,
+  buildMongoConnectionString,
   parseMongoFilter,
+  parsePostgresConnectionString,
+  withPostgresDatabase,
   parseMongoPipeline,
 } from "../shared/database-helpers";
 import { splitPostgresStatements } from "../shared/sql-statements";
@@ -39,7 +42,10 @@ const {
 } = DATABASE_LIMITS;
 const { EJSON } = BSON;
 
-interface WorkerConfig extends DatabaseConnectionInput {}
+interface WorkerConfig extends DatabaseConnectionInput {
+  /** Open, run a trivial check, report and close without serving requests. */
+  probe?: boolean;
+}
 
 type WorkerRequest =
   | { type: "run"; request: DatabaseQueryRequest }
@@ -74,6 +80,7 @@ type WorkerRequest =
 type WorkerEvent =
   | { type: "ready" }
   | { type: "connect-error"; message: string }
+  | { type: "probe-result"; elapsedMs: number; serverVersion?: string }
   | {
       type: "inspection-result";
       requestId: string;
@@ -129,6 +136,7 @@ function safeError(error: unknown): string {
   return message
     .replace(/(password|pwd)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
     .replace(/mongodb(?:\+srv)?:\/\/[^@\s]+@/gi, "mongodb://[redacted]@")
+    .replace(/postgres(?:ql)?:\/\/[^@\s]+@/gi, "postgresql://[redacted]@")
     .slice(0, 1_000);
 }
 
@@ -196,37 +204,44 @@ function postBatch(
   post({ type: "rows", queryId, rows, columns: [...columns], receivedRows });
 }
 
+function postgresTarget(): ConstructorParameters<typeof PostgresClient>[0] {
+  const shared = {
+    connectionTimeoutMillis: 8_000,
+    options: `-c statement_timeout=${QUERY_TIMEOUT_MS}`,
+    application_name: "Rowfish",
+  };
+  if (config.connectionString) {
+    // Point the string at the selected database (server-browser children
+    // reuse the parent's string) and let node-postgres apply its options.
+    const database =
+      config.database ||
+      parsePostgresConnectionString(config.connectionString).database ||
+      "postgres";
+    return {
+      ...shared,
+      connectionString: withPostgresDatabase(config.connectionString, database),
+    };
+  }
+  return {
+    ...shared,
+    host: config.host,
+    port: config.port,
+    database: config.database || "postgres",
+    user: config.username || undefined,
+    password: config.password || undefined,
+    ssl: config.tls ? { rejectUnauthorized: true } : false,
+  };
+}
+
 async function openConnection(): Promise<void> {
   if (config.kind === "postgres") {
-    postgres = new PostgresClient({
-      host: config.host,
-      port: config.port,
-      database: config.database || "postgres",
-      user: config.username || undefined,
-      password: config.password || undefined,
-      ssl: config.tls ? { rejectUnauthorized: true } : false,
-      connectionTimeoutMillis: 8_000,
-      options: `-c statement_timeout=${QUERY_TIMEOUT_MS}`,
-      application_name: "Rowfish",
-    });
+    postgres = new PostgresClient(postgresTarget());
     await postgres.connect();
     postgres.on("error", (error) => {
       if (!closing) post({ type: "connect-error", message: safeError(error) });
     });
   } else {
-    const host =
-      config.host.includes(":") && !config.host.startsWith("[")
-        ? `[${config.host}]`
-        : config.host;
-    const credentials = config.username
-      ? `${encodeURIComponent(config.username)}${config.password ? `:${encodeURIComponent(config.password)}` : ""}@`
-      : "";
-    const authSource = config.username
-      ? `?authSource=${encodeURIComponent(config.database)}&tls=${String(config.tls)}`
-      : `?tls=${String(config.tls)}`;
-    const uri =
-      config.connectionString ||
-      `mongodb://${credentials}${host}:${config.port}/${encodeURIComponent(config.database)}${authSource}`;
+    const uri = config.connectionString || buildMongoConnectionString(config);
     mongo = new MongoClient(uri, {
       connectTimeoutMS: 8_000,
       serverSelectionTimeoutMS: 8_000,
@@ -236,6 +251,65 @@ async function openConnection(): Promise<void> {
     mongoDb = mongo.db(config.database);
   }
   post({ type: "ready" });
+}
+
+async function probeConnection(): Promise<void> {
+  try {
+    if (config.kind === "postgres") {
+      postgres = new PostgresClient(postgresTarget());
+      postgres.on("error", () => undefined);
+      await postgres.connect();
+      const startedAt = performance.now();
+      await postgres.query("SELECT 1");
+      const elapsedMs = Math.round(performance.now() - startedAt);
+      let serverVersion: string | undefined;
+      try {
+        const version = await postgres.query<{ version: string }>(
+          "SELECT current_setting('server_version') AS version",
+        );
+        serverVersion = version.rows[0]?.version
+          ? `PostgreSQL ${version.rows[0].version.split(" ")[0]}`
+          : undefined;
+      } catch {
+        serverVersion = undefined;
+      }
+      closing = true;
+      await postgres.end().catch(() => undefined);
+      post({ type: "probe-result", elapsedMs, serverVersion });
+    } else {
+      mongo = new MongoClient(
+        config.connectionString || buildMongoConnectionString(config),
+        {
+          connectTimeoutMS: 8_000,
+          serverSelectionTimeoutMS: 8_000,
+          maxPoolSize: 1,
+        },
+      );
+      await mongo.connect();
+      const db = mongo.db(config.database);
+      const startedAt = performance.now();
+      await db.command({ ping: 1 });
+      const elapsedMs = Math.round(performance.now() - startedAt);
+      let serverVersion: string | undefined;
+      try {
+        const info = await db.command({ buildInfo: 1 });
+        serverVersion =
+          typeof info.version === "string"
+            ? `MongoDB ${info.version}`
+            : undefined;
+      } catch {
+        serverVersion = undefined;
+      }
+      closing = true;
+      await mongo.close().catch(() => undefined);
+      post({ type: "probe-result", elapsedMs, serverVersion });
+    }
+  } catch (error) {
+    closing = true;
+    await postgres?.end().catch(() => undefined);
+    await mongo?.close().catch(() => undefined);
+    post({ type: "connect-error", message: safeError(error) });
+  }
 }
 
 async function readPostgres(request: DatabaseQueryRequest): Promise<void> {
@@ -1058,6 +1132,8 @@ parentPort?.on("message", (message: WorkerRequest) => {
   if (message.type === "run") void run(message.request);
 });
 
-void openConnection().catch((error: unknown) => {
-  post({ type: "connect-error", message: safeError(error) });
-});
+if (config.probe) void probeConnection();
+else
+  void openConnection().catch((error: unknown) => {
+    post({ type: "connect-error", message: safeError(error) });
+  });
