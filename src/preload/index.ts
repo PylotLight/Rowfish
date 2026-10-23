@@ -101,6 +101,11 @@ const api = {
       database: string,
     ): Promise<DatabaseConnectionSummary> =>
       ipcRenderer.invoke("database:open-database", connectionId, database),
+    switchDatabase: (
+      connectionId: string,
+      database: string,
+    ): Promise<DatabaseConnectionSummary> =>
+      ipcRenderer.invoke("database:switch-database", connectionId, database),
     mutateMongo: (
       request: MongoMutationRequest,
     ): Promise<MongoMutationResult> =>

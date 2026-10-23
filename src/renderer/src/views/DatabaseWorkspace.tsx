@@ -16,6 +16,7 @@ import {
   Columns3,
   KeyRound,
   ChevronDown,
+  ChevronsUpDown,
   ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
@@ -544,6 +545,13 @@ export default function DatabaseWorkspace({
   const [browserLoading, setBrowserLoading] = useState<Record<string, boolean>>(
     {},
   );
+  const [dbSwitcher, setDbSwitcher] = useState<{
+    connectionId: string;
+    databases: DatabaseBrowserDatabase[] | null;
+    filter: string;
+    error: string;
+    busy: string;
+  } | null>(null);
   const [browserErrors, setBrowserErrors] = useState<Record<string, string>>(
     {},
   );
@@ -2068,12 +2076,109 @@ export default function DatabaseWorkspace({
     }
   }
 
+  function canSwitchDatabase(connection: DatabaseConnectionSummary): boolean {
+    return (
+      connection.kind === "postgres" &&
+      !connection.serverMode &&
+      !connection.parentConnectionId
+    );
+  }
+
+  async function toggleDbSwitcher(
+    connection: DatabaseConnectionSummary,
+  ): Promise<void> {
+    if (dbSwitcher?.connectionId === connection.id) {
+      setDbSwitcher(null);
+      return;
+    }
+    setDbSwitcher({
+      connectionId: connection.id,
+      databases: null,
+      filter: "",
+      error: "",
+      busy: "",
+    });
+    try {
+      const databases = await window.api.database.listDatabases(connection.id);
+      setDbSwitcher((current) =>
+        current?.connectionId === connection.id
+          ? { ...current, databases }
+          : current,
+      );
+    } catch (error) {
+      setDbSwitcher((current) =>
+        current?.connectionId === connection.id
+          ? {
+              ...current,
+              databases: [],
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "Could not list databases on this server.",
+            }
+          : current,
+      );
+    }
+  }
+
+  async function switchDatabase(
+    connection: DatabaseConnectionSummary,
+    database: DatabaseBrowserDatabase,
+  ): Promise<void> {
+    if (database.name === connection.database) {
+      setDbSwitcher(null);
+      return;
+    }
+    if (!database.canConnect || runState !== "idle" || !closeRowPanel()) return;
+    setDbSwitcher((current) =>
+      current ? { ...current, busy: database.name, error: "" } : current,
+    );
+    try {
+      const next = await window.api.database.switchDatabase(
+        connection.id,
+        database.name,
+      );
+      setConnections((current) =>
+        current.map((item) => (item.id === connection.id ? next : item)),
+      );
+      setTableLists((current) => {
+        const copy = { ...current };
+        delete copy[connection.id];
+        return copy;
+      });
+      setCompletionColumns((current) => {
+        const copy = { ...current };
+        delete copy[connection.id];
+        return copy;
+      });
+      setActiveId(next.id);
+      setDbSwitcher(null);
+      void inspectConnection(next);
+    } catch (error) {
+      setDbSwitcher((current) =>
+        current
+          ? {
+              ...current,
+              busy: "",
+              error:
+                error instanceof Error
+                  ? error.message
+                  : `Could not switch to ${database.name}.`,
+            }
+          : current,
+      );
+    }
+  }
+
   async function disconnect(
     connection: DatabaseConnectionSummary,
   ): Promise<void> {
     if (runState !== "idle" || !closeRowPanel()) return;
     try {
       await window.api.database.disconnect(connection.id);
+      setDbSwitcher((current) =>
+        current?.connectionId === connection.id ? null : current,
+      );
       setConnections((current) =>
         current.filter(
           (item) =>
@@ -2219,6 +2324,80 @@ export default function DatabaseWorkspace({
           tables.length === 0 && (
             <div className="db-browser-hint">No tables or views found.</div>
           )}
+      </div>
+    );
+  }
+
+  function renderDbSwitcher(connection: DatabaseConnectionSummary): ReactNode {
+    if (!dbSwitcher) return null;
+    const filter = dbSwitcher.filter.trim().toLowerCase();
+    const databases = (dbSwitcher.databases ?? []).filter((database) =>
+      database.name.toLowerCase().includes(filter),
+    );
+    const firstMatch = databases.find((database) => database.canConnect);
+    return (
+      <div
+        className="db-db-switcher"
+        role="dialog"
+        aria-label="Switch database"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setDbSwitcher(null);
+        }}
+      >
+        {(dbSwitcher.databases?.length ?? 0) > 6 && (
+          <input
+            className="db-db-switcher-filter"
+            autoFocus
+            placeholder="Filter databases"
+            value={dbSwitcher.filter}
+            onChange={(event) =>
+              setDbSwitcher((current) =>
+                current ? { ...current, filter: event.target.value } : current,
+              )
+            }
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && firstMatch)
+                void switchDatabase(connection, firstMatch);
+            }}
+          />
+        )}
+        {dbSwitcher.databases === null && (
+          <div className="db-browser-hint">
+            <span className="db-spinner small" /> Loading databases…
+          </div>
+        )}
+        {databases.map((database) => {
+          const current = database.name === connection.database;
+          return (
+            <button
+              key={database.name}
+              className={`db-db-switcher-item${current ? " current" : ""}`}
+              disabled={!database.canConnect || Boolean(dbSwitcher.busy)}
+              title={
+                database.canConnect
+                  ? current
+                    ? `${database.name} (current)`
+                    : `Switch to ${database.name}`
+                  : `No CONNECT permission for ${database.name}`
+              }
+              onClick={() => void switchDatabase(connection, database)}
+            >
+              <span aria-hidden="true">{current ? "✓" : ""}</span>
+              <span>{database.name}</span>
+              {dbSwitcher.busy === database.name && (
+                <span className="db-spinner small" />
+              )}
+            </button>
+          );
+        })}
+        {dbSwitcher.databases !== null &&
+          databases.length === 0 &&
+          !dbSwitcher.error && (
+            <div className="db-browser-hint">No matching databases.</div>
+          )}
+        {dbSwitcher.error && (
+          <div className="db-browser-error">{dbSwitcher.error}</div>
+        )}
       </div>
     );
   }
@@ -2586,7 +2765,7 @@ export default function DatabaseWorkspace({
             .map((connection) => (
               <div className="db-browser-server" key={connection.id}>
                 <div
-                  className={`db-connection${activeId === connection.id ? " selected" : ""}`}
+                  className={`db-connection${activeId === connection.id ? " selected" : ""}${canSwitchDatabase(connection) ? " switchable" : ""}`}
                 >
                   <button
                     className="db-connection-select"
@@ -2607,6 +2786,18 @@ export default function DatabaseWorkspace({
                     </span>
                     <span className="db-live-dot" aria-label="Connected" />
                   </button>
+                  {canSwitchDatabase(connection) && (
+                    <button
+                      className={`db-db-switch${dbSwitcher?.connectionId === connection.id ? " open" : ""}`}
+                      title="Switch database"
+                      aria-label={`Switch database on ${connection.name}`}
+                      aria-expanded={dbSwitcher?.connectionId === connection.id}
+                      disabled={runState !== "idle"}
+                      onClick={() => void toggleDbSwitcher(connection)}
+                    >
+                      <ChevronsUpDown size={13} />
+                    </button>
+                  )}
                   <button
                     className="db-disconnect"
                     title={`Disconnect ${connection.name}`}
@@ -2616,6 +2807,8 @@ export default function DatabaseWorkspace({
                     ×
                   </button>
                 </div>
+                {dbSwitcher?.connectionId === connection.id &&
+                  renderDbSwitcher(connection)}
                 {connection.kind === "postgres" && connection.serverMode && (
                   <div className="db-browser-objects db-browser-databases">
                     <div className="db-browser-section-title">

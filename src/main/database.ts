@@ -723,10 +723,8 @@ export async function listPostgresDatabases(
 ): Promise<DatabaseBrowserDatabase[]> {
   assertAllowedSender(event.sender);
   const connection = getOwnedConnection(event, connectionIdValue);
-  if (!connection.config.serverMode)
-    throw new Error(
-      "Connect with server-browser mode to list databases on this server.",
-    );
+  if (connection.config.kind !== "postgres")
+    throw new Error("Only PostgreSQL connections list server databases.");
   const message = await inspectConnection(connection, "inspect-databases");
   return message.databases ?? [];
 }
@@ -1109,6 +1107,52 @@ export async function openPostgresDatabase(
       : {}),
     parentConnectionId: parent.id,
   });
+}
+
+/**
+ * Moves a single-database PostgreSQL session onto another database on the
+ * same server. Opens the new session first, so a failed switch leaves the
+ * current one untouched, then closes the old one.
+ */
+export async function switchPostgresDatabase(
+  event: IpcMainInvokeEvent,
+  connectionIdValue: unknown,
+  databaseValue: unknown,
+): Promise<DatabaseConnectionSummary> {
+  assertAllowedSender(event.sender);
+  const current = getOwnedConnection(event, connectionIdValue);
+  if (
+    current.config.kind !== "postgres" ||
+    current.config.serverMode ||
+    current.summary.parentConnectionId
+  ) {
+    throw new Error("Choose a single-database PostgreSQL connection first.");
+  }
+  if (current.activeQueryId || current.rowBusy)
+    throw new Error("Wait for the running query to finish before switching.");
+  const database = validateText(databaseValue, "Database", 128, true);
+  if (database === current.config.database) return current.summary;
+  const known = await inspectConnection(current, "inspect-databases");
+  const target = known.databases?.find((item) => item.name === database);
+  if (!target)
+    throw new Error(
+      "This database is no longer available on the server. Refresh and try again.",
+    );
+  if (!target.canConnect)
+    throw new Error(
+      `The current PostgreSQL user does not have permission to connect to “${database}”.`,
+    );
+  const config: DatabaseConnectionInput = {
+    ...current.config,
+    database,
+  };
+  const next = await openConnection(event, config, {
+    ...(current.summary.savedConnectionId
+      ? { savedConnectionId: current.summary.savedConnectionId }
+      : {}),
+  });
+  await closeConnectionById(current.id);
+  return next;
 }
 
 export function runDatabaseQuery(

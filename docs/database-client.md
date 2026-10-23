@@ -31,6 +31,10 @@ To browse multiple databases on one PostgreSQL server, choose **Browse all datab
 
 This mode does not grant database access or bypass PostgreSQL permissions. It depends on being able to connect to the server's `postgres` maintenance database; if that is unavailable, connect directly to a database you can access instead. A direct PostgreSQL connection also shows its tables and views in the sidebar. Select a table to place a schema-qualified `SELECT * ... LIMIT 100` starter query in the editor; review it before running.
 
+## Switch databases on a PostgreSQL connection
+
+A normal (single-database) PostgreSQL connection has a switcher on its sidebar card. Hover the card and click the ⇅ button to open the database list under the card. It shows every database on the server, marks the current one with ✓ and greys out ones the user lacks CONNECT on. Lists over six get a filter box (Enter picks the first match, Escape closes). Picking one opens a new session on that database with the same credentials and saved profile, then closes the old one, so a failed switch leaves you where you were. Each database keeps its own query tab, so flipping back brings your old draft back. Switching is blocked while a query is running.
+
 ## MongoDB server browser
 
 Every live MongoDB connection lists the databases visible to its credentials and lets you expand a database to browse its collections and views. Selecting a collection loads its documents and shows its type, estimated document count, validator (when present), and index definitions. The browser respects the MongoDB user's permissions; server-side authorization remains authoritative.
