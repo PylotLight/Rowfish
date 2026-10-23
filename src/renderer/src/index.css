@@ -1177,6 +1177,65 @@ select option {
   overflow-wrap: anywhere;
   user-select: text;
 }
+.db-connect-mode {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.14);
+}
+.db-connect-mode button {
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.db-connect-mode button:hover:not(:disabled):not(.active) {
+  color: var(--text);
+}
+.db-connect-mode button.active {
+  background: var(--mint-dim);
+  color: var(--mint);
+}
+.db-connect-mode button:focus-visible {
+  outline: 2px solid var(--mint);
+  outline-offset: 1px;
+}
+.db-uri-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.db-uri-label-row label {
+  font-weight: 600;
+}
+.db-kind-badge {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.06);
+}
+.db-kind-badge.postgres {
+  color: #9ec4ff;
+  background: rgba(84, 147, 255, 0.17);
+}
+.db-kind-badge.mongodb {
+  color: #8ce0a5;
+  background: rgba(83, 186, 107, 0.15);
+}
 .db-form-field small.db-uri-hint {
   color: var(--muted);
   font-size: 9.5px;
@@ -1290,10 +1349,6 @@ select option {
   gap: 9px;
   margin-top: 16px;
   cursor: pointer;
-}
-.db-uri-toggle {
-  grid-column: 1 / -1;
-  margin-top: 2px;
 }
 .db-tls-toggle input {
   accent-color: var(--mint);

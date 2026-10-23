@@ -110,6 +110,7 @@ try {
   await ensureSidebar();
   await page.getByRole("button", { name: /New connection/ }).click();
   const modal = page.getByRole("dialog", { name: "Connect a database" });
+  await modal.getByRole("radio", { name: "Manual", exact: true }).click();
   await modal
     .getByLabel("Connection name", { exact: true })
     .fill("Local PostgreSQL");

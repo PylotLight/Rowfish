@@ -34,6 +34,21 @@ export interface MongoConnectionDetails {
 }
 
 /** Connection fields a connection string maps onto in the connection dialog. */
+/**
+ * The database kind a connection string's scheme names, or null when the
+ * scheme is missing or not one Rowfish supports. Only the scheme is read, so a
+ * half-typed string is detected as soon as its scheme is complete.
+ */
+export function detectConnectionStringKind(
+  source: string,
+): "postgres" | "mongodb" | null {
+  const match = /^\s*([a-z][a-z0-9+.-]*):\/\//i.exec(source);
+  const scheme = match?.[1]?.toLowerCase();
+  if (scheme === "postgres" || scheme === "postgresql") return "postgres";
+  if (scheme === "mongodb" || scheme === "mongodb+srv") return "mongodb";
+  return null;
+}
+
 export interface ConnectionStringFields {
   host: string;
   port: number;

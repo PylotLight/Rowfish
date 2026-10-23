@@ -4,6 +4,7 @@ import {
   getVirtualRowRange,
   buildMongoConnectionString,
   buildPostgresConnectionString,
+  detectConnectionStringKind,
   isValidRowLimit,
   maskConnectionStringPassword,
   parseMongoConnectionFields,
@@ -277,5 +278,27 @@ describe("virtual result window", () => {
       start: 0,
       end: 0,
     });
+  });
+});
+
+describe("connection string kind detection", () => {
+  test("detects PostgreSQL and MongoDB from the scheme", () => {
+    expect(detectConnectionStringKind("postgres://u@h/db")).toBe("postgres");
+    expect(detectConnectionStringKind("postgresql://h")).toBe("postgres");
+    expect(detectConnectionStringKind("PostgreSQL://h")).toBe("postgres");
+    expect(detectConnectionStringKind("mongodb://h:27017/app")).toBe("mongodb");
+    expect(detectConnectionStringKind("mongodb+srv://c.example/app")).toBe(
+      "mongodb",
+    );
+    expect(detectConnectionStringKind("  mongodb://h")).toBe("mongodb");
+  });
+
+  test("returns null for empty, partial or unsupported schemes", () => {
+    expect(detectConnectionStringKind("")).toBeNull();
+    expect(detectConnectionStringKind("postgres")).toBeNull();
+    expect(detectConnectionStringKind("postgres:/h")).toBeNull();
+    expect(detectConnectionStringKind("mysql://h/db")).toBeNull();
+    expect(detectConnectionStringKind("not-a-connection-string")).toBeNull();
+    expect(detectConnectionStringKind("mongo://h")).toBeNull();
   });
 });
