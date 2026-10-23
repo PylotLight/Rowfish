@@ -9,6 +9,7 @@ Use macOS to verify native window behavior and packaging. Database connection te
 - [ ] Connect to PostgreSQL and run `SELECT 1 AS ok;`; verify the connection and result row appear.
 - [ ] Connect to a PostgreSQL database and verify schemas, tables and views appear in the sidebar; choose a table and confirm the starter query safely quotes its identifiers.
 - [ ] Connect with **Browse all databases on this server**; verify available databases are listed, denied databases are disabled, and opening an accessible database loads its table browser.
+- [ ] In the connection dialog, paste a `postgresql://` and then a `mongodb+srv://` string in **Connection string** mode; the badge should switch between _Detected: PostgreSQL_ and _Detected: MongoDB_, and switching to **Manual** should show the matching type, host and port.
 - [ ] Save a connection, quit and relaunch; verify the saved profile remains available and reconnects only when selected.
 - [ ] Verify saved profile files contain no plaintext password; confirm **Forget** removes a profile without disconnecting an already-open session.
 - [ ] Connect to MongoDB, enter a collection and `{}` filter, and verify returned documents appear.

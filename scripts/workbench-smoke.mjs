@@ -92,6 +92,27 @@ try {
   await sidebarTab("Servers");
   await page.getByRole("button", { name: /New connection/ }).click();
   const modal = page.getByRole("dialog", { name: "Connect a database" });
+  const connectMode = (name) =>
+    modal.getByRole("radio", { name, exact: true }).click();
+  await check(
+    "connection dialog offers Connection string | Manual",
+    async () => {
+      await expect(
+        modal.getByRole("radiogroup", { name: "How to connect" }),
+      ).toBeVisible();
+      await connectMode("Connection string");
+      // No kind dropdown in connection string mode; the scheme decides.
+      await expect(modal.getByLabel("Database type")).toHaveCount(0);
+      await expect(modal.getByTestId("detected-kind")).toHaveText(
+        "Type not detected",
+      );
+      await expect(
+        modal.getByRole("button", { name: /^Connect$/ }),
+      ).toBeDisabled();
+      await connectMode("Manual");
+      await expect(modal.getByLabel("Database type")).toHaveValue("postgres");
+    },
+  );
   await modal
     .getByLabel("Connection name", { exact: true })
     .fill("Local development");
@@ -108,36 +129,83 @@ try {
       "postgresql://rowfish_test:••••••@localhost:5432/rowfish_fixture",
     );
   });
-  await check("PostgreSQL connection string mode syncs fields", async () => {
-    const toggle = modal.getByRole("checkbox", {
-      name: /Connect with a connection string/,
-    });
-    await toggle.check();
-    const uri = modal.getByLabel("PostgreSQL connection string", {
-      exact: true,
-    });
-    await expect(uri).toHaveValue(
-      "postgresql://rowfish_test:rowfish_local_fixture@localhost:5432/rowfish_fixture",
-    );
-    await uri.fill("not-a-connection-string");
-    await expect(modal.locator(".db-uri-hint.error")).toBeVisible();
-    await uri.fill(
-      "postgresql://rowfish_test:rowfish_local_fixture@localhost:5432/rowfish_fixture?application_name=rowfish-smoke",
-    );
-    await expect(modal.locator(".db-uri-hint")).toContainText(
-      "application_name",
-    );
-    await toggle.uncheck();
-    await expect(modal.getByLabel("Host", { exact: true })).toHaveValue(
-      "localhost",
-    );
-    await expect(modal.getByLabel("Database", { exact: true })).toHaveValue(
-      "rowfish_fixture",
-    );
-    await expect(modal.getByLabel(/^Password/)).toHaveValue(
-      "rowfish_local_fixture",
-    );
-  });
+  await check(
+    "connection string mode detects the type and syncs fields",
+    async () => {
+      await connectMode("Connection string");
+      const uri = modal.getByLabel("Connection string", { exact: true });
+      const badge = modal.getByTestId("detected-kind");
+      const connectButton = modal.getByRole("button", { name: /^Connect$/ });
+      await expect(uri).toHaveValue(
+        "postgresql://rowfish_test:rowfish_local_fixture@localhost:5432/rowfish_fixture",
+      );
+      await expect(badge).toHaveText("Detected: PostgreSQL");
+      await uri.fill("not-a-connection-string");
+      await expect(modal.locator(".db-uri-hint.error")).toBeVisible();
+      await expect(badge).toHaveText("Type not detected");
+      await expect(connectButton).toBeDisabled();
+      await expect(
+        modal.getByRole("button", { name: "Test & Save" }),
+      ).toBeDisabled();
+      await expect(
+        modal.getByRole("button", { name: "Save without testing" }),
+      ).toBeDisabled();
+      await uri.fill("");
+      await expect(modal.locator(".db-uri-hint")).toContainText("detected");
+      await expect(connectButton).toBeDisabled();
+      // A complete scheme switches the kind and its default port right away.
+      await uri.fill("mongodb://");
+      await expect(badge).toHaveText("Detected: MongoDB");
+      await expect(connectButton).toBeEnabled();
+      await connectMode("Manual");
+      await expect(modal.getByLabel("Database type")).toHaveValue("mongodb");
+      await expect(modal.getByLabel("Port", { exact: true })).toHaveValue(
+        "27017",
+      );
+      await connectMode("Connection string");
+      await uri.fill("mongodb://app:secret@mongo.example:27018/inventory");
+      await expect(badge).toHaveText("Detected: MongoDB");
+      await expect(
+        modal.getByRole("checkbox", { name: /Browse all databases/ }),
+      ).toHaveCount(0);
+      await connectMode("Manual");
+      await expect(modal.getByLabel("Database type")).toHaveValue("mongodb");
+      await expect(modal.getByLabel("Host", { exact: true })).toHaveValue(
+        "mongo.example",
+      );
+      await expect(modal.getByLabel("Port", { exact: true })).toHaveValue(
+        "27018",
+      );
+      await expect(modal.getByLabel("Database", { exact: true })).toHaveValue(
+        "inventory",
+      );
+      await connectMode("Connection string");
+      await expect(uri).toHaveValue(
+        /^mongodb:\/\/app:secret@mongo\.example:27018\/inventory/,
+      );
+      await uri.fill(
+        "postgresql://rowfish_test:rowfish_local_fixture@localhost:5432/rowfish_fixture?application_name=rowfish-smoke",
+      );
+      await expect(badge).toHaveText("Detected: PostgreSQL");
+      await expect(modal.locator(".db-uri-hint")).toContainText(
+        "application_name",
+      );
+      await connectMode("Manual");
+      await expect(modal.getByLabel("Database type")).toHaveValue("postgres");
+      await expect(modal.getByLabel("Host", { exact: true })).toHaveValue(
+        "localhost",
+      );
+      await expect(modal.getByLabel("Port", { exact: true })).toHaveValue(
+        "5432",
+      );
+      await expect(modal.getByLabel("Database", { exact: true })).toHaveValue(
+        "rowfish_fixture",
+      );
+      await expect(modal.getByLabel(/^Password/)).toHaveValue(
+        "rowfish_local_fixture",
+      );
+    },
+  );
   await check("Test & Save against real PostgreSQL", async () => {
     // The test probe hits the real server; saving is recorded instead of
     // written because CI's Linux session has no OS credential store.
@@ -160,11 +228,9 @@ try {
         };
       });
     });
+    await connectMode("Connection string");
     await modal
-      .getByRole("checkbox", { name: /Connect with a connection string/ })
-      .check();
-    await modal
-      .getByLabel("PostgreSQL connection string", { exact: true })
+      .getByLabel("Connection string", { exact: true })
       .fill(
         "postgresql://rowfish_test:rowfish_local_fixture@localhost:5432/rowfish_fixture?application_name=rowfish-smoke",
       );
@@ -189,6 +255,11 @@ try {
   await sidebarTab("Servers");
   await page.getByRole("button", { name: /New connection/ }).click();
   await expect(modal).toBeVisible();
+  // The dialog reopens in the last used mode (connection string here).
+  await expect(
+    modal.getByRole("radio", { name: "Connection string", exact: true }),
+  ).toHaveAttribute("aria-checked", "true");
+  await connectMode("Manual");
   await modal
     .getByLabel("Connection name", { exact: true })
     .fill("Local development");
@@ -528,6 +599,7 @@ try {
     await ensureSidebar();
     await page.getByRole("button", { name: /New connection/ }).click();
     const dialog = page.getByRole("dialog", { name: "Connect a database" });
+    await dialog.getByRole("radio", { name: "Manual", exact: true }).click();
     await dialog
       .getByLabel("Connection name", { exact: true })
       .fill("Development server");

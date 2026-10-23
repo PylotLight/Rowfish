@@ -438,6 +438,7 @@ try {
       await dialog().getByRole("button", { name: "New connection" }).click();
       const connect = page.getByRole("dialog", { name: "Connect a database" });
       await expect(connect).toBeVisible();
+      await connect.getByRole("radio", { name: "Manual", exact: true }).click();
       await connect
         .getByLabel("Connection name", { exact: true })
         .fill("Mock new connection");
@@ -517,6 +518,7 @@ try {
     await run().click();
     await dialog().getByRole("button", { name: "New connection" }).click();
     const connect = page.getByRole("dialog", { name: "Connect a database" });
+    await connect.getByRole("radio", { name: "Manual", exact: true }).click();
     await connect
       .getByLabel("Connection name", { exact: true })
       .fill("Offline warehouse");
@@ -529,11 +531,12 @@ try {
       "postgresql://analyst:••••••@10.0.0.9:6543/warehouse",
     );
     await connect
-      .getByRole("checkbox", { name: /Connect with a connection string/ })
-      .check();
-    const uri = connect.getByLabel("PostgreSQL connection string", {
-      exact: true,
-    });
+      .getByRole("radio", { name: "Connection string", exact: true })
+      .click();
+    const uri = connect.getByLabel("Connection string", { exact: true });
+    await expect(connect.getByTestId("detected-kind")).toHaveText(
+      "Detected: PostgreSQL",
+    );
     await expect(uri).toHaveValue(
       "postgresql://analyst:p%40ss@10.0.0.9:6543/warehouse",
     );
@@ -580,6 +583,7 @@ try {
     await run().click();
     await dialog().getByRole("button", { name: "New connection" }).click();
     const connect = page.getByRole("dialog", { name: "Connect a database" });
+    await connect.getByRole("radio", { name: "Manual", exact: true }).click();
     await connect
       .getByLabel("Connection name", { exact: true })
       .fill("Later warehouse");
