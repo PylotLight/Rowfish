@@ -4,6 +4,7 @@ import type {
   DatabaseBrowserTable,
   DatabaseConnectionInput,
   DatabaseConnectionSummary,
+  DatabaseConnectionTestResult,
   DatabaseEvent,
   DatabaseQueryRequest,
   MongoBrowserCollection,
@@ -30,6 +31,14 @@ const api = {
       save: boolean,
     ): Promise<DatabaseConnectionSummary> =>
       ipcRenderer.invoke("database:connect", input, save),
+    saveConnection: (
+      input: DatabaseConnectionInput,
+    ): Promise<SavedConnectionProfile> =>
+      ipcRenderer.invoke("database:save-connection", input),
+    testConnection: (
+      input: DatabaseConnectionInput,
+    ): Promise<DatabaseConnectionTestResult> =>
+      ipcRenderer.invoke("database:test-connection", input),
     saved: (): Promise<SavedConnectionProfile[]> =>
       ipcRenderer.invoke("database:saved"),
     connectSaved: (profileId: string): Promise<DatabaseConnectionSummary> =>

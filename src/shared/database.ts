@@ -13,6 +13,14 @@ export interface DatabaseConnectionInput {
   connectionString?: string;
 }
 
+export interface DatabaseConnectionTestResult {
+  /** Wall time to open the connection, run the check and close it. */
+  connectMs: number;
+  /** Round trip of the check query (SELECT 1 / ping) on the open connection. */
+  latencyMs: number;
+  serverVersion?: string;
+}
+
 export interface DatabaseConnectionSummary {
   id: string;
   name: string;

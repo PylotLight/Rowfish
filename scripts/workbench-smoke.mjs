@@ -103,6 +103,51 @@ try {
     .locator("label")
     .filter({ hasText: "Save this connection" });
   if (await saveLabel.count()) await saveLabel.locator("input").uncheck();
+  await check("connection string preview follows the fields", async () => {
+    await expect(modal.locator(".db-uri-preview")).toHaveText(
+      "postgresql://rowfish_test:••••••@localhost:5432/rowfish_fixture",
+    );
+  });
+  await check("test connection against real PostgreSQL", async () => {
+    await modal.getByRole("button", { name: "Test connection" }).click();
+    await expect(modal.getByRole("status")).toContainText(
+      "Connection succeeded",
+      { timeout: 20000 },
+    );
+    await expect(modal.getByRole("status")).toContainText("PostgreSQL");
+  });
+  await check("PostgreSQL connection string mode syncs fields", async () => {
+    const toggle = modal.getByRole("checkbox", {
+      name: /Connect with a connection string/,
+    });
+    await toggle.check();
+    const uri = modal.getByLabel("PostgreSQL connection string", {
+      exact: true,
+    });
+    await expect(uri).toHaveValue(
+      "postgresql://rowfish_test:rowfish_local_fixture@localhost:5432/rowfish_fixture",
+    );
+    await uri.fill("not-a-connection-string");
+    await expect(modal.locator(".db-uri-hint.error")).toBeVisible();
+    await uri.fill(
+      "postgresql://rowfish_test:rowfish_local_fixture@localhost:5432/rowfish_fixture?application_name=rowfish-smoke",
+    );
+    await modal.getByRole("button", { name: "Test connection" }).click();
+    await expect(modal.getByRole("status")).toContainText(
+      "Connection succeeded",
+      { timeout: 20000 },
+    );
+    await toggle.uncheck();
+    await expect(modal.getByLabel("Host", { exact: true })).toHaveValue(
+      "localhost",
+    );
+    await expect(modal.getByLabel("Database", { exact: true })).toHaveValue(
+      "rowfish_fixture",
+    );
+    await expect(modal.getByLabel(/^Password/)).toHaveValue(
+      "rowfish_local_fixture",
+    );
+  });
   await modal.getByRole("button", { name: /^Connect$/ }).click();
   await check("real PostgreSQL connect and schema browser", async () => {
     await expect(modal).not.toBeVisible({ timeout: 20000 });

@@ -495,6 +495,66 @@ try {
       expect((await calls()).filter((x) => x[0] === "run")).toHaveLength(0);
     },
   );
+  await check("unreachable connection string can be saved anyway", async () => {
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler("database:connect");
+      ipcMain.handle("database:connect", (_event, input, save) => {
+        globalThis.__querySmokeState.calls.push(["connect", input, save]);
+        throw new Error("connect ECONNREFUSED 10.0.0.9:6543");
+      });
+      ipcMain.removeHandler("database:save-connection");
+      ipcMain.handle("database:save-connection", (_event, input) => {
+        globalThis.__querySmokeState.calls.push(["saveConnection", input]);
+        return { ...input, id: "saved-anyway", hasSecret: true };
+      });
+    });
+    await fixture();
+    await run().click();
+    await dialog().getByRole("button", { name: "New connection" }).click();
+    const connect = page.getByRole("dialog", { name: "Connect a database" });
+    await connect
+      .getByLabel("Connection name", { exact: true })
+      .fill("Offline warehouse");
+    await connect.getByLabel("Host", { exact: true }).fill("10.0.0.9");
+    await connect.getByLabel("Port", { exact: true }).fill("6543");
+    await connect.getByLabel("Database", { exact: true }).fill("warehouse");
+    await connect.getByLabel(/^Username/).fill("analyst");
+    await connect.getByLabel(/^Password/).fill("p@ss");
+    await expect(connect.locator(".db-uri-preview")).toHaveText(
+      "postgresql://analyst:••••••@10.0.0.9:6543/warehouse",
+    );
+    await connect
+      .getByRole("checkbox", { name: /Connect with a connection string/ })
+      .check();
+    const uri = connect.getByLabel("PostgreSQL connection string", {
+      exact: true,
+    });
+    await expect(uri).toHaveValue(
+      "postgresql://analyst:p%40ss@10.0.0.9:6543/warehouse",
+    );
+    await uri.fill("postgres://broken:6543x/warehouse");
+    await expect(connect.locator(".db-uri-hint.error")).toContainText("port");
+    const target =
+      "postgresql://analyst:p%40ss@10.0.0.9:6543/warehouse?sslmode=require&application_name=smoke";
+    await uri.fill(target);
+    await expect(connect.locator(".db-uri-hint")).toContainText(
+      "10.0.0.9:6543/warehouse as analyst · TLS on",
+    );
+    await expect(connect.locator(".db-uri-hint")).toContainText(
+      "application_name",
+    );
+    await connect.getByRole("button", { name: /^Connect$/ }).click();
+    await expect(connect.getByRole("alert")).toContainText("ECONNREFUSED");
+    await connect.getByRole("button", { name: "Save anyway" }).click();
+    await expect(connect).toHaveCount(0);
+    const saved = (await calls()).find((x) => x[0] === "saveConnection");
+    expect(saved?.[1]).toMatchObject({
+      name: "Offline warehouse",
+      kind: "postgres",
+      connectionString: target,
+    });
+    expect((await calls()).filter((x) => x[0] === "run")).toHaveLength(0);
+  });
   await page.waitForTimeout(700);
   expect(errors).toEqual([]);
   await writeFile(
