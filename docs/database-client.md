@@ -7,7 +7,7 @@ Rowfish connects to PostgreSQL and MongoDB when you enter connection details and
 The dialog has two modes, chosen with the **Connection string | Manual** toggle at the top. It reopens in whichever mode you used last (connection string the first time).
 
 - **Connection string**: paste a URI and Rowfish works out the database type from its scheme: `postgres://` or `postgresql://` is PostgreSQL, `mongodb://` or `mongodb+srv://` is MongoDB. There is no type dropdown; a small badge shows what was detected (for example _Detected: PostgreSQL_). An empty string or an unknown scheme shows an inline hint and keeps **Connect**, **Test & Save** and **Save without testing** disabled until the scheme is recognised.
-- **Manual**: choose the database type, then fill in host, port, database and optional username/password, with a live preview of the matching connection string. PostgreSQL defaults to port `5432`; MongoDB defaults to `27017`. The **Require TLS** option enables certificate-verified TLS; certificates must be trusted by the operating system.
+- **Manual**: choose the database type, then fill in host, port, database and optional username/password, with a live preview of the matching connection string. PostgreSQL defaults to port `5432`; MongoDB defaults to `27017`. PostgreSQL has an **SSL mode** picker with the libpq modes; MongoDB has a **Require TLS** toggle (certificate-verified, trusted by the operating system).
 
 Switching modes carries the values across: going to **Connection string** starts from a string built from the fields, and going back to **Manual** keeps the type, host, port, database and credentials parsed from the string. When a pasted string changes the type, the port and database fall back to that type's defaults until the rest of the string parses.
 
@@ -15,7 +15,7 @@ Profile metadata is stored in Rowfish's app-specific user-data directory. If you
 
 For a quick MongoDB connection, choose **Connection string**, paste a standard `mongodb://` or `mongodb+srv://` URI, enter a display name, and choose **Connect**. The URI is passed to the MongoDB driver intact so options such as replica sets, Atlas SRV discovery, authentication source and TLS settings are retained. When saving is enabled, the full URI is encrypted as a secret and is never returned to the renderer after connection.
 
-PostgreSQL works the same way: paste a `postgres://` or `postgresql://` URI. Query options such as `sslmode`, `application_name` or `connect_timeout` are passed to node-postgres as written, and the string is saved as an encrypted secret like a MongoDB URI. While you edit the regular fields, the dialog shows the matching connection string (password hidden, **Copy** copies the real value); switching to **Connection string** starts from that string, and editing or pasting a string fills the fields back in. An invalid string shows an inline hint and leaves the fields at their last valid values. Options the fields cannot express (extra query options, SRV lookup, multiple MongoDB hosts) apply only while connecting with the string.
+PostgreSQL works the same way: paste a `postgres://` or `postgresql://` URI. Query options such as `application_name` or `connect_timeout` are passed to node-postgres as written (TLS options are handled by Rowfish, see below), and the string is saved as an encrypted secret like a MongoDB URI. While you edit the regular fields, the dialog shows the matching connection string (password hidden, **Copy** copies the real value); switching to **Connection string** starts from that string, and editing or pasting a string fills the fields back in. An invalid string shows an inline hint and leaves the fields at their last valid values. Options the fields cannot express (extra query options, SRV lookup, multiple MongoDB hosts) apply only while connecting with the string.
 
 The dialog footer has three ways to finish:
 
@@ -30,6 +30,18 @@ Each live connection uses a worker. Rowfish supports up to **8 active connection
 To browse multiple databases on one PostgreSQL server, choose **Browse all databases on this server** instead of entering a database name. Rowfish uses the `postgres` maintenance database to list databases and indicates which ones the current PostgreSQL user can connect to. Select an accessible database in the sidebar to open a separate session; Rowfish then lists its tables and views by schema.
 
 This mode does not grant database access or bypass PostgreSQL permissions. It depends on being able to connect to the server's `postgres` maintenance database; if that is unavailable, connect directly to a database you can access instead. A direct PostgreSQL connection also shows its tables and views in the sidebar. Select a table to place a schema-qualified `SELECT * ... LIMIT 100` starter query in the editor; review it before running.
+
+## PostgreSQL TLS (sslmode)
+
+Rowfish follows libpq's `sslmode` rules, in the SSL mode picker or as `?sslmode=` in a connection string:
+
+- **Prefer** (default, and what you get with no `sslmode`): tries TLS first without checking the certificate, and falls back to a plain connection if the server has TLS turned off. Same as `psql`.
+- **Require**: always encrypts, doesn't check the certificate. With `sslrootcert` it checks the chain like Verify CA.
+- **Verify CA**: encrypts and checks the certificate chain against the OS trust store or `sslrootcert`, but not the host name. Handy for servers reached by IP.
+- **Verify full**: also checks the host name.
+- **Disable**: never encrypts.
+
+`sslrootcert`, `sslcert` and `sslkey` in a connection string are read as local file paths. `allow` is treated as prefer, and node-postgres's `no-verify` / `ssl=no-verify` as require. Profiles saved before this used a single TLS toggle: on now means Verify full, off now means Prefer, so servers that only allow encrypted connections work without re-saving. TLS-related connection errors (for example `pg_hba.conf … no encryption` or a self-signed certificate) come with a hint about which mode to pick.
 
 ## Switch databases on a PostgreSQL connection
 

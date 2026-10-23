@@ -1,3 +1,4 @@
+import type { PostgresSslMode } from "./database";
 export const DATABASE_LIMITS = {
   minRows: 1,
   maxRows: 10_000,
@@ -56,6 +57,8 @@ export interface ConnectionStringFields {
   username: string;
   password: string;
   tls: boolean;
+  /** PostgreSQL only: the sslmode the string asks for (prefer when absent). */
+  sslMode?: PostgresSslMode;
   /** Query options the dialog fields cannot represent (kept only in the string). */
   extraOptions: string[];
   /** False when the string uses features the plain fields cannot express. */
@@ -179,17 +182,110 @@ export function buildMongoConnectionString(fields: {
   return `mongodb://${formatUserInfo(fields.username, fields.password)}${formatUrlHost(fields.host)}:${fields.port}/${encodeURIComponent(fields.database)}${options}`;
 }
 
-// node-postgres verifies the server certificate for every sslmode except
-// disable and its own no-verify extension, matching the dialog's TLS toggle.
-const POSTGRES_SSL_MODES = new Set([
-  "disable",
-  "allow",
-  "prefer",
-  "require",
-  "verify-ca",
-  "verify-full",
-  "no-verify",
+export type { PostgresSslMode };
+
+export const POSTGRES_SSL_MODES: ReadonlyArray<{
+  value: PostgresSslMode;
+  label: string;
+  hint: string;
+}> = [
+  {
+    value: "prefer",
+    label: "Prefer",
+    hint: "Try TLS first, fall back to plain if the server has none (libpq default)",
+  },
+  {
+    value: "require",
+    label: "Require",
+    hint: "Always encrypt, don’t check the certificate",
+  },
+  {
+    value: "verify-ca",
+    label: "Verify CA",
+    hint: "Encrypt and check the certificate chain, not the host name",
+  },
+  {
+    value: "verify-full",
+    label: "Verify full",
+    hint: "Encrypt and check the certificate and host name",
+  },
+  { value: "disable", label: "Disable", hint: "Never use TLS" },
+];
+
+const SSL_MODE_ALIASES: Record<string, PostgresSslMode> = {
+  disable: "disable",
+  allow: "prefer",
+  prefer: "prefer",
+  require: "require",
+  "verify-ca": "verify-ca",
+  "verify-full": "verify-full",
+  // node-postgres extension.
+  "no-verify": "require",
+};
+
+export function isPostgresSslMode(value: unknown): value is PostgresSslMode {
+  return POSTGRES_SSL_MODES.some((mode) => mode.value === value);
+}
+
+/** True when the mode always encrypts (prefer may fall back to plain). */
+export function sslModeEncrypts(mode: PostgresSslMode): boolean {
+  return mode === "require" || mode === "verify-ca" || mode === "verify-full";
+}
+
+/**
+ * The sslmode a PostgreSQL connection uses. Profiles saved before sslmode
+ * existed only have the old TLS toggle: on meant verify-full, off now means
+ * prefer (libpq's default) so servers that require TLS still work.
+ */
+export function resolvePostgresSslMode(config: {
+  sslMode?: PostgresSslMode | undefined;
+  tls: boolean;
+}): PostgresSslMode {
+  return config.sslMode ?? (config.tls ? "verify-full" : "prefer");
+}
+
+const SSL_PARAMS = new Set([
+  "sslmode",
+  "ssl",
+  "sslrootcert",
+  "sslcert",
+  "sslkey",
 ]);
+
+/**
+ * Removes TLS parameters from a PostgreSQL connection string so Rowfish can
+ * apply sslmode itself (node-postgres treats require as verify-full), and
+ * returns the certificate file paths it named.
+ */
+export function stripPostgresSslParams(source: string): {
+  connectionString: string;
+  rootCert?: string;
+  cert?: string;
+  key?: string;
+} {
+  const queryStart = source.indexOf("?");
+  if (queryStart < 0) return { connectionString: source };
+  const kept: string[] = [];
+  const files: { rootCert?: string; cert?: string; key?: string } = {};
+  for (const part of source.slice(queryStart + 1).split("&")) {
+    if (!part) continue;
+    const [rawKey = "", ...rest] = part.split("=");
+    const key = decodeURIComponent(rawKey).toLowerCase();
+    if (!SSL_PARAMS.has(key)) {
+      kept.push(part);
+      continue;
+    }
+    const value = decodeURIComponent(rest.join("="));
+    if (key === "sslrootcert") files.rootCert = value;
+    else if (key === "sslcert") files.cert = value;
+    else if (key === "sslkey") files.key = value;
+  }
+  return {
+    connectionString:
+      source.slice(0, queryStart) + (kept.length ? `?${kept.join("&")}` : ""),
+    ...files,
+  };
+}
 
 /**
  * Parses a postgres:// or postgresql:// connection string into the dialog's
@@ -235,20 +331,21 @@ export function parsePostgresConnectionString(
   let password = urlPassword;
   let hostText = hostList;
   let portOverride = "";
-  let tls = false;
+  let sslMode: PostgresSslMode = "prefer";
   const extraOptions: string[] = [];
   for (const [key, value] of options) {
     const name = key.toLowerCase();
     if (name === "sslmode") {
-      if (!POSTGRES_SSL_MODES.has(value))
+      const mode = SSL_MODE_ALIASES[value.toLowerCase()];
+      if (!mode)
         throw new Error(
           "The sslmode in the PostgreSQL connection string is invalid.",
         );
-      tls = value !== "disable";
-      if (value === "no-verify") extraOptions.push(key);
+      sslMode = mode;
     } else if (name === "ssl") {
-      tls = TRUE_OPTION.test(value) || value === "no-verify";
-      if (value === "no-verify") extraOptions.push(key);
+      // node-postgres: ssl=true verifies, ssl=no-verify encrypts only.
+      if (value === "no-verify") sslMode = "require";
+      else sslMode = TRUE_OPTION.test(value) ? "verify-full" : "disable";
     } else if (name === "user") username = value;
     else if (name === "password") password = value;
     else if (name === "host") hostText = value;
@@ -327,7 +424,8 @@ export function parsePostgresConnectionString(
     database,
     username,
     password,
-    tls,
+    tls: sslModeEncrypts(sslMode),
+    sslMode,
     extraOptions,
     representable: extraOptions.length === 0,
   };
@@ -341,11 +439,14 @@ export function buildPostgresConnectionString(fields: {
   username: string;
   password: string;
   tls: boolean;
+  sslMode?: PostgresSslMode;
 }): string {
   const database = fields.database
     ? `/${encodeURIComponent(fields.database)}`
     : "";
-  const options = fields.tls ? "?sslmode=verify-full" : "";
+  const sslMode = resolvePostgresSslMode(fields);
+  // prefer is the libpq default, so it is left out of the string.
+  const options = sslMode === "prefer" ? "" : `?sslmode=${sslMode}`;
   return `postgresql://${formatUserInfo(fields.username, fields.password)}${formatUrlHost(fields.host)}:${fields.port}${database}${options}`;
 }
 
@@ -566,4 +667,21 @@ export function getVirtualRowRange(
     Math.ceil((safeTop + safeViewport) / safeRowHeight) + Math.max(0, overscan),
   );
   return { start, end: Math.max(start, end) };
+}
+
+/** A short next step for PostgreSQL connection errors caused by TLS settings. */
+export function postgresTlsHint(message: string): string {
+  if (/pg_hba\.conf.*no encryption/i.test(message))
+    return "The server only accepts encrypted connections. Set SSL mode to Prefer or Require (sslmode=require in a connection string).";
+  if (/does not support SSL/i.test(message))
+    return "The server has TLS turned off. Set SSL mode to Prefer or Disable.";
+  if (
+    /self[- ]signed certificate|unable to (get|verify) (local )?issuer|certificate chain/i.test(
+      message,
+    )
+  )
+    return "The server's certificate isn't trusted. Use SSL mode Require to encrypt without checking it, or Verify CA with its CA file (sslrootcert).";
+  if (/Hostname\/IP does not match certificate|altnames/i.test(message))
+    return "The certificate doesn't match this host name. Use SSL mode Verify CA, or connect with the name on the certificate.";
+  return "";
 }
