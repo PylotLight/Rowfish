@@ -11,6 +11,10 @@ import {
   parseMongoConnectionString,
   parsePostgresConnectionString,
   withPostgresDatabase,
+  resolvePostgresSslMode,
+  sslModeEncrypts,
+  stripPostgresSslParams,
+  postgresTlsHint,
   parseMongoFilter,
   parseMongoPipeline,
   quotePostgresIdentifier,
@@ -70,6 +74,7 @@ describe("database query guards", () => {
       username: "app@corp",
       password: "p@ss:word",
       tls: true,
+      sslMode: "require",
       extraOptions: [],
       representable: true,
     });
@@ -80,6 +85,7 @@ describe("database query guards", () => {
       username: "",
       password: "",
       tls: false,
+      sslMode: "prefer",
       extraOptions: [],
       representable: true,
     });
@@ -93,6 +99,7 @@ describe("database query guards", () => {
       database: "app",
       username: "u",
       tls: false,
+      sslMode: "disable",
       extraOptions: ["application_name", "connect_timeout"],
       representable: false,
     });
@@ -104,6 +111,61 @@ describe("database query guards", () => {
     expect(
       parsePostgresConnectionString("postgres://db.example/app?ssl=true").tls,
     ).toBe(true);
+  });
+
+  test("maps sslmode values the way libpq does", () => {
+    const mode = (query: string) =>
+      parsePostgresConnectionString(`postgres://db.example/app${query}`)
+        .sslMode;
+    expect(mode("")).toBe("prefer");
+    expect(mode("?sslmode=allow")).toBe("prefer");
+    expect(mode("?sslmode=verify-ca")).toBe("verify-ca");
+    expect(mode("?sslmode=VERIFY-FULL")).toBe("verify-full");
+    expect(mode("?sslmode=no-verify")).toBe("require");
+    expect(mode("?ssl=no-verify")).toBe("require");
+    expect(mode("?ssl=0")).toBe("disable");
+    expect(() => mode("?sslmode=sometimes")).toThrow("sslmode");
+    expect(resolvePostgresSslMode({ tls: false })).toBe("prefer");
+    expect(resolvePostgresSslMode({ tls: true })).toBe("verify-full");
+    expect(resolvePostgresSslMode({ tls: true, sslMode: "require" })).toBe(
+      "require",
+    );
+    expect(sslModeEncrypts("prefer")).toBe(false);
+    expect(sslModeEncrypts("verify-ca")).toBe(true);
+  });
+
+  test("explains TLS-related connection failures", () => {
+    expect(
+      postgresTlsHint(
+        'no pg_hba.conf entry for host "10.0.0.1", user "u", database "d", no encryption',
+      ),
+    ).toContain("Require");
+    expect(
+      postgresTlsHint("self-signed certificate in certificate chain"),
+    ).toContain("Verify CA");
+    expect(
+      postgresTlsHint("The server does not support SSL connections"),
+    ).toContain("Disable");
+    expect(postgresTlsHint("password authentication failed")).toBe("");
+  });
+
+  test("strips TLS parameters so Rowfish applies sslmode itself", () => {
+    expect(
+      stripPostgresSslParams(
+        "postgres://u:p@db/app?sslmode=require&application_name=x&sslrootcert=%2Ftmp%2Fca.pem&SSLCERT=/c.pem&sslkey=/k.pem",
+      ),
+    ).toEqual({
+      connectionString: "postgres://u:p@db/app?application_name=x",
+      rootCert: "/tmp/ca.pem",
+      cert: "/c.pem",
+      key: "/k.pem",
+    });
+    expect(stripPostgresSslParams("postgres://db/app?sslmode=disable")).toEqual(
+      { connectionString: "postgres://db/app" },
+    );
+    expect(stripPostgresSslParams("postgres://db/app")).toEqual({
+      connectionString: "postgres://db/app",
+    });
   });
 
   test("rejects malformed PostgreSQL connection strings", () => {

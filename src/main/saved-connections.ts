@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { app, safeStorage } from "electron";
-import type { DatabaseConnectionInput, DatabaseKind } from "../shared/database";
+import type {
+  DatabaseConnectionInput,
+  DatabaseKind,
+  PostgresSslMode,
+} from "../shared/database";
+import { isPostgresSslMode } from "../shared/database-helpers";
 
 export interface SavedConnectionProfile {
   id: string;
@@ -13,6 +18,7 @@ export interface SavedConnectionProfile {
   database: string;
   username: string;
   tls: boolean;
+  sslMode?: PostgresSslMode;
   serverMode: boolean;
   hasSecret: boolean;
 }
@@ -64,6 +70,8 @@ async function readProfiles(): Promise<StoredConnectionProfile[]> {
           typeof profile.database === "string" &&
           typeof profile.username === "string" &&
           typeof profile.tls === "boolean" &&
+          (profile.sslMode === undefined ||
+            isPostgresSslMode(profile.sslMode)) &&
           typeof profile.serverMode === "boolean" &&
           (profile.secretKind === "password" ||
             profile.secretKind === "connection-string" ||
@@ -150,6 +158,7 @@ export async function saveConnectionProfile(
     database: input.database,
     username: input.username,
     tls: input.tls,
+    ...(input.sslMode ? { sslMode: input.sslMode } : {}),
     serverMode: input.serverMode,
     secretKind,
     encryptedSecret,

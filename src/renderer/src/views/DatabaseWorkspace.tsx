@@ -61,6 +61,7 @@ import type {
   DatabaseBrowserDatabase,
   DatabaseBrowserTable,
   DatabaseConnectionInput,
+  PostgresSslMode,
   DatabaseConnectionSummary,
   DatabaseConnectionTestResult,
   DatabaseEvent,
@@ -71,6 +72,9 @@ import type {
   SavedConnectionProfile,
 } from "../../../shared/database";
 import {
+  POSTGRES_SSL_MODES,
+  resolvePostgresSslMode,
+  sslModeEncrypts,
   DATABASE_LIMITS,
   buildMongoConnectionString,
   buildPostgresConnectionString,
@@ -134,6 +138,9 @@ function buildConnectionString(form: DatabaseConnectionInput): string {
     username: form.username.trim(),
     password: form.password,
     tls: form.tls,
+    ...(form.kind === "postgres"
+      ? { sslMode: resolvePostgresSslMode(form) }
+      : {}),
   };
   return form.kind === "postgres"
     ? buildPostgresConnectionString(fields)
@@ -148,6 +155,7 @@ const DEFAULT_FORM: DatabaseConnectionInput = {
   username: "postgres",
   password: "",
   tls: false,
+  sslMode: "prefer",
   serverMode: false,
   connectionString: "",
 };
@@ -254,7 +262,11 @@ export default function DatabaseWorkspace({
       const target = `${parsed.host}:${parsed.port}${parsed.database ? `/${parsed.database}` : ""}`;
       const summary = [
         parsed.username ? `${target} as ${parsed.username}` : target,
-        parsed.tls ? "TLS on" : "TLS off",
+        parsed.sslMode
+          ? `sslmode ${parsed.sslMode}`
+          : parsed.tls
+            ? "TLS on"
+            : "TLS off",
       ].join(" · ");
       if (parsed.representable) return { text: summary, error: false };
       const extras = parsed.extraOptions.length
@@ -1505,6 +1517,7 @@ export default function DatabaseWorkspace({
           username: parsed.username,
           password: parsed.password,
           tls: parsed.tls,
+          ...(parsed.sslMode ? { sslMode: parsed.sslMode } : {}),
         };
       } catch {
         // Keep the last valid fields while the string is being edited.
@@ -4298,6 +4311,40 @@ export default function DatabaseWorkspace({
                       />
                     </label>
                   )}
+                  {form.kind === "postgres" && (
+                    <label className="db-form-field">
+                      <span>
+                        SSL mode{" "}
+                        <small>
+                          {
+                            POSTGRES_SSL_MODES.find(
+                              (mode) =>
+                                mode.value === resolvePostgresSslMode(form),
+                            )?.hint
+                          }
+                        </small>
+                      </span>
+                      <select
+                        aria-label="SSL mode"
+                        value={resolvePostgresSslMode(form)}
+                        onChange={(event) => {
+                          const sslMode = event.target.value as PostgresSslMode;
+                          setTestFailure("");
+                          setForm((current) => ({
+                            ...current,
+                            sslMode,
+                            tls: sslModeEncrypts(sslMode),
+                          }));
+                        }}
+                      >
+                        {POSTGRES_SSL_MODES.map((mode) => (
+                          <option key={mode.value} value={mode.value}>
+                            {mode.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                   <div className="db-form-field full">
                     <span>
                       Connection string <small>updates as you type</small>
@@ -4346,7 +4393,7 @@ export default function DatabaseWorkspace({
                 </span>
               </label>
             )}
-            {!uriMode && (
+            {!uriMode && form.kind === "mongodb" && (
               <label className="db-tls-toggle">
                 <input
                   type="checkbox"

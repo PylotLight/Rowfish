@@ -21,9 +21,12 @@ import type {
 } from "../shared/database";
 import {
   DATABASE_LIMITS,
+  isPostgresSslMode,
   isValidRowLimit,
   parseMongoConnectionString,
   parsePostgresConnectionString,
+  resolvePostgresSslMode,
+  sslModeEncrypts,
 } from "../shared/database-helpers";
 import {
   deleteSavedConnection,
@@ -169,6 +172,7 @@ function validateConnectionInput(value: unknown): DatabaseConnectionInput {
         username: details.username,
         password: "",
         tls: details.tls,
+        sslMode: details.sslMode ?? "prefer",
         serverMode,
         connectionString,
       };
@@ -199,6 +203,12 @@ function validateConnectionInput(value: unknown): DatabaseConnectionInput {
   }
   if (typeof value.tls !== "boolean")
     throw new Error("TLS selection is invalid.");
+  if (value.sslMode !== undefined && !isPostgresSslMode(value.sslMode))
+    throw new Error("SSL mode selection is invalid.");
+  const sslMode =
+    kind === "postgres"
+      ? resolvePostgresSslMode({ sslMode: value.sslMode, tls: value.tls })
+      : undefined;
 
   return {
     name,
@@ -208,7 +218,8 @@ function validateConnectionInput(value: unknown): DatabaseConnectionInput {
     database,
     username,
     password,
-    tls: value.tls,
+    tls: sslMode ? sslModeEncrypts(sslMode) : value.tls,
+    ...(sslMode ? { sslMode } : {}),
     serverMode,
   };
 }

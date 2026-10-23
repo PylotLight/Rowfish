@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { parentPort, workerData } from "node:worker_threads";
 import { BSON, MongoClient, type Db } from "mongodb";
 import { Client as PostgresClient } from "pg";
@@ -17,12 +18,16 @@ import type {
   MongoBrowserCollection,
   MongoMutationRequest,
   MongoMutationResult,
+  PostgresSslMode,
 } from "../shared/database";
 import {
   DATABASE_LIMITS,
   buildMongoConnectionString,
   parseMongoFilter,
   parsePostgresConnectionString,
+  postgresTlsHint,
+  resolvePostgresSslMode,
+  stripPostgresSslParams,
   withPostgresDatabase,
   parseMongoPipeline,
 } from "../shared/database-helpers";
@@ -140,6 +145,13 @@ function safeError(error: unknown): string {
     .slice(0, 1_000);
 }
 
+function connectError(error: unknown): string {
+  const message = safeError(error);
+  if (config.kind !== "postgres") return message;
+  const hint = postgresTlsHint(message);
+  return hint ? `${message.replace(/\.$/, "")}. ${hint}` : message;
+}
+
 function asCell(value: unknown): DatabaseCell {
   if (value === null || value === undefined) return null;
   if (typeof value === "boolean") return value;
@@ -204,23 +216,72 @@ function postBatch(
   post({ type: "rows", queryId, rows, columns: [...columns], receivedRows });
 }
 
-function postgresTarget(): ConstructorParameters<typeof PostgresClient>[0] {
+type PostgresTarget = ConstructorParameters<typeof PostgresClient>[0];
+type PostgresTls = Exclude<NonNullable<PostgresTarget>, string>["ssl"];
+
+function readCertificate(file: string | undefined, label: string) {
+  if (!file) return undefined;
+  try {
+    return readFileSync(file, "utf8");
+  } catch {
+    throw new Error(`Could not read the ${label} file “${file}”.`);
+  }
+}
+
+/**
+ * node-postgres options for a libpq sslmode. node-postgres on its own treats
+ * require like verify-full and has no prefer, so Rowfish maps them itself:
+ * prefer and require encrypt without checking the certificate (prefer falls
+ * back to plain when the server has no TLS), verify-ca checks the chain only,
+ * verify-full also checks the host name.
+ */
+function postgresTls(
+  mode: PostgresSslMode,
+  files: { rootCert?: string; cert?: string; key?: string },
+): PostgresTls {
+  if (mode === "disable") return false;
+  const ca = readCertificate(files.rootCert, "sslrootcert");
+  const cert = readCertificate(files.cert, "sslcert");
+  const key = readCertificate(files.key, "sslkey");
+  const material = {
+    ...(ca ? { ca } : {}),
+    ...(cert ? { cert } : {}),
+    ...(key ? { key } : {}),
+  };
+  if (mode === "verify-full") return { rejectUnauthorized: true, ...material };
+  // libpq: require with a root certificate behaves like verify-ca.
+  if (mode === "verify-ca" || (mode === "require" && ca))
+    return {
+      rejectUnauthorized: true,
+      checkServerIdentity: () => undefined,
+      ...material,
+    };
+  return { rejectUnauthorized: false, ...material };
+}
+
+function postgresSslMode(): PostgresSslMode {
+  return resolvePostgresSslMode(config);
+}
+
+function postgresTarget(plainFallback = false): PostgresTarget {
   const shared = {
     connectionTimeoutMillis: 8_000,
     options: `-c statement_timeout=${QUERY_TIMEOUT_MS}`,
     application_name: "Rowfish",
   };
+  const mode = plainFallback ? "disable" : postgresSslMode();
   if (config.connectionString) {
     // Point the string at the selected database (server-browser children
-    // reuse the parent's string) and let node-postgres apply its options.
+    // reuse the parent's string) and let node-postgres apply its other
+    // options. TLS options are stripped and applied explicitly below.
     const database =
       config.database ||
       parsePostgresConnectionString(config.connectionString).database ||
       "postgres";
-    return {
-      ...shared,
-      connectionString: withPostgresDatabase(config.connectionString, database),
-    };
+    const { connectionString, ...files } = stripPostgresSslParams(
+      withPostgresDatabase(config.connectionString, database),
+    );
+    return { ...shared, connectionString, ssl: postgresTls(mode, files) };
   }
   return {
     ...shared,
@@ -229,14 +290,37 @@ function postgresTarget(): ConstructorParameters<typeof PostgresClient>[0] {
     database: config.database || "postgres",
     user: config.username || undefined,
     password: config.password || undefined,
-    ssl: config.tls ? { rejectUnauthorized: true } : false,
+    ssl: postgresTls(mode, {}),
   };
+}
+
+function serverLacksTls(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    /does not support SSL|server does not support ssl/i.test(error.message)
+  );
+}
+
+/** Connects with the configured sslmode; prefer retries in plain text. */
+async function connectPostgres(): Promise<InstanceType<typeof PostgresClient>> {
+  const client = new PostgresClient(postgresTarget());
+  client.on("error", () => undefined);
+  try {
+    await client.connect();
+    return client;
+  } catch (error) {
+    await client.end().catch(() => undefined);
+    if (postgresSslMode() !== "prefer" || !serverLacksTls(error)) throw error;
+    const plain = new PostgresClient(postgresTarget(true));
+    plain.on("error", () => undefined);
+    await plain.connect();
+    return plain;
+  }
 }
 
 async function openConnection(): Promise<void> {
   if (config.kind === "postgres") {
-    postgres = new PostgresClient(postgresTarget());
-    await postgres.connect();
+    postgres = await connectPostgres();
     postgres.on("error", (error) => {
       if (!closing) post({ type: "connect-error", message: safeError(error) });
     });
@@ -256,9 +340,7 @@ async function openConnection(): Promise<void> {
 async function probeConnection(): Promise<void> {
   try {
     if (config.kind === "postgres") {
-      postgres = new PostgresClient(postgresTarget());
-      postgres.on("error", () => undefined);
-      await postgres.connect();
+      postgres = await connectPostgres();
       const startedAt = performance.now();
       await postgres.query("SELECT 1");
       const elapsedMs = Math.round(performance.now() - startedAt);
@@ -308,7 +390,7 @@ async function probeConnection(): Promise<void> {
     closing = true;
     await postgres?.end().catch(() => undefined);
     await mongo?.close().catch(() => undefined);
-    post({ type: "connect-error", message: safeError(error) });
+    post({ type: "connect-error", message: connectError(error) });
   }
 }
 
@@ -1135,5 +1217,5 @@ parentPort?.on("message", (message: WorkerRequest) => {
 if (config.probe) void probeConnection();
 else
   void openConnection().catch((error: unknown) => {
-    post({ type: "connect-error", message: safeError(error) });
+    post({ type: "connect-error", message: connectError(error) });
   });

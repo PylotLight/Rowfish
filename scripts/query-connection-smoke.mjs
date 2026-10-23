@@ -554,7 +554,7 @@ try {
       "postgresql://analyst:p%40ss@10.0.0.9:6543/warehouse?sslmode=require&application_name=smoke";
     await uri.fill(target);
     await expect(connect.locator(".db-uri-hint")).toContainText(
-      "10.0.0.9:6543/warehouse as analyst · TLS on",
+      "10.0.0.9:6543/warehouse as analyst · sslmode require",
     );
     await expect(connect.locator(".db-uri-hint")).toContainText(
       "application_name",

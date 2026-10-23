@@ -25,6 +25,7 @@ Use macOS to verify native window behavior and packaging. Database connection te
 - [ ] Quit and relaunch; confirm active sockets are closed, while saved profiles remain available for manual reconnection.
 - [ ] Verify `⌘H`, window close, and Quit behave as expected.
 - [ ] Resize and move the window, quit (⌘Q) and relaunch; it should come back in the same spot. Maximise, relaunch, still maximised.
+- [ ] Connect to a PostgreSQL server that requires TLS (pg_hba `hostssl`) with no `sslmode` / SSL mode Prefer; it should connect. A local server with TLS off should also still connect on Prefer.
 
 ## Build both Mac architectures
 

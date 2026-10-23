@@ -1,5 +1,9 @@
 export type DatabaseKind = "postgres" | "mongodb";
 
+/** libpq sslmode values Rowfish supports for PostgreSQL. */
+export type PostgresSslMode =
+  "disable" | "prefer" | "require" | "verify-ca" | "verify-full";
+
 export interface DatabaseConnectionInput {
   name: string;
   kind: DatabaseKind;
@@ -9,6 +13,8 @@ export interface DatabaseConnectionInput {
   username: string;
   password: string;
   tls: boolean;
+  /** PostgreSQL only; older saved profiles omit it (see resolvePostgresSslMode). */
+  sslMode?: PostgresSslMode;
   serverMode: boolean;
   connectionString?: string;
 }
