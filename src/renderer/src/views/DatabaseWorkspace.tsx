@@ -92,6 +92,15 @@ function parseConnectionStringFields(
     : parseMongoConnectionFields(source);
 }
 
+/** An IPC error's own message, without Electron's "Error invoking remote method" prefix. */
+function dialogErrorMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof Error) || !error.message) return fallback;
+  return error.message.replace(
+    /^Error invoking remote method '[^']+': (?:Error: )?/,
+    "",
+  );
+}
+
 function buildConnectionString(form: DatabaseConnectionInput): string {
   const fields = {
     host: form.host.trim(),
@@ -1307,9 +1316,7 @@ export default function DatabaseWorkspace({
       setShowConnect(false);
     } catch (error) {
       setConnectionError(
-        error instanceof Error
-          ? error.message
-          : "Could not connect to the database.",
+        dialogErrorMessage(error, "Could not connect to the database."),
       );
     } finally {
       setConnecting(false);
@@ -1356,9 +1363,7 @@ export default function DatabaseWorkspace({
         result = await window.api.database.testConnection(input);
       } catch (error) {
         setTestFailure(
-          error instanceof Error
-            ? error.message
-            : "Could not connect to the database.",
+          dialogErrorMessage(error, "Could not connect to the database."),
         );
         return;
       }
@@ -1374,9 +1379,10 @@ export default function DatabaseWorkspace({
         await finishSavedConnection(`Saved “${profile.name}”: ${tested}.`);
       } catch (error) {
         setConnectionError(
-          `The test passed (${tested}) but the connection was not saved: ${
-            error instanceof Error ? error.message : "unknown error."
-          }`,
+          `The test passed (${tested}) but the connection was not saved: ${dialogErrorMessage(
+            error,
+            "unknown error.",
+          )}`,
         );
       }
     } finally {
@@ -1400,9 +1406,7 @@ export default function DatabaseWorkspace({
       );
     } catch (error) {
       setConnectionError(
-        error instanceof Error
-          ? error.message
-          : "Could not save the connection.",
+        dialogErrorMessage(error, "Could not save the connection."),
       );
     } finally {
       setSaveBusy("");
