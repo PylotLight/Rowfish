@@ -24,6 +24,7 @@ Use macOS to verify native window behavior and packaging. Database connection te
 - [ ] Resize the window and verify the connection rail, editor, and results remain usable.
 - [ ] Quit and relaunch; confirm active sockets are closed, while saved profiles remain available for manual reconnection.
 - [ ] Verify `⌘H`, window close, and Quit behave as expected.
+- [ ] Resize and move the window, quit (⌘Q) and relaunch; it should come back in the same spot. Maximise, relaunch, still maximised.
 
 ## Build both Mac architectures
 
