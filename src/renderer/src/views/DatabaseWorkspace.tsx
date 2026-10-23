@@ -73,6 +73,7 @@ import {
   DATABASE_LIMITS,
   buildMongoConnectionString,
   buildPostgresConnectionString,
+  detectConnectionStringKind,
   getVirtualRowRange,
   maskConnectionStringPassword,
   parseMongoConnectionFields,
@@ -90,6 +91,29 @@ function parseConnectionStringFields(
   return kind === "postgres"
     ? parsePostgresConnectionString(source)
     : parseMongoConnectionFields(source);
+}
+
+const CONNECT_MODE_KEY = "rowfish.connect-mode";
+
+/** The connection dialog's last used mode: true for connection string. */
+function loadConnectStringMode(): boolean {
+  try {
+    return localStorage.getItem(CONNECT_MODE_KEY) !== "manual";
+  } catch {
+    return true;
+  }
+}
+
+function kindLabel(kind: DatabaseConnectionInput["kind"]): string {
+  return kind === "postgres" ? "PostgreSQL" : "MongoDB";
+}
+
+function kindDefaults(
+  kind: DatabaseConnectionInput["kind"],
+): Pick<DatabaseConnectionInput, "port" | "database"> {
+  return kind === "postgres"
+    ? { port: 5432, database: "postgres" }
+    : { port: 27017, database: "admin" };
 }
 
 /** An IPC error's own message, without Electron's "Error invoking remote method" prefix. */
@@ -192,7 +216,8 @@ export default function DatabaseWorkspace({
   >([]);
   const [form, setForm] = useState<DatabaseConnectionInput>(DEFAULT_FORM);
   const [saveProfile, setSaveProfile] = useState(true);
-  const [uriMode, setUriMode] = useState(false);
+  /** Connection string mode (kind detected from the scheme) or manual details. */
+  const [uriMode, setUriMode] = useState(loadConnectStringMode);
   const [revealUri, setRevealUri] = useState(false);
   const [uriCopied, setUriCopied] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -210,10 +235,21 @@ export default function DatabaseWorkspace({
     text: string;
     error: boolean;
   } | null => {
+    if (!uriMode) return null;
     const source = (form.connectionString ?? "").trim();
-    if (!uriMode || !source) return null;
+    if (!source)
+      return {
+        text: "Paste a postgres://, postgresql://, mongodb:// or mongodb+srv:// connection string. The database type is detected from it.",
+        error: false,
+      };
+    const detected = detectConnectionStringKind(source);
+    if (!detected)
+      return {
+        text: "Rowfish can’t tell the database type from this string. Start it with postgres://, postgresql://, mongodb:// or mongodb+srv://.",
+        error: true,
+      };
     try {
-      const parsed = parseConnectionStringFields(form.kind, source);
+      const parsed = parseConnectionStringFields(detected, source);
       const target = `${parsed.host}:${parsed.port}${parsed.database ? `/${parsed.database}` : ""}`;
       const summary = [
         parsed.username ? `${target} as ${parsed.username}` : target,
@@ -233,12 +269,17 @@ export default function DatabaseWorkspace({
         error: true,
       };
     }
-  }, [form.connectionString, form.kind, uriMode]);
+  }, [form.connectionString, uriMode]);
+  /** The kind the connection string's scheme names, in connection string mode. */
+  const detectedKind = uriMode
+    ? detectConnectionStringKind(form.connectionString ?? "")
+    : null;
+  /** Connection string mode cannot continue until the scheme names a kind. */
+  const connectionStringBlocked = uriMode && !detectedKind;
   useEffect(() => {
     setTestFailure("");
     setRevealUri(false);
     setUriCopied(false);
-    if (!showConnect) setUriMode(false);
   }, [showConnect]);
   const [workspace, setWorkspace] = useState(() => {
     const loaded = loadQueryWorkspace();
@@ -1331,7 +1372,19 @@ export default function DatabaseWorkspace({
         setConnectionError("Paste a connection string to continue.");
         return null;
       }
-      return { ...form, connectionString };
+      const kind = detectConnectionStringKind(connectionString);
+      if (!kind) {
+        setConnectionError(
+          "Start the connection string with postgres://, postgresql://, mongodb:// or mongodb+srv://.",
+        );
+        return null;
+      }
+      return {
+        ...form,
+        kind,
+        serverMode: kind === "postgres" && form.serverMode,
+        connectionString,
+      };
     }
     return {
       ...form,
@@ -1416,15 +1469,29 @@ export default function DatabaseWorkspace({
   function updateConnectionString(value: string): void {
     setTestFailure("");
     setForm((current) => {
-      const next = { ...current, connectionString: value };
+      const detected = detectConnectionStringKind(value);
+      const kind = detected ?? current.kind;
+      // A new scheme switches the kind; until the rest parses, the fields
+      // fall back to that kind's defaults rather than the old kind's port.
+      const next: DatabaseConnectionInput =
+        kind === current.kind
+          ? { ...current, connectionString: value }
+          : {
+              ...current,
+              ...kindDefaults(kind),
+              kind,
+              serverMode: false,
+              connectionString: value,
+            };
+      if (!detected) return next;
       try {
-        const parsed = parseConnectionStringFields(current.kind, value.trim());
+        const parsed = parseConnectionStringFields(kind, value.trim());
         return {
           ...next,
           host: parsed.host,
           port: parsed.port,
           database:
-            current.kind === "postgres"
+            kind === "postgres"
               ? parsed.database || parsed.username || "postgres"
               : parsed.database,
           username: parsed.username,
@@ -1436,6 +1503,26 @@ export default function DatabaseWorkspace({
         return next;
       }
     });
+  }
+
+  /** Switch between connection string and manual details, carrying values across. */
+  function switchConnectMode(useString: boolean): void {
+    if (useString === uriMode) return;
+    setUriMode(useString);
+    try {
+      localStorage.setItem(CONNECT_MODE_KEY, useString ? "string" : "manual");
+    } catch {
+      // The mode is a convenience; keep working without storage.
+    }
+    setRevealUri(false);
+    setTestFailure("");
+    setConnectionError("");
+    // Start the string from the current fields; the fields (kind included)
+    // already mirror the string when switching back to manual.
+    setForm((current) => ({
+      ...current,
+      connectionString: useString ? buildConnectionString(current) : "",
+    }));
   }
 
   function copyConnectionString(value: string): void {
@@ -3752,13 +3839,10 @@ export default function DatabaseWorkspace({
                 onClick={() => {
                   setShowQueryConnection(false);
                   setConnectionError("");
-                  setUriMode(false);
                   setForm({
                     ...DEFAULT_FORM,
                     kind: activeTab?.kind ?? "postgres",
-                    port: activeTab?.kind === "mongodb" ? 27017 : 5432,
-                    database:
-                      activeTab?.kind === "mongodb" ? "admin" : "postgres",
+                    ...kindDefaults(activeTab?.kind ?? "postgres"),
                   });
                   setShowConnect(true);
                 }}
@@ -3822,63 +3906,46 @@ export default function DatabaseWorkspace({
                   autoFocus
                 />
               </label>
-              <label className="db-form-field">
-                <span>Database type</span>
-                <select
-                  value={form.kind}
-                  onChange={(event) => {
-                    const kind = event.target
-                      .value as DatabaseConnectionInput["kind"];
-                    setUriMode(false);
-                    setTestFailure("");
-                    setForm((current) => ({
-                      ...current,
-                      kind,
-                      port: kind === "postgres" ? 5432 : 27017,
-                      database: kind === "postgres" ? "postgres" : "admin",
-                      serverMode: false,
-                      connectionString: "",
-                    }));
-                  }}
-                >
-                  <option value="postgres">PostgreSQL</option>
-                  <option value="mongodb">MongoDB</option>
-                </select>
-              </label>
-              <label className="db-tls-toggle db-uri-toggle">
-                <input
-                  type="checkbox"
-                  checked={uriMode}
-                  onChange={(event) => {
-                    const enabled = event.target.checked;
-                    setUriMode(enabled);
-                    setRevealUri(false);
-                    setTestFailure("");
-                    // Start the string from the current fields; the fields
-                    // already mirror the string when switching back.
-                    setForm((current) => ({
-                      ...current,
-                      connectionString: enabled
-                        ? buildConnectionString(current)
-                        : "",
-                    }));
-                  }}
-                />
-                <span>
-                  <b>Connect with a connection string</b>
-                  <small>
-                    {form.kind === "postgres"
-                      ? "Paste a postgres:// or postgresql:// URI, options like sslmode included"
-                      : "Paste a mongodb:// or mongodb+srv:// URI"}
-                  </small>
-                </span>
-              </label>
+              <div
+                className="db-connect-mode full"
+                role="radiogroup"
+                aria-label="How to connect"
+              >
+                {(
+                  [
+                    [true, "Connection string"],
+                    [false, "Manual"],
+                  ] as const
+                ).map(([useString, label]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    role="radio"
+                    aria-checked={uriMode === useString}
+                    className={uriMode === useString ? "active" : undefined}
+                    disabled={connectBusy}
+                    onClick={() => switchConnectMode(useString)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               {uriMode ? (
                 <div className="db-form-field full">
-                  <label htmlFor="db-connection-string">
-                    {form.kind === "postgres" ? "PostgreSQL" : "MongoDB"}{" "}
-                    connection string
-                  </label>
+                  <div className="db-uri-label-row">
+                    <label htmlFor="db-connection-string">
+                      Connection string
+                    </label>
+                    <span
+                      className={`db-kind-badge${detectedKind ? ` ${detectedKind}` : " unknown"}`}
+                      aria-live="polite"
+                      data-testid="detected-kind"
+                    >
+                      {detectedKind
+                        ? `Detected: ${kindLabel(detectedKind)}`
+                        : "Type not detected"}
+                    </span>
+                  </div>
                   <div className="db-uri-input-row">
                     <input
                       id="db-connection-string"
@@ -3887,11 +3954,7 @@ export default function DatabaseWorkspace({
                       onChange={(event) =>
                         updateConnectionString(event.target.value)
                       }
-                      placeholder={
-                        form.kind === "postgres"
-                          ? "postgresql://user:password@db.example:5432/database?sslmode=require"
-                          : "mongodb+srv://user:password@cluster.example/database"
-                      }
+                      placeholder="postgresql://user:password@host:5432/db or mongodb+srv://…"
                       autoComplete="off"
                       spellCheck={false}
                     />
@@ -3934,6 +3997,27 @@ export default function DatabaseWorkspace({
                 </div>
               ) : (
                 <>
+                  <label className="db-form-field">
+                    <span>Database type</span>
+                    <select
+                      value={form.kind}
+                      onChange={(event) => {
+                        const kind = event.target
+                          .value as DatabaseConnectionInput["kind"];
+                        setTestFailure("");
+                        setForm((current) => ({
+                          ...current,
+                          ...kindDefaults(kind),
+                          kind,
+                          serverMode: false,
+                          connectionString: "",
+                        }));
+                      }}
+                    >
+                      <option value="postgres">PostgreSQL</option>
+                      <option value="mongodb">MongoDB</option>
+                    </select>
+                  </label>
                   <label className="db-form-field">
                     <span>Host</span>
                     <input
@@ -4124,8 +4208,8 @@ export default function DatabaseWorkspace({
               <button
                 type="button"
                 className="db-quiet-button db-save-untested"
-                disabled={connectBusy}
                 title="Save the profile without connecting"
+                disabled={connectBusy || connectionStringBlocked}
                 onClick={() => void saveConnectionWithoutTesting("save")}
               >
                 {saveBusy === "save" ? (
@@ -4151,8 +4235,8 @@ export default function DatabaseWorkspace({
               <button
                 type="button"
                 className="db-quiet-button"
-                disabled={connectBusy}
                 title="Test the connection, then save it"
+                disabled={connectBusy || connectionStringBlocked}
                 onClick={() => void testAndSaveConnection()}
               >
                 {saveBusy === "test" ? (
@@ -4165,7 +4249,7 @@ export default function DatabaseWorkspace({
               </button>
               <button
                 className="db-run-button"
-                disabled={connectBusy}
+                disabled={connectBusy || connectionStringBlocked}
                 onClick={() => void connect()}
               >
                 {connecting ? (
