@@ -89,6 +89,7 @@ await app.evaluate(({ ipcMain, BrowserWindow }) => {
     "database:run",
     "database:list-databases",
     "database:open-database",
+    "database:switch-database",
     "database:mongo-databases",
     "database:mongo-collections",
   ];
@@ -172,6 +173,13 @@ await app.evaluate(({ ipcMain, BrowserWindow }) => {
     };
     state.connections.push(child);
     return child;
+  });
+  ipcMain.handle("database:switch-database", (_event, id, database) => {
+    state.calls.push(["switchDatabase", id, database]);
+    const current = state.connections.find((x) => x.id === id);
+    const value = { ...current, id: `${id}-${database}`, database };
+    state.connections.push(value);
+    return value;
   });
   ipcMain.handle("database:mongo-databases", () => [{ name: "appdb" }]);
   ipcMain.handle("database:mongo-collections", () => []);
@@ -609,6 +617,61 @@ try {
     });
     expect(recorded.filter((x) => x[0] === "run")).toHaveLength(0);
   });
+  await check(
+    "single-database PostgreSQL connection switches databases in place",
+    async () => {
+      await app.evaluate(({ ipcMain }) => {
+        ipcMain.removeHandler("database:connect-saved");
+        ipcMain.handle("database:connect-saved", (_event, id) => {
+          globalThis.__querySmokeState.calls.push(["connectSaved", id]);
+          const value = {
+            id: "switch-pg",
+            name: "Switchable PostgreSQL",
+            kind: "postgres",
+            host: "db.example.test",
+            port: 5432,
+            database: "appdb",
+            username: "tester",
+            connected: true,
+            savedConnectionId: id,
+          };
+          globalThis.__querySmokeState.connections.push(value);
+          return value;
+        });
+      });
+      await fixture();
+      await run().click();
+      await dialog()
+        .getByRole("button", { name: "Reconnect Saved PostgreSQL" })
+        .click();
+      await expect(dialog()).toHaveCount(0);
+      await page.getByRole("button", { name: "Open explorer sidebar" }).click();
+      const card = page
+        .locator(".db-connection-list .db-browser-server")
+        .filter({ hasText: "Switchable PostgreSQL" });
+      await expect(card).toContainText("PostgreSQL · appdb");
+      await card.hover();
+      await card
+        .getByRole("button", {
+          name: "Switch database on Switchable PostgreSQL",
+        })
+        .click();
+      const switcher = card.getByRole("dialog", { name: "Switch database" });
+      await expect(
+        switcher.getByRole("button", { name: /otherdb/ }),
+      ).toBeVisible();
+      await switcher.getByRole("button", { name: /otherdb/ }).click();
+      await expect(switcher).toHaveCount(0);
+      await expect(card).toContainText("PostgreSQL · otherdb");
+      const recorded = await calls();
+      expect(recorded.find((x) => x[0] === "switchDatabase")).toEqual([
+        "switchDatabase",
+        "switch-pg",
+        "otherdb",
+      ]);
+      expect(recorded.filter((x) => x[0] === "run")).toHaveLength(0);
+    },
+  );
   await page.waitForTimeout(700);
   expect(errors).toEqual([]);
   await writeFile(

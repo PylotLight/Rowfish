@@ -17,6 +17,7 @@ import {
   listPostgresTables,
   listSavedDatabaseConnections,
   openPostgresDatabase,
+  switchPostgresDatabase,
   removeSavedDatabaseConnection,
   runMongoMutation,
   runDatabaseQuery,
@@ -102,6 +103,11 @@ export function registerIpc(): void {
     "database:open-database",
     (event, connectionId: unknown, database: unknown) =>
       openPostgresDatabase(event, connectionId, database),
+  );
+  ipcMain.handle(
+    "database:switch-database",
+    (event, connectionId: unknown, database: unknown) =>
+      switchPostgresDatabase(event, connectionId, database),
   );
   ipcMain.handle("database:mongo-mutate", (event, request: unknown) =>
     runMongoMutation(event, request),

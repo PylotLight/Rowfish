@@ -3560,3 +3560,87 @@ textarea:focus-visible,
 .db-rail-heading .rail-close:hover {
   color: var(--text);
 }
+
+/* Database switcher on single-database PostgreSQL connections. */
+.db-connection.switchable .db-connection-select {
+  padding-right: 52px;
+}
+.db-db-switch {
+  position: absolute;
+  right: 42px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.db-connection:hover .db-db-switch,
+.db-db-switch.open {
+  display: flex;
+}
+.db-db-switch:hover,
+.db-db-switch.open {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+.db-db-switcher {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 260px;
+  margin: 4px 4px 6px 38px;
+  padding: 4px;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.035);
+}
+.db-db-switcher-filter {
+  margin-bottom: 4px;
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+}
+.db-db-switcher-item {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.db-db-switcher-item span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.db-db-switcher-item:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+}
+.db-db-switcher-item.current {
+  color: var(--accent, var(--text));
+  font-weight: 600;
+}
+.db-db-switcher-item:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.db-db-switcher-item.current:disabled {
+  opacity: 1;
+}
