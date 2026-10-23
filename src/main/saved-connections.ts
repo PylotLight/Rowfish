@@ -124,33 +124,33 @@ export async function listSavedConnections(): Promise<
   return (await readProfiles()).map(toSummary);
 }
 
-export async function saveConnectionProfile(
+function encryptSecret(secret: string): string {
+  if (!hasSecurePasswordStorage()) {
+    throw new Error(
+      "Secure credential storage is unavailable on this system. Rowfish did not save the password or connection string; use a session-only connection or enable your operating system credential store.",
+    );
+  }
+  try {
+    return safeStorage.encryptString(secret).toString("base64");
+  } catch {
+    throw new Error(
+      "Rowfish could not encrypt this credential with the operating system credential store.",
+    );
+  }
+}
+
+function storedProfile(
+  id: string,
   input: DatabaseConnectionInput,
-): Promise<SavedConnectionProfile> {
+): StoredConnectionProfile {
   const secretKind = input.connectionString
     ? "connection-string"
     : input.password
       ? "password"
       : null;
   const secret = input.connectionString || input.password;
-  let encryptedSecret: string | null = null;
-  if (secret) {
-    if (!hasSecurePasswordStorage()) {
-      throw new Error(
-        "Secure credential storage is unavailable on this system. Rowfish did not save the password or connection string; use a session-only connection or enable your operating system credential store.",
-      );
-    }
-    try {
-      encryptedSecret = safeStorage.encryptString(secret).toString("base64");
-    } catch {
-      throw new Error(
-        "Rowfish could not encrypt this credential with the operating system credential store.",
-      );
-    }
-  }
-
-  const profile: StoredConnectionProfile = {
-    id: randomUUID(),
+  return {
+    id,
     name: input.name,
     kind: input.kind,
     host: input.host,
@@ -161,10 +161,30 @@ export async function saveConnectionProfile(
     ...(input.sslMode ? { sslMode: input.sslMode } : {}),
     serverMode: input.serverMode,
     secretKind,
-    encryptedSecret,
+    encryptedSecret: secret ? encryptSecret(secret) : null,
   };
+}
+
+export async function saveConnectionProfile(
+  input: DatabaseConnectionInput,
+): Promise<SavedConnectionProfile> {
+  const profile = storedProfile(randomUUID(), input);
   const profiles = await readProfiles();
   profiles.push(profile);
+  await writeProfiles(profiles);
+  return toSummary(profile);
+}
+
+/** Replaces a saved profile's details in place, keeping its id and list position. */
+export async function updateConnectionProfile(
+  id: string,
+  input: DatabaseConnectionInput,
+): Promise<SavedConnectionProfile> {
+  const profiles = await readProfiles();
+  const index = profiles.findIndex((profile) => profile.id === id);
+  if (index < 0) throw new Error("This saved connection no longer exists.");
+  const profile = storedProfile(id, input);
+  profiles[index] = profile;
   await writeProfiles(profiles);
   return toSummary(profile);
 }

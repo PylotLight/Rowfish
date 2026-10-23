@@ -43,6 +43,13 @@ const api = {
       ipcRenderer.invoke("database:saved"),
     connectSaved: (profileId: string): Promise<DatabaseConnectionSummary> =>
       ipcRenderer.invoke("database:connect-saved", profileId),
+    getSaved: (profileId: string): Promise<DatabaseConnectionInput> =>
+      ipcRenderer.invoke("database:get-saved", profileId),
+    updateSaved: (
+      profileId: string,
+      input: DatabaseConnectionInput,
+    ): Promise<SavedConnectionProfile> =>
+      ipcRenderer.invoke("database:update-saved", profileId, input),
     deleteSaved: (profileId: string): Promise<boolean> =>
       ipcRenderer.invoke("database:delete-saved", profileId),
     listDatabases: (connectionId: string): Promise<DatabaseBrowserDatabase[]> =>

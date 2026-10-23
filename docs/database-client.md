@@ -25,6 +25,12 @@ The dialog footer has three ways to finish:
 
 Each live connection uses a worker. Rowfish supports up to **8 active connections**, including PostgreSQL server-browser and opened database sessions.
 
+## Edit, rename and collapse
+
+Hover a saved server (or a live card opened from one) and click the pencil to edit it. The dialog opens as **Edit connection** with every field filled in, password or connection string included, in the mode it was saved with. **Save** writes the changes over the same profile; **Test & Save** checks the server first. A rename shows up on open sessions straight away; host, credential or TLS changes apply the next time you connect.
+
+Click a connection card to select it; click the selected card again to fold its tables or databases away, and again to unfold them.
+
 ## PostgreSQL server browser
 
 To browse multiple databases on one PostgreSQL server, choose **Browse all databases on this server** instead of entering a database name. Rowfish uses the `postgres` maintenance database to list databases and indicates which ones the current PostgreSQL user can connect to. Select an accessible database in the sidebar to open a separate session; Rowfish then lists its tables and views by schema.

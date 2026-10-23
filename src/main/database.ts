@@ -32,6 +32,7 @@ import {
   deleteSavedConnection,
   getSavedConnectionInput,
   listSavedConnections,
+  updateConnectionProfile,
   saveConnectionProfile,
 } from "./saved-connections";
 import { getMainWindow } from "./window";
@@ -556,6 +557,52 @@ export async function saveDatabaseConnection(
 ): Promise<SavedConnectionProfile> {
   assertAllowedSender(event.sender);
   return saveConnectionProfile(validateConnectionInput(rawInput));
+}
+
+/** The full saved details, credential included, to prefill the edit dialog. */
+export async function getSavedDatabaseConnection(
+  event: IpcMainInvokeEvent,
+  profileIdValue: unknown,
+): Promise<DatabaseConnectionInput> {
+  assertAllowedSender(event.sender);
+  const profileId = validateText(
+    profileIdValue,
+    "Saved connection id",
+    80,
+    true,
+  );
+  return getSavedConnectionInput(profileId);
+}
+
+/** Edits or renames a saved profile; open sessions from it take the new name. */
+export async function updateSavedDatabaseConnection(
+  event: IpcMainInvokeEvent,
+  profileIdValue: unknown,
+  rawInput: unknown,
+): Promise<SavedConnectionProfile> {
+  assertAllowedSender(event.sender);
+  const profileId = validateText(
+    profileIdValue,
+    "Saved connection id",
+    80,
+    true,
+  );
+  const profile = await updateConnectionProfile(
+    profileId,
+    validateConnectionInput(rawInput),
+  );
+  for (const connection of connections.values()) {
+    if (
+      connection.ownerId !== event.sender.id ||
+      connection.summary.savedConnectionId !== profileId
+    )
+      continue;
+    connection.config.name = profile.name;
+    connection.summary.name = connection.summary.parentConnectionId
+      ? `${profile.name} · ${connection.config.database}`
+      : profile.name;
+  }
+  return profile;
 }
 
 export async function testDatabaseConnection(
