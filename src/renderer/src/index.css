@@ -3644,3 +3644,62 @@ textarea:focus-visible,
 .db-db-switcher-item.current:disabled {
   opacity: 1;
 }
+
+/* Edit saved connections and fold a connection's tree. */
+.db-connection-chevron {
+  flex: 0 0 auto;
+  margin-right: -4px;
+  color: var(--muted);
+  opacity: 0.55;
+  transition: transform 120ms ease;
+}
+.db-connection-chevron.open {
+  transform: rotate(90deg);
+}
+.db-connection-select:hover .db-connection-chevron {
+  opacity: 1;
+}
+.db-connection.editable .db-connection-select {
+  padding-right: 52px;
+}
+.db-connection.editable.switchable .db-connection-select {
+  padding-right: 74px;
+}
+.db-edit-connection {
+  position: absolute;
+  right: 42px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.db-connection.switchable .db-edit-connection {
+  right: 64px;
+}
+.db-connection:hover .db-edit-connection {
+  display: flex;
+}
+.db-edit-connection:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+.db-saved-connect {
+  padding-right: 50px;
+}
+.db-edit-saved {
+  right: 27px;
+  align-items: center;
+  justify-content: center;
+}
+.db-saved-profile:hover .db-edit-saved {
+  display: flex;
+}
+.db-edit-saved:hover {
+  color: var(--text);
+}
