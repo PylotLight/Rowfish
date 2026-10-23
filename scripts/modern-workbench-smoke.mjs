@@ -278,9 +278,23 @@ try {
     );
     await expect(page.getByRole("button", { name: /Run query/ })).toBeEnabled();
     // Each tab keeps its own results: a new tab is empty, going back restores.
-    const ordersSummary = await page
-      .locator(".db-results-summary")
-      .textContent();
+    // Read the summary only once it holds still at a finished "N rows" value,
+    // so a late re-run of the table query cannot be captured mid-flight.
+    let ordersSummary = "";
+    await expect
+      .poll(
+        async () => {
+          const before = await page
+            .locator(".db-results-summary")
+            .textContent();
+          await page.waitForTimeout(400);
+          const after = await page.locator(".db-results-summary").textContent();
+          ordersSummary = after ?? "";
+          return before === after && /^\d+ rows · /.test(ordersSummary);
+        },
+        { timeout: 15000 },
+      )
+      .toBe(true);
     await page.getByRole("button", { name: "New query tab" }).click();
     await expect(page.locator(".db-results-summary")).not.toContainText(
       /\d+ rows/,
