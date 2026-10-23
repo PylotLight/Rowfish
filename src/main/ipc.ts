@@ -4,6 +4,7 @@ import {
   cancelDatabaseQuery,
   connectDatabase,
   connectSavedDatabase,
+  getSavedDatabaseConnection,
   disconnectDatabase,
   getMongoCollectionDetails,
   getPostgresServerInfo,
@@ -19,6 +20,7 @@ import {
   openPostgresDatabase,
   switchPostgresDatabase,
   removeSavedDatabaseConnection,
+  updateSavedDatabaseConnection,
   runMongoMutation,
   runDatabaseQuery,
   saveDatabaseConnection,
@@ -63,6 +65,14 @@ export function registerIpc(): void {
   );
   ipcMain.handle("database:connect-saved", (event, profileId: unknown) =>
     connectSavedDatabase(event, profileId),
+  );
+  ipcMain.handle("database:get-saved", (event, profileId: unknown) =>
+    getSavedDatabaseConnection(event, profileId),
+  );
+  ipcMain.handle(
+    "database:update-saved",
+    (event, profileId: unknown, input: unknown) =>
+      updateSavedDatabaseConnection(event, profileId, input),
   );
   ipcMain.handle("database:delete-saved", (event, profileId: unknown) =>
     removeSavedDatabaseConnection(event, profileId),

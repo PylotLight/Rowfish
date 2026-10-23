@@ -672,6 +672,79 @@ try {
       expect(recorded.filter((x) => x[0] === "run")).toHaveLength(0);
     },
   );
+  await check(
+    "clicking the selected connection folds its tree, and edit renames it",
+    async () => {
+      await app.evaluate(({ ipcMain }) => {
+        for (const channel of ["database:get-saved", "database:update-saved"])
+          ipcMain.removeHandler(channel);
+        ipcMain.handle("database:get-saved", (_event, id) => {
+          globalThis.__querySmokeState.calls.push(["getSaved", id]);
+          return {
+            name: "Switchable PostgreSQL",
+            kind: "postgres",
+            host: "db.example.test",
+            port: 5432,
+            database: "appdb",
+            username: "tester",
+            password: "secret",
+            tls: false,
+            sslMode: "prefer",
+            serverMode: false,
+            connectionString: "",
+          };
+        });
+        ipcMain.handle("database:update-saved", (_event, id, input) => {
+          globalThis.__querySmokeState.calls.push(["updateSaved", id, input]);
+          return { ...input, id, hasSecret: true };
+        });
+      });
+      const card = page
+        .locator(".db-connection-list .db-browser-server")
+        .filter({ hasText: "Switchable PostgreSQL" });
+      const select = card.locator(".db-connection-select");
+      if (!(await card.locator(".db-connection.selected").count()))
+        await select.click();
+      await expect(select).toHaveAttribute("aria-expanded", "true");
+      await select.click();
+      await expect(select).toHaveAttribute("aria-expanded", "false");
+      await select.click();
+      await expect(select).toHaveAttribute("aria-expanded", "true");
+
+      await card.hover();
+      await card
+        .getByRole("button", { name: "Edit Switchable PostgreSQL" })
+        .click();
+      const edit = page.getByRole("dialog", { name: "Edit connection" });
+      await expect(
+        edit.getByLabel("Connection name", { exact: true }),
+      ).toHaveValue("Switchable PostgreSQL");
+      await expect(edit.getByLabel("Host", { exact: true })).toHaveValue(
+        "db.example.test",
+      );
+      await expect(
+        edit.getByRole("button", { name: "Connect", exact: true }),
+      ).toHaveCount(0);
+      await edit
+        .getByLabel("Connection name", { exact: true })
+        .fill("Renamed PostgreSQL");
+      await edit.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(edit).toHaveCount(0);
+      await expect(
+        page
+          .locator(".db-connection-list .db-browser-server")
+          .filter({ hasText: "Renamed PostgreSQL" }),
+      ).toHaveCount(1);
+      const recorded = await calls();
+      const update = recorded.find((x) => x[0] === "updateSaved");
+      expect(update?.[1]).toBe("saved-pg");
+      expect(update?.[2]).toMatchObject({
+        name: "Renamed PostgreSQL",
+        host: "db.example.test",
+        password: "secret",
+      });
+    },
+  );
   await page.waitForTimeout(700);
   expect(errors).toEqual([]);
   await writeFile(

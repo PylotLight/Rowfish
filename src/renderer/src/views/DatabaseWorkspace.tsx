@@ -24,6 +24,7 @@ import {
   Copy,
   Eye,
   EyeOff,
+  Pencil,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import "../components/query-connection.css";
@@ -225,6 +226,12 @@ export default function DatabaseWorkspace({
   >([]);
   const [form, setForm] = useState<DatabaseConnectionInput>(DEFAULT_FORM);
   const [saveProfile, setSaveProfile] = useState(true);
+  /** The saved profile the connection dialog is editing, or null for a new one. */
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+  /** Connections whose object tree is folded away in the sidebar. */
+  const [collapsedConnections, setCollapsedConnections] = useState<
+    Record<string, boolean>
+  >({});
   /** Connection string mode (kind detected from the scheme) or manual details. */
   const [uriMode, setUriMode] = useState(loadConnectStringMode);
   const [revealUri, setRevealUri] = useState(false);
@@ -916,6 +923,57 @@ export default function DatabaseWorkspace({
     setSavedConnections(await window.api.database.saved());
   }
 
+  // Leaving the dialog ends an edit and restores the remembered input mode,
+  // which opening a profile for editing may have switched.
+  useEffect(() => {
+    if (showConnect) return;
+    setEditingProfileId(null);
+    setUriMode(loadConnectStringMode());
+  }, [showConnect]);
+
+  /** Open the connection dialog prefilled with a saved profile. */
+  async function editSaved(profileId: string): Promise<void> {
+    if (connectBusy) return;
+    setConnectionError("");
+    try {
+      const input = await window.api.database.getSaved(profileId);
+      setTestFailure("");
+      setForm({ ...DEFAULT_FORM, ...input });
+      setUriMode(Boolean(input.connectionString));
+      setRevealUri(false);
+      setEditingProfileId(profileId);
+      setShowConnect(true);
+    } catch (error) {
+      setConnectionError(
+        dialogErrorMessage(error, "Could not open this saved connection."),
+      );
+    }
+  }
+
+  /** Save the dialog as a new profile, or over the one being edited. */
+  async function persistProfile(
+    input: DatabaseConnectionInput,
+  ): Promise<SavedConnectionProfile> {
+    if (!editingProfileId) return window.api.database.saveConnection(input);
+    const profile = await window.api.database.updateSaved(
+      editingProfileId,
+      input,
+    );
+    setConnections((current) =>
+      current.map((connection) =>
+        connection.savedConnectionId === profile.id
+          ? {
+              ...connection,
+              name: connection.parentConnectionId
+                ? `${profile.name} · ${connection.database}`
+                : profile.name,
+            }
+          : connection,
+      ),
+    );
+    return profile;
+  }
+
   async function inspectConnection(
     connection: DatabaseConnectionSummary,
   ): Promise<void> {
@@ -1448,8 +1506,10 @@ export default function DatabaseWorkspace({
         .filter(Boolean)
         .join(" · ");
       try {
-        const profile = await window.api.database.saveConnection(input);
-        await finishSavedConnection(`Saved “${profile.name}”: ${tested}.`);
+        const profile = await persistProfile(input);
+        await finishSavedConnection(
+          `${editingProfileId ? "Updated" : "Saved"} “${profile.name}”: ${tested}.`,
+        );
       } catch (error) {
         setConnectionError(
           `The test passed (${tested}) but the connection was not saved: ${dialogErrorMessage(
@@ -1472,10 +1532,12 @@ export default function DatabaseWorkspace({
     setSaveBusy(source);
     setConnectionError("");
     try {
-      const profile = await window.api.database.saveConnection(input);
+      const profile = await persistProfile(input);
       setTestFailure("");
       await finishSavedConnection(
-        `Saved “${profile.name}” without testing. Open it from saved connections when the server is reachable.`,
+        editingProfileId
+          ? `Updated “${profile.name}”. Reconnect to use the new details.`
+          : `Saved “${profile.name}” without testing. Open it from saved connections when the server is reachable.`,
       );
     } catch (error) {
       setConnectionError(
@@ -1530,11 +1592,12 @@ export default function DatabaseWorkspace({
   function switchConnectMode(useString: boolean): void {
     if (useString === uriMode) return;
     setUriMode(useString);
-    try {
-      localStorage.setItem(CONNECT_MODE_KEY, useString ? "string" : "manual");
-    } catch {
-      // The mode is a convenience; keep working without storage.
-    }
+    if (!editingProfileId)
+      try {
+        localStorage.setItem(CONNECT_MODE_KEY, useString ? "string" : "manual");
+      } catch {
+        // The mode is a convenience; keep working without storage.
+      }
     setRevealUri(false);
     setTestFailure("");
     setConnectionError("");
@@ -2778,15 +2841,41 @@ export default function DatabaseWorkspace({
             .map((connection) => (
               <div className="db-browser-server" key={connection.id}>
                 <div
-                  className={`db-connection${activeId === connection.id ? " selected" : ""}${canSwitchDatabase(connection) ? " switchable" : ""}`}
+                  className={`db-connection${activeId === connection.id ? " selected" : ""}${canSwitchDatabase(connection) ? " switchable" : ""}${connection.savedConnectionId && !connection.parentConnectionId ? " editable" : ""}`}
                 >
                   <button
                     className="db-connection-select"
                     disabled={runState !== "idle"}
+                    aria-expanded={!collapsedConnections[connection.id]}
+                    title={
+                      activeId === connection.id
+                        ? collapsedConnections[connection.id]
+                          ? "Expand"
+                          : "Collapse"
+                        : undefined
+                    }
                     onClick={() => {
-                      if (closeRowPanel()) setActiveId(connection.id);
+                      // A second click on the selected card folds its tree.
+                      if (activeId === connection.id) {
+                        setCollapsedConnections((current) => ({
+                          ...current,
+                          [connection.id]: !current[connection.id],
+                        }));
+                        return;
+                      }
+                      if (!closeRowPanel()) return;
+                      setActiveId(connection.id);
+                      setCollapsedConnections((current) => ({
+                        ...current,
+                        [connection.id]: false,
+                      }));
                     }}
                   >
+                    <ChevronRight
+                      size={12}
+                      className={`db-connection-chevron${collapsedConnections[connection.id] ? "" : " open"}`}
+                      aria-hidden="true"
+                    />
                     <span
                       className={`db-engine-mark ${connection.kind}`}
                       aria-hidden="true"
@@ -2811,6 +2900,20 @@ export default function DatabaseWorkspace({
                       <ChevronsUpDown size={13} />
                     </button>
                   )}
+                  {connection.savedConnectionId &&
+                    !connection.parentConnectionId && (
+                      <button
+                        className="db-edit-connection"
+                        title={`Edit ${connection.name}`}
+                        aria-label={`Edit ${connection.name}`}
+                        disabled={connectBusy}
+                        onClick={() =>
+                          void editSaved(connection.savedConnectionId!)
+                        }
+                      >
+                        <Pencil size={12} />
+                      </button>
+                    )}
                   <button
                     className="db-disconnect"
                     title={`Disconnect ${connection.name}`}
@@ -2822,90 +2925,101 @@ export default function DatabaseWorkspace({
                 </div>
                 {dbSwitcher?.connectionId === connection.id &&
                   renderDbSwitcher(connection)}
-                {connection.kind === "postgres" && connection.serverMode && (
-                  <div className="db-browser-objects db-browser-databases">
-                    <div className="db-browser-section-title">
-                      SERVER BROWSER
-                    </div>
-                    {browserLoading[connection.id] && (
-                      <div className="db-browser-hint">
-                        <span className="db-spinner small" /> Loading databases…
-                      </div>
-                    )}
-                    {browserErrors[connection.id] && (
-                      <div className="db-browser-error">
-                        {browserErrors[connection.id]}
-                      </div>
-                    )}
-                    {(serverDatabases[connection.id] ?? []).map((database) => {
-                      const child = connections.find(
-                        (item) =>
-                          item.parentConnectionId === connection.id &&
-                          item.database === database.name,
-                      );
-                      const loadingKey = `${connection.id}:${database.name}`;
-                      return (
-                        <div
-                          className="db-browser-database-group"
-                          key={database.name}
-                        >
-                          <button
-                            className="db-browser-database"
-                            disabled={
-                              !database.canConnect || browserLoading[loadingKey]
-                            }
-                            title={
-                              database.canConnect
-                                ? `Open ${database.name}`
-                                : `No CONNECT permission for ${database.name}`
-                            }
-                            onClick={() =>
-                              void openDatabase(connection, database)
-                            }
-                          >
-                            <span aria-hidden="true">{child ? "▾" : "›"}</span>
-                            <span>{database.name}</span>
-                            {browserLoading[loadingKey] && (
-                              <span className="db-spinner small" />
+                {!collapsedConnections[connection.id] && (
+                  <>
+                    {connection.kind === "postgres" &&
+                      connection.serverMode && (
+                        <div className="db-browser-objects db-browser-databases">
+                          <div className="db-browser-section-title">
+                            SERVER BROWSER
+                          </div>
+                          {browserLoading[connection.id] && (
+                            <div className="db-browser-hint">
+                              <span className="db-spinner small" /> Loading
+                              databases…
+                            </div>
+                          )}
+                          {browserErrors[connection.id] && (
+                            <div className="db-browser-error">
+                              {browserErrors[connection.id]}
+                            </div>
+                          )}
+                          {(serverDatabases[connection.id] ?? []).map(
+                            (database) => {
+                              const child = connections.find(
+                                (item) =>
+                                  item.parentConnectionId === connection.id &&
+                                  item.database === database.name,
+                              );
+                              const loadingKey = `${connection.id}:${database.name}`;
+                              return (
+                                <div
+                                  className="db-browser-database-group"
+                                  key={database.name}
+                                >
+                                  <button
+                                    className="db-browser-database"
+                                    disabled={
+                                      !database.canConnect ||
+                                      browserLoading[loadingKey]
+                                    }
+                                    title={
+                                      database.canConnect
+                                        ? `Open ${database.name}`
+                                        : `No CONNECT permission for ${database.name}`
+                                    }
+                                    onClick={() =>
+                                      void openDatabase(connection, database)
+                                    }
+                                  >
+                                    <span aria-hidden="true">
+                                      {child ? "▾" : "›"}
+                                    </span>
+                                    <span>{database.name}</span>
+                                    {browserLoading[loadingKey] && (
+                                      <span className="db-spinner small" />
+                                    )}
+                                  </button>
+                                  {child && (
+                                    <button
+                                      className="db-child-close"
+                                      title={`Close ${database.name} session`}
+                                      aria-label={`Close ${database.name} session`}
+                                      onClick={() => void disconnect(child)}
+                                    >
+                                      ×
+                                    </button>
+                                  )}
+                                  {!database.canConnect && (
+                                    <div className="db-browser-hint db-browser-indent">
+                                      No CONNECT permission
+                                    </div>
+                                  )}
+                                  {child && renderTables(child)}
+                                  {browserErrors[loadingKey] && (
+                                    <div className="db-browser-error db-browser-indent">
+                                      {browserErrors[loadingKey]}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            },
+                          )}
+                          {!browserLoading[connection.id] &&
+                            serverDatabases[connection.id]?.length === 0 && (
+                              <div className="db-browser-hint">
+                                No databases were returned.
+                              </div>
                             )}
-                          </button>
-                          {child && (
-                            <button
-                              className="db-child-close"
-                              title={`Close ${database.name} session`}
-                              aria-label={`Close ${database.name} session`}
-                              onClick={() => void disconnect(child)}
-                            >
-                              ×
-                            </button>
-                          )}
-                          {!database.canConnect && (
-                            <div className="db-browser-hint db-browser-indent">
-                              No CONNECT permission
-                            </div>
-                          )}
-                          {child && renderTables(child)}
-                          {browserErrors[loadingKey] && (
-                            <div className="db-browser-error db-browser-indent">
-                              {browserErrors[loadingKey]}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                    {!browserLoading[connection.id] &&
-                      serverDatabases[connection.id]?.length === 0 && (
-                        <div className="db-browser-hint">
-                          No databases were returned.
                         </div>
                       )}
-                  </div>
+                    {connection.kind === "postgres" &&
+                      !connection.serverMode &&
+                      renderTables(connection)}
+                    {connection.kind === "mongodb" &&
+                      renderMongoDatabases(connection)}
+                  </>
                 )}
-                {connection.kind === "postgres" &&
-                  !connection.serverMode &&
-                  renderTables(connection)}
-                {connection.kind === "mongodb" &&
-                  renderMongoDatabases(connection)}
               </div>
             ))}
           {connections.length === 0 && (
@@ -2964,6 +3078,14 @@ export default function DatabaseWorkspace({
                           </small>
                         </span>
                         {loading && <span className="db-spinner small" />}
+                      </button>
+                      <button
+                        className="db-disconnect db-edit-saved"
+                        title={`Edit ${profile.name}`}
+                        aria-label={`Edit ${profile.name}`}
+                        onClick={() => void editSaved(profile.id)}
+                      >
+                        <Pencil size={11} />
                       </button>
                       <button
                         className="db-disconnect db-delete-saved"
@@ -4081,8 +4203,12 @@ export default function DatabaseWorkspace({
           >
             <div className="db-modal-head">
               <div>
-                <span className="db-overline">NEW DATA SOURCE</span>
-                <h2 id="db-connect-title">Connect a database</h2>
+                <span className="db-overline">
+                  {editingProfileId ? "SAVED CONNECTION" : "NEW DATA SOURCE"}
+                </span>
+                <h2 id="db-connect-title">
+                  {editingProfileId ? "Edit connection" : "Connect a database"}
+                </h2>
               </div>
               <button
                 className="db-icon-button"
@@ -4406,17 +4532,19 @@ export default function DatabaseWorkspace({
                 </span>
               </label>
             )}
-            <label className="db-tls-toggle">
-              <input
-                type="checkbox"
-                checked={saveProfile}
-                onChange={(event) => setSaveProfile(event.target.checked)}
-              />
-              <span>
-                <b>Save this connection</b>
-                <small>When connecting, keep it between app sessions</small>
-              </span>
-            </label>
+            {!editingProfileId && (
+              <label className="db-tls-toggle">
+                <input
+                  type="checkbox"
+                  checked={saveProfile}
+                  onChange={(event) => setSaveProfile(event.target.checked)}
+                />
+                <span>
+                  <b>Save this connection</b>
+                  <small>When connecting, keep it between app sessions</small>
+                </span>
+              </label>
+            )}
             {testFailure && (
               <div className="db-query-error" role="alert">
                 Test failed: {testFailure}
@@ -4445,21 +4573,23 @@ export default function DatabaseWorkspace({
               </div>
             )}
             <div className="db-modal-actions">
-              <button
-                type="button"
-                className="db-quiet-button db-save-untested"
-                title="Save the profile without connecting"
-                disabled={connectBusy || connectionStringBlocked}
-                onClick={() => void saveConnectionWithoutTesting("save")}
-              >
-                {saveBusy === "save" ? (
-                  <>
-                    <span className="db-spinner small" /> Saving…
-                  </>
-                ) : (
-                  "Save without testing"
-                )}
-              </button>
+              {!editingProfileId && (
+                <button
+                  type="button"
+                  className="db-quiet-button db-save-untested"
+                  title="Save the profile without connecting"
+                  disabled={connectBusy || connectionStringBlocked}
+                  onClick={() => void saveConnectionWithoutTesting("save")}
+                >
+                  {saveBusy === "save" ? (
+                    <>
+                      <span className="db-spinner small" /> Saving…
+                    </>
+                  ) : (
+                    "Save without testing"
+                  )}
+                </button>
+              )}
               <button
                 className="db-quiet-button"
                 disabled={connectBusy}
@@ -4487,19 +4617,35 @@ export default function DatabaseWorkspace({
                   "Test & Save"
                 )}
               </button>
-              <button
-                className="db-run-button"
-                disabled={connectBusy || connectionStringBlocked}
-                onClick={() => void connect()}
-              >
-                {connecting ? (
-                  <>
-                    <span className="db-spinner small" /> Connecting…
-                  </>
-                ) : (
-                  "Connect"
-                )}
-              </button>
+              {editingProfileId ? (
+                <button
+                  className="db-run-button"
+                  disabled={connectBusy || connectionStringBlocked}
+                  onClick={() => void saveConnectionWithoutTesting("save")}
+                >
+                  {saveBusy === "save" ? (
+                    <>
+                      <span className="db-spinner small" /> Saving…
+                    </>
+                  ) : (
+                    "Save"
+                  )}
+                </button>
+              ) : (
+                <button
+                  className="db-run-button"
+                  disabled={connectBusy || connectionStringBlocked}
+                  onClick={() => void connect()}
+                >
+                  {connecting ? (
+                    <>
+                      <span className="db-spinner small" /> Connecting…
+                    </>
+                  ) : (
+                    "Connect"
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>
