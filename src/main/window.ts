@@ -3,6 +3,11 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { is } from "@electron-toolkit/utils";
 import { WINDOW } from "../shared/config";
+import {
+  initialBounds,
+  loadWindowState,
+  trackWindowState,
+} from "./window-state";
 
 const isMac = process.platform === "darwin";
 
@@ -27,9 +32,9 @@ export function resolveAppIcon(): string | undefined {
 }
 
 export function createWindow(): BrowserWindow {
+  const savedState = loadWindowState();
   const win = new BrowserWindow({
-    width: WINDOW.width,
-    height: WINDOW.height,
+    ...initialBounds(savedState),
     minWidth: WINDOW.minWidth,
     minHeight: WINDOW.minHeight,
     show: false,
@@ -51,7 +56,14 @@ export function createWindow(): BrowserWindow {
     },
   });
 
-  win.on("ready-to-show", () => win.show());
+  trackWindowState(win);
+
+  win.on("ready-to-show", () => {
+    // maximize() also shows the window, so restore it here to avoid a flash.
+    if (savedState?.maximized) win.maximize();
+    win.show();
+    if (savedState?.fullScreen) win.setFullScreen(true);
+  });
   win.webContents.on("will-prevent-unload", (event) => {
     const choice = dialog.showMessageBoxSync(win, {
       type: "question",

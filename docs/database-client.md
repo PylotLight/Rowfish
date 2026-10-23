@@ -95,6 +95,8 @@ Drafts, saved queries and history are stored in local application storage, not e
 
 Result headings support local sorting; click a row (or focus it and press Enter) to open its data and column schema in a side panel. CSV and JSON buttons export the currently filtered, already-fetched rows. CSV escapes spreadsheet formulas; JSON retains value types. Exports still obey row/cell/byte caps and are not full-database backups.
 
+The window reopens at its last size and position (and maximised or full screen if you left it that way), saved to `window-state.json` in the app data folder. If the display it was on is unplugged it opens centred on the main one instead.
+
 Saved-profile sync, SSH tunnels, a custom CA-file picker, PostgreSQL query parameters and transaction-control buttons are not included.
 
 The checked-in [PostgreSQL seed script](examples/postgres.sql) and [MongoDB seed script](examples/mongodb.js) create matching fictional order examples for local demos. The [README](../README.md) previews use synthetic local records. Its PostgreSQL screenshot comes from the live disposable smoke-test fixture; no production database is used.
