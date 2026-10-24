@@ -24,6 +24,40 @@ describe("window state", () => {
     expect(parseWindowState({ bounds: { x: "1" } })).toBeNull();
   });
 
+  test("rejects finite geometry outside native integer bounds", () => {
+    const minCoordinate = -(2 ** 31);
+    const maxCoordinate = 2 ** 31 - 1;
+    const state = (bounds: object) => parseWindowState({ bounds });
+
+    expect(
+      state({ x: maxCoordinate + 1, y: 0, width: 1200, height: 800 }),
+    ).toBeNull();
+    expect(
+      state({ x: 0, y: minCoordinate - 1, width: 1200, height: 800 }),
+    ).toBeNull();
+    expect(
+      state({ x: maxCoordinate - 50, y: 0, width: 100, height: 800 }),
+    ).toBeNull();
+    expect(state({ x: 0, y: 0, width: 0.25, height: 800 })).toBeNull();
+    expect(
+      state({
+        x: maxCoordinate - 100,
+        y: minCoordinate,
+        width: 100,
+        height: 1,
+      }),
+    ).toEqual({
+      bounds: {
+        x: maxCoordinate - 100,
+        y: minCoordinate,
+        width: 100,
+        height: 1,
+      },
+      maximized: false,
+      fullScreen: false,
+    });
+  });
+
   test("keeps a position that is still on screen", () => {
     const saved = { x: 1700, y: 100, width: 1400, height: 900 };
     expect(restorableBounds(saved, [laptop, external], min)).toEqual(saved);
