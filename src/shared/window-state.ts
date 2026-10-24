@@ -14,6 +14,10 @@ export interface WindowState {
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
+// Electron's native window geometry is backed by signed 32-bit coordinates.
+const MIN_WINDOW_COORDINATE = -(2 ** 31);
+const MAX_WINDOW_COORDINATE = 2 ** 31 - 1;
+
 /** Validates a stored window state; anything malformed is ignored. */
 export function parseWindowState(value: unknown): WindowState | null {
   if (!value || typeof value !== "object") return null;
@@ -29,13 +33,24 @@ export function parseWindowState(value: unknown): WindowState | null {
     bounds.height <= 0
   )
     return null;
+  const parsedBounds = {
+    x: Math.round(bounds.x),
+    y: Math.round(bounds.y),
+    width: Math.round(bounds.width),
+    height: Math.round(bounds.height),
+  };
+  if (
+    !Object.values(parsedBounds).every(Number.isSafeInteger) ||
+    parsedBounds.x < MIN_WINDOW_COORDINATE ||
+    parsedBounds.y < MIN_WINDOW_COORDINATE ||
+    parsedBounds.x + parsedBounds.width > MAX_WINDOW_COORDINATE ||
+    parsedBounds.y + parsedBounds.height > MAX_WINDOW_COORDINATE ||
+    parsedBounds.width <= 0 ||
+    parsedBounds.height <= 0
+  )
+    return null;
   return {
-    bounds: {
-      x: Math.round(bounds.x),
-      y: Math.round(bounds.y),
-      width: Math.round(bounds.width),
-      height: Math.round(bounds.height),
-    },
+    bounds: parsedBounds,
     maximized: record.maximized === true,
     fullScreen: record.fullScreen === true,
   };
