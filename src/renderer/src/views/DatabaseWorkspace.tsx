@@ -26,6 +26,8 @@ import {
   EyeOff,
   ListFilter,
   Pencil,
+  List,
+  Braces,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import "../components/query-connection.css";
@@ -43,6 +45,28 @@ import RowSidePanel, { type RowSource } from "../components/RowSidePanel";
 import ResizeSeparator from "../components/ResizeSeparator";
 import { clampLayout, loadLayout, saveLayout } from "../lib/layout-preferences";
 import { isSameRow } from "../lib/row-editor";
+import DocumentResults from "../components/DocumentResults";
+import {
+  cellSummary,
+  columnKinds,
+  describeValue,
+  documentFor,
+  effectiveResultsView,
+  isNestedKind,
+  loadResultsView,
+  saveResultsView,
+  toRelaxed,
+  withoutId,
+  type ResultsView,
+} from "../lib/document-view";
+import {
+  autoFitColumnWidth,
+  defaultColumnWidth,
+  loadColumnWidths,
+  resizedWidth,
+  saveColumnWidths,
+  type ColumnWidths,
+} from "../lib/column-widths";
 import {
   loadQueryWorkspace,
   saveQueryWorkspace,
@@ -97,6 +121,35 @@ import {
 } from "../../../shared/database-helpers";
 
 const ROW_HEIGHT = 36;
+const ROW_INDEX_WIDTH = 45;
+
+/** Canonical EJSON per MongoDB result row, for the typed list / JSON views. */
+const typedDocuments = new WeakMap<DatabaseRow, string | null>();
+const parsedDocuments = new WeakMap<DatabaseRow, Record<string, unknown>>();
+function documentOf(row: DatabaseRow): Record<string, unknown> {
+  let document = parsedDocuments.get(row);
+  if (!document) {
+    document = documentFor(row, typedDocuments.get(row));
+    parsedDocuments.set(row, document);
+  }
+  return document;
+}
+const resultIds = new WeakMap<DatabaseRow, number>();
+let nextResultId = 1;
+function resultId(row: DatabaseRow | undefined): number {
+  if (!row) return 0;
+  let id = resultIds.get(row);
+  if (id === undefined) resultIds.set(row, (id = nextResultId++));
+  return id;
+}
+
+let measureContext: CanvasRenderingContext2D | null = null;
+function measureText(text: string, font: string): number {
+  measureContext ??= document.createElement("canvas").getContext("2d");
+  if (!measureContext) return text.length * 6.4;
+  measureContext.font = font;
+  return measureContext.measureText(text.slice(0, 400)).width;
+}
 
 function parseConnectionStringFields(
   kind: DatabaseConnectionInput["kind"],
@@ -823,6 +876,175 @@ export default function DatabaseWorkspace({
   const windowedRows = visibleRows.slice(firstVisible, lastVisible);
   const deferredQuery = runState !== "idle";
 
+  // Compass-style result views. An explicit pick sticks (localStorage); until
+  // then a single MongoDB document opens as a list.
+  const [chosenResultsView, setChosenResultsView] =
+    useState<ResultsView | null>(loadResultsView);
+  const isMongoResult = activeConnection?.kind === "mongodb";
+  const resultsView = effectiveResultsView(
+    chosenResultsView,
+    activeConnection?.kind,
+    rows.length,
+  );
+  function chooseResultsView(view: ResultsView): void {
+    setChosenResultsView(view);
+    saveResultsView(view);
+  }
+  const resultsResetKey = `${activeTab?.id ?? ""}:${resultId(rows[0])}`;
+  /** Mongo type hint per column, sampled from the first documents. */
+  const sampleSize = Math.min(rows.length, 200);
+  const mongoColumnKinds = useMemo(
+    () =>
+      isMongoResult && sampleSize
+        ? columnKinds(columns, rows.slice(0, sampleSize).map(documentOf))
+        : {},
+    // Re-sample only while the first 200 rows are still streaming in.
+    [isMongoResult, columns, sampleSize, rows[0]],
+  );
+  function cellText(row: DatabaseRow, column: string): string {
+    if (isMongoResult) {
+      const document = documentOf(row);
+      if (column in document) {
+        const info = describeValue(document[column]);
+        if (isNestedKind(info.kind)) return cellSummary(info);
+      }
+    }
+    return String(row[column] ?? "NULL");
+  }
+
+  // Resizable columns, remembered per Mongo collection or per Postgres tab.
+  const widthScope = isMongoResult
+    ? `mongo:${selectedMongoDatabase || activeConnection?.database || ""}/${selectedMongoCollection?.name || collection}`
+    : `pg:${activeTab?.id ?? ""}`;
+  const [widthState, setWidthState] = useState<{
+    scope: string;
+    widths: ColumnWidths;
+  }>(() => ({ scope: "", widths: {} }));
+  useEffect(() => {
+    setWidthState({ scope: widthScope, widths: loadColumnWidths(widthScope) });
+  }, [widthScope]);
+  const columnWidths = widthState.scope === widthScope ? widthState.widths : {};
+  const defaultWidths = useMemo(() => {
+    const sample = rows.slice(0, 50);
+    const out: ColumnWidths = {};
+    for (const column of columns)
+      out[column] = defaultColumnWidth(
+        mongoColumnKinds[column]
+          ? `${column} ${mongoColumnKinds[column]}`
+          : column,
+        sample.map((row) => cellText(row, column)),
+      );
+    return out;
+    // Defaults come from the first batch so widths don't jump while streaming.
+  }, [columns, rows[0], mongoColumnKinds]);
+  const widthOf = (column: string): number =>
+    columnWidths[column] ?? defaultWidths[column] ?? 160;
+  const tableWidth =
+    ROW_INDEX_WIDTH + columns.reduce((sum, column) => sum + widthOf(column), 0);
+  function setColumnWidth(column: string, width: number | null): void {
+    setWidthState((current) => {
+      const widths = {
+        ...(current.scope === widthScope ? current.widths : {}),
+      };
+      if (width === null) delete widths[column];
+      else widths[column] = width;
+      saveColumnWidths(widthScope, widths);
+      return { scope: widthScope, widths };
+    });
+  }
+  function startColumnResize(
+    event: React.PointerEvent<HTMLSpanElement>,
+    column: string,
+  ): void {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const handle = event.currentTarget;
+    const header = handle.parentElement;
+    const startWidth = header?.getBoundingClientRect().width ?? widthOf(column);
+    const startX = event.clientX;
+    handle.setPointerCapture(event.pointerId);
+    let frame = 0;
+    let latest = startWidth;
+    const move = (moveEvent: PointerEvent): void => {
+      latest = resizedWidth(startWidth, moveEvent.clientX - startX);
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() =>
+        setWidthState((current) => ({
+          scope: widthScope,
+          widths: {
+            ...(current.scope === widthScope ? current.widths : {}),
+            [column]: latest,
+          },
+        })),
+      );
+    };
+    const end = (): void => {
+      cancelAnimationFrame(frame);
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+      if (latest !== startWidth) setColumnWidth(column, latest);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  }
+  /** Double-click: fit the header and visible cells; again to reset. */
+  function autoFitColumn(
+    event: React.MouseEvent<HTMLSpanElement>,
+    column: string,
+  ): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const header = event.currentTarget.parentElement;
+    const cell = scrollElement.current?.querySelector(
+      "tbody td:not(.db-row-index)",
+    );
+    const headerFont = header
+      ? getComputedStyle(header).font
+      : "11px sans-serif";
+    const cellFont = cell ? getComputedStyle(cell).font : headerFont;
+    const label = mongoColumnKinds[column]
+      ? `${column} ${mongoColumnKinds[column]}`
+      : column;
+    const fitted = autoFitColumnWidth(
+      measureText(label, headerFont),
+      windowedRows.map((row) => measureText(cellText(row, column), cellFont)),
+    );
+    setColumnWidth(
+      column,
+      columnWidths[column] !== undefined &&
+        Math.abs(columnWidths[column]! - fitted) <= 2
+        ? null
+        : fitted,
+    );
+  }
+
+  // Document actions from the list / JSON views (MongoDB find results only).
+  const documentActionsEnabled = isMongoResult && mongoQueryMode === "find";
+  function editDocument(row: DatabaseRow): void {
+    const document = documentOf(row);
+    if (!("_id" in document)) return;
+    openMongoOperation("update");
+    setMongoFilter(JSON.stringify({ _id: toRelaxed(document._id) }));
+    setMongoUpdate(
+      JSON.stringify({ $set: toRelaxed(withoutId(document)) }, null, 2),
+    );
+  }
+  function cloneDocument(row: DatabaseRow): void {
+    openMongoOperation("insert");
+    setMongoDocument(
+      JSON.stringify(toRelaxed(withoutId(documentOf(row))), null, 2),
+    );
+  }
+  function deleteDocument(row: DatabaseRow): void {
+    const document = documentOf(row);
+    if (!("_id" in document)) return;
+    openMongoOperation("delete");
+    setMongoFilter(JSON.stringify({ _id: toRelaxed(document._id) }));
+  }
+
   function newTab(
     query = "",
     title?: string,
@@ -1234,6 +1456,10 @@ export default function DatabaseWorkspace({
 
       if (activeQuery.current?.id !== event.queryId) return;
       if (event.type === "query:rows") {
+        if (event.documents)
+          event.rows.forEach((row, index) =>
+            typedDocuments.set(row, event.documents![index] ?? null),
+          );
         if (explainPending.current && event.rows.length)
           setQueryPlan(event.rows[0]);
         startTransition(() => {
@@ -1403,7 +1629,7 @@ export default function DatabaseWorkspace({
     const observer = new ResizeObserver(update);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [columns.length > 0]);
+  }, [columns.length > 0, resultsView]);
 
   function cancelQueryConnection(): void {
     queryConnectionTabId.current = null;
@@ -3837,6 +4063,33 @@ export default function DatabaseWorkspace({
                   </div>
                 ) : (
                   <div className="result-actions">
+                    {columns.length > 0 && (
+                      <div
+                        className="db-view-toggle"
+                        role="group"
+                        aria-label="Results view"
+                      >
+                        {(
+                          [
+                            ["list", List, "List"],
+                            ["json", Braces, "JSON"],
+                            ["table", Table2, "Table"],
+                          ] as const
+                        ).map(([view, Icon, label]) => (
+                          <button
+                            key={view}
+                            className={resultsView === view ? "active" : ""}
+                            aria-pressed={resultsView === view}
+                            aria-label={`${label} view`}
+                            title={`${label} view`}
+                            onClick={() => chooseResultsView(view)}
+                          >
+                            <Icon size={12} />
+                            <span>{label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <span className="db-row-count">
                       {visibleRows.length.toLocaleString()}
                       {deferredSearch || filtersActive
@@ -3917,6 +4170,18 @@ export default function DatabaseWorkspace({
                     </p>
                   )}
                 </div>
+              ) : columns.length > 0 && resultsView !== "table" ? (
+                <DocumentResults
+                  view={resultsView}
+                  rows={visibleRows}
+                  documentOf={documentOf}
+                  selectedRow={inspectedRow}
+                  resetKey={resultsResetKey}
+                  onInspect={inspectRow}
+                  onEdit={documentActionsEnabled ? editDocument : undefined}
+                  onClone={documentActionsEnabled ? cloneDocument : undefined}
+                  onDelete={documentActionsEnabled ? deleteDocument : undefined}
+                />
               ) : columns.length > 0 ? (
                 <div
                   className="db-table-scroll"
@@ -3928,7 +4193,17 @@ export default function DatabaseWorkspace({
                     })
                   }
                 >
-                  <table className="db-result-table">
+                  <table
+                    className="db-result-table sized"
+                    style={{ width: tableWidth }}
+                  >
+                    <colgroup>
+                      <col style={{ width: ROW_INDEX_WIDTH }} />
+                      {columns.map((column) => (
+                        <col key={column} style={{ width: widthOf(column) }} />
+                      ))}
+                      <col />
+                    </colgroup>
                     <thead>
                       <tr>
                         <th className="db-row-index-head">#</th>
@@ -3976,7 +4251,17 @@ export default function DatabaseWorkspace({
                                 }))
                               }
                             >
-                              {column}
+                              <b className="db-col-label">
+                                {column}
+                                {mongoColumnKinds[column] && (
+                                  <>
+                                    {" "}
+                                    <small className="db-col-type">
+                                      {mongoColumnKinds[column]}
+                                    </small>
+                                  </>
+                                )}
+                              </b>
                               <span>
                                 {sort?.column === column
                                   ? sort.direction === 1
@@ -3985,15 +4270,30 @@ export default function DatabaseWorkspace({
                                   : " ↕"}
                               </span>
                             </button>
+                            <span
+                              className="db-col-resizer"
+                              role="separator"
+                              aria-orientation="vertical"
+                              aria-label={`Resize ${column}`}
+                              title="Drag to resize · double-click to fit"
+                              onPointerDown={(event) =>
+                                startColumnResize(event, column)
+                              }
+                              onDoubleClick={(event) =>
+                                autoFitColumn(event, column)
+                              }
+                              onClick={(event) => event.stopPropagation()}
+                            />
                           </th>
                         ))}
+                        <th className="db-col-filler" aria-hidden="true" />
                       </tr>
                     </thead>
                     <tbody>
                       {firstVisible > 0 && (
                         <tr aria-hidden="true" className="db-spacer-row">
                           <td
-                            colSpan={columns.length + 1}
+                            colSpan={columns.length + 2}
                             style={{ height: firstVisible * ROW_HEIGHT }}
                           />
                         </tr>
@@ -4023,24 +4323,35 @@ export default function DatabaseWorkspace({
                             title="Click to inspect or edit row"
                           >
                             <td className="db-row-index">{index + 1}</td>
-                            {columns.map((column) => (
-                              <td
-                                key={column}
-                                className={
-                                  row[column] === null ? "null-cell" : ""
-                                }
-                                title={String(row[column] ?? "")}
-                              >
-                                {String(row[column] ?? "NULL")}
-                              </td>
-                            ))}
+                            {columns.map((column) => {
+                              const text = cellText(row, column);
+                              const nested =
+                                row[column] !== null &&
+                                text !== String(row[column] ?? "NULL");
+                              return (
+                                <td
+                                  key={column}
+                                  className={
+                                    row[column] === null
+                                      ? "null-cell"
+                                      : nested
+                                        ? "nested-cell"
+                                        : ""
+                                  }
+                                  title={String(row[column] ?? "")}
+                                >
+                                  {text}
+                                </td>
+                              );
+                            })}
+                            <td className="db-col-filler" />
                           </tr>
                         );
                       })}
                       {lastVisible < visibleRows.length && (
                         <tr aria-hidden="true" className="db-spacer-row">
                           <td
-                            colSpan={columns.length + 1}
+                            colSpan={columns.length + 2}
                             style={{
                               height:
                                 (visibleRows.length - lastVisible) * ROW_HEIGHT,
@@ -4110,7 +4421,12 @@ export default function DatabaseWorkspace({
                 <div className="db-grid-footer">
                   <span>{rows.length.toLocaleString()} rows</span>
                   <span>
-                    Click a row to inspect / edit ·{" "}
+                    {resultsView === "table"
+                      ? "Click a row to inspect / edit · drag header edges to resize"
+                      : resultsView === "list"
+                        ? "Expand fields with ▸ · hover a document for actions"
+                        : "Relaxed EJSON · read only"}{" "}
+                    ·{" "}
                     {serverInfo
                       ? `${serverInfo.database} / ${serverInfo.user}`
                       : "Filtered exports"}

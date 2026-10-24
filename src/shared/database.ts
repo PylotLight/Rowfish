@@ -224,6 +224,8 @@ export type DatabaseEvent =
       columns: string[];
       rows: DatabaseRow[];
       receivedRows: number;
+      /** MongoDB only: canonical EJSON per row, null when over the size budget. */
+      documents?: (string | null)[];
     }
   | {
       type: "query:complete";

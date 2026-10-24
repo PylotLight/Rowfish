@@ -548,6 +548,20 @@ try {
       page.locator(".db-result-table tbody tr").first(),
     ).toContainText("375.00");
   });
+  await check("results view toggle switches list, JSON and table", async () => {
+    await page.getByRole("button", { name: "List view" }).click();
+    await expect(page.locator(".db-doc-card").first()).toContainText(
+      "customer_id",
+    );
+    await page.getByRole("button", { name: "JSON view" }).click();
+    await expect(page.locator(".db-doc-json").first()).toContainText(
+      '"status"',
+    );
+    await page.getByRole("button", { name: "Table view" }).click();
+    await expect(
+      page.locator(".db-result-table tbody tr").first(),
+    ).toContainText("375.00");
+  });
   await check("history records actual query outcome", async () => {
     await sidebarTab("History");
     await expect(page.locator(".history-status.success").first()).toContainText(

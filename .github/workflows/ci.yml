@@ -62,6 +62,7 @@ jobs:
           xvfb-run -a node scripts/settings-smoke.mjs
           xvfb-run -a node scripts/query-connection-smoke.mjs
           xvfb-run -a node scripts/layout-smoke.mjs
+          xvfb-run -a node scripts/results-view-smoke.mjs
       - name: Preserve smoke diagnostics
         if: always()
         uses: actions/upload-artifact@v4

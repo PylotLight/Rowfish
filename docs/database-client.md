@@ -103,6 +103,18 @@ Results arrive in batches and are shown in a virtualized grid. Choose a row limi
 
 The top-bar search filters rows already received in the current result set; it does not issue another database query. Each column header also has a filter button (Excel-style): sort either way, type a condition (plain text means contains; `>10`, `<=2026-01-01`, `!=ready`, `=null` compare), and tick or untick values from the list of distinct values with their counts. Filters combine across columns and with the search, the row count shows filtered / total, and **Clear filters** resets them. CSV/JSON export uses the filtered rows. A new query clears the filters. PostgreSQL statements use a 120-second `statement_timeout`; MongoDB reads use `maxTimeMS(120000)`.
 
+### List, JSON and table views
+
+The toggle at the top right of the results switches between three views of the same received (and filtered / sorted) rows:
+
+- **List**: one card per document with a collapsible tree. Values are coloured by BSON type, nested objects and arrays show as `Object (n)` / `Array (n)` and only render when expanded. Hover a card for expand / collapse all, copy as relaxed EJSON (pastes straight into Rowfish's insert / update dialogs) or plain JSON (ids and dates as strings), open it in the row details panel, and for MongoDB `find` results **Edit** (opens Update prefilled with `{_id}` and a `$set` of the document), **Clone** (Insert prefilled without `_id`) and **Delete** (Delete prefilled with `{_id}`, still confirmed). Cards mount 40 at a time as you scroll.
+- **JSON**: pretty relaxed EJSON per document, read only.
+- **Table**: the virtualized grid. MongoDB headers show the field's type (sampled from the first 200 documents, `Mixed` when it varies) and nested cells read `{} 3 fields` / `[] 4 items`; hover a cell for the full value.
+
+MongoDB results carry typed EJSON from the worker (on its own 16 MB budget, separate from the row cap), so ObjectIds, dates, Int32 / Int64 / Double and Decimal128 keep their types. PostgreSQL rows can use List and JSON too; cells holding JSON objects or arrays (json / jsonb) expand as trees. Until you pick a view, a single MongoDB document opens as a list and everything else as a table; after that your choice is remembered.
+
+Drag a column header's right edge to resize it. Double-click the edge to fit the header and visible cells, and double-click again to go back to the default width. Widths are remembered per MongoDB collection, or per query tab for PostgreSQL.
+
 Choosing **Cancel** terminates the worker to interrupt server-side work. Rowfish also closes that connection, so reconnect before running another query on it.
 
 ## Quick row edits
