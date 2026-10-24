@@ -3,6 +3,13 @@ import { _electron as electron, expect } from "@playwright/test";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readFile } from "node:fs/promises";
+const electronVersion = JSON.parse(
+  await readFile(
+    join(process.cwd(), "node_modules/electron/package.json"),
+    "utf8",
+  ),
+).version;
 const artifacts = join(process.cwd(), "artifacts");
 await mkdir(artifacts, { recursive: true });
 const userData = await mkdtemp(join(tmpdir(), "rowfish-smoke-"));
@@ -39,9 +46,9 @@ const inputQuery = async (query) => {
 };
 try {
   await page.waitForSelector(".cm-content");
-  await check("Electron 45 runtime", async () =>
-    expect(await app.evaluate(() => process.versions.electron)).toMatch(
-      /^45\./,
+  await check("Electron runtime matches package.json", async () =>
+    expect(await app.evaluate(() => process.versions.electron)).toBe(
+      electronVersion,
     ),
   );
   await check("Tab accepts the selected keyword completion", async () => {
@@ -690,6 +697,11 @@ try {
   });
   await ensureSidebar();
   await page.getByRole("button", { name: "orders", exact: true }).click();
+  // picking a table auto-runs its LIMIT 100 preview; let it land first so the
+  // Run click below isn't swallowed while that query is still in flight
+  await expect(page.locator(".db-results-summary")).toContainText("100 rows", {
+    timeout: 15000,
+  });
   await inputQuery(
     "SELECT id, customer_id, total, status FROM public.orders ORDER BY id LIMIT 30;",
   );

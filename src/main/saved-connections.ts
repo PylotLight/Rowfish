@@ -38,8 +38,11 @@ interface SavedConnectionsFile {
 
 const FILE_NAME = "saved-connections.json";
 
-function hasSecurePasswordStorage(): boolean {
-  if (!safeStorage.isEncryptionAvailable()) return false;
+// Electron 46 drops the sync safeStorage calls. The async decryptor still reads
+// ciphertext written by the old sync encryptString, and says shouldReEncrypt
+// when it wants the secret re-sealed on the current format.
+async function hasSecurePasswordStorage(): Promise<boolean> {
+  if (!(await safeStorage.isAsyncEncryptionAvailable())) return false;
   if (process.platform !== "linux") return true;
   return ["gnome_libsecret", "kwallet", "kwallet5", "kwallet6"].includes(
     safeStorage.getSelectedStorageBackend(),
@@ -124,14 +127,14 @@ export async function listSavedConnections(): Promise<
   return (await readProfiles()).map(toSummary);
 }
 
-function encryptSecret(secret: string): string {
-  if (!hasSecurePasswordStorage()) {
+async function encryptSecret(secret: string): Promise<string> {
+  if (!(await hasSecurePasswordStorage())) {
     throw new Error(
       "Secure credential storage is unavailable on this system. Rowfish did not save the password or connection string; use a session-only connection or enable your operating system credential store.",
     );
   }
   try {
-    return safeStorage.encryptString(secret).toString("base64");
+    return (await safeStorage.encryptStringAsync(secret)).toString("base64");
   } catch {
     throw new Error(
       "Rowfish could not encrypt this credential with the operating system credential store.",
@@ -139,10 +142,10 @@ function encryptSecret(secret: string): string {
   }
 }
 
-function storedProfile(
+async function storedProfile(
   id: string,
   input: DatabaseConnectionInput,
-): StoredConnectionProfile {
+): Promise<StoredConnectionProfile> {
   const secretKind = input.connectionString
     ? "connection-string"
     : input.password
@@ -161,14 +164,14 @@ function storedProfile(
     ...(input.sslMode ? { sslMode: input.sslMode } : {}),
     serverMode: input.serverMode,
     secretKind,
-    encryptedSecret: secret ? encryptSecret(secret) : null,
+    encryptedSecret: secret ? await encryptSecret(secret) : null,
   };
 }
 
 export async function saveConnectionProfile(
   input: DatabaseConnectionInput,
 ): Promise<SavedConnectionProfile> {
-  const profile = storedProfile(randomUUID(), input);
+  const profile = await storedProfile(randomUUID(), input);
   const profiles = await readProfiles();
   profiles.push(profile);
   await writeProfiles(profiles);
@@ -183,7 +186,7 @@ export async function updateConnectionProfile(
   const profiles = await readProfiles();
   const index = profiles.findIndex((profile) => profile.id === id);
   if (index < 0) throw new Error("This saved connection no longer exists.");
-  const profile = storedProfile(id, input);
+  const profile = await storedProfile(id, input);
   profiles[index] = profile;
   await writeProfiles(profiles);
   return toSummary(profile);
@@ -197,21 +200,24 @@ export async function getSavedConnectionInput(
   );
   if (!profile) throw new Error("This saved connection no longer exists.");
   let password = "";
+  let shouldReEncrypt = false;
   if (profile.encryptedSecret) {
-    if (!hasSecurePasswordStorage()) {
+    if (!(await hasSecurePasswordStorage())) {
       throw new Error(
         "The operating system credential store is unavailable, so Rowfish cannot decrypt this saved credential.",
       );
     }
     try {
-      password = safeStorage.decryptString(
-        Buffer.from(profile.encryptedSecret, "base64"),
-      );
+      ({ result: password, shouldReEncrypt } =
+        await safeStorage.decryptStringAsync(
+          Buffer.from(profile.encryptedSecret, "base64"),
+        ));
     } catch {
       throw new Error(
         "Rowfish could not decrypt this saved credential. Re-enter the password or connection string and save the connection again.",
       );
     }
+    if (shouldReEncrypt) await resealSecret(id, password);
   }
   const {
     id: _id,
@@ -226,6 +232,20 @@ export async function getSavedConnectionInput(
       ? { connectionString: password }
       : {}),
   };
+}
+
+/** Re-seals a decrypted secret on the current safeStorage format. Best effort. */
+async function resealSecret(id: string, secret: string): Promise<void> {
+  try {
+    const encryptedSecret = await encryptSecret(secret);
+    const profiles = await readProfiles();
+    const profile = profiles.find((candidate) => candidate.id === id);
+    if (!profile) return;
+    profile.encryptedSecret = encryptedSecret;
+    await writeProfiles(profiles);
+  } catch {
+    // the old ciphertext still decrypts; try again on the next read
+  }
 }
 
 export async function deleteSavedConnection(id: string): Promise<boolean> {
