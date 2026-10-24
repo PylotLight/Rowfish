@@ -116,6 +116,8 @@ type WorkerEvent =
       columns: string[];
       rows: DatabaseRow[];
       receivedRows: number;
+      /** MongoDB only: canonical EJSON per row (null past the size budget). */
+      documents?: (string | null)[];
     }
   | {
       type: "complete";
@@ -215,9 +217,34 @@ function postBatch(
   rows: DatabaseRow[],
   columns: Set<string>,
   receivedRows: number,
+  documents?: (string | null)[],
 ): void {
   if (rows.length === 0) return;
-  post({ type: "rows", queryId, rows, columns: [...columns], receivedRows });
+  post({
+    type: "rows",
+    queryId,
+    rows,
+    columns: [...columns],
+    receivedRows,
+    ...(documents ? { documents } : {}),
+  });
+}
+
+/** Largest single document kept as typed EJSON for the list / JSON views. */
+const MAX_DOCUMENT_CHARS = 2 * 1024 * 1024;
+
+/**
+ * Canonical EJSON keeps BSON types (ObjectId, Int32 vs Double, Date…) so the
+ * renderer can show a typed tree. Returns null for oversized or odd values;
+ * the renderer then falls back to the flat row cells.
+ */
+function documentEjson(document: unknown): string | null {
+  try {
+    const text = EJSON.stringify(document, { relaxed: false });
+    return text.length > MAX_DOCUMENT_CHARS ? null : text;
+  } catch {
+    return null;
+  }
 }
 
 type PostgresTarget = ConstructorParameters<typeof PostgresClient>[0];
@@ -565,8 +592,11 @@ async function readMongo(request: DatabaseQueryRequest): Promise<void> {
   const startedAt = Date.now();
   const columns = new Set<string>();
   const outgoing: DatabaseRow[] = [];
+  const outgoingDocuments: (string | null)[] = [];
   let receivedRows = 0;
   let estimatedBytes = 0;
+  // Typed documents get their own budget so they never shrink the row cap.
+  let documentBytes = 0;
   let truncated = false;
 
   try {
@@ -591,15 +621,33 @@ async function readMongo(request: DatabaseQueryRequest): Promise<void> {
       estimatedBytes += rowBytes;
       receivedRows += 1;
       outgoing.push(row);
+      let typed =
+        documentBytes < MAX_RESULT_BYTES ? documentEjson(document) : null;
+      if (typed && documentBytes + typed.length > MAX_RESULT_BYTES)
+        typed = null;
+      if (typed) documentBytes += typed.length;
+      outgoingDocuments.push(typed);
       if (outgoing.length >= BATCH_SIZE) {
-        postBatch(request.queryId, outgoing.splice(0), columns, receivedRows);
+        postBatch(
+          request.queryId,
+          outgoing.splice(0),
+          columns,
+          receivedRows,
+          outgoingDocuments.splice(0),
+        );
       }
     }
   } finally {
     if (truncated) await cursor.close().catch(() => undefined);
   }
 
-  postBatch(request.queryId, outgoing, columns, receivedRows);
+  postBatch(
+    request.queryId,
+    outgoing,
+    columns,
+    receivedRows,
+    outgoingDocuments,
+  );
   post({
     type: "complete",
     queryId: request.queryId,

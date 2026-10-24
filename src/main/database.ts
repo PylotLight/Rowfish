@@ -64,6 +64,7 @@ interface WorkerMessage {
   mongoCollection?: MongoBrowserCollection;
   result?: MongoMutationResult;
   rows?: DatabaseRow[];
+  documents?: (string | null)[];
   columns?: string[];
   receivedRows?: number;
   elapsedMs?: number;
@@ -340,6 +341,10 @@ function startWorker(connection: ActiveConnection): Worker {
         columns: message.columns ?? [],
         rows: message.rows,
         receivedRows: message.receivedRows ?? 0,
+        ...(message.documents &&
+        message.documents.length === message.rows.length
+          ? { documents: message.documents }
+          : {}),
       });
       return;
     }

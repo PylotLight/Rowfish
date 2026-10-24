@@ -3951,3 +3951,301 @@ textarea:focus-visible,
 .db-edit-saved:hover {
   color: var(--text);
 }
+
+/* Compass-style result views: List (document cards) / JSON / Table. */
+:root {
+  --doc-key: rgba(242, 244, 246, 0.86);
+  --doc-string: var(--syntax-string, #91d5b6);
+  --doc-number: #8dbbe9;
+  --doc-literal: var(--syntax-keyword, #c4a2f5);
+  --doc-objectid: #f0a35e;
+  --doc-date: #e7a9d4;
+  --doc-other: #d8c48a;
+}
+:root[data-appearance="paper"] {
+  --doc-key: #283532;
+  --doc-number: #285a86;
+  --doc-objectid: #a3520c;
+  --doc-date: #8d3a78;
+  --doc-other: #7a5f12;
+}
+.db-view-toggle {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-subtle, rgba(255, 255, 255, 0.03));
+}
+.result-actions .db-view-toggle button {
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+.result-actions .db-view-toggle button.active {
+  background: var(--mint-dim);
+  color: var(--mint);
+}
+.db-doc-scroll {
+  flex: 1;
+  min-height: 230px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 10px 12px 14px;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.db-doc-card {
+  position: relative;
+  margin-bottom: 8px;
+  padding: 9px 12px 9px 44px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--density-table, 11px);
+  line-height: 1.65;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 160px;
+}
+.db-doc-card:hover {
+  border-color: rgba(141, 224, 193, 0.28);
+}
+.db-doc-card.selected {
+  border-color: var(--mint);
+  box-shadow: 0 0 0 1px var(--mint-dim);
+}
+.db-doc-index {
+  position: absolute;
+  top: 9px;
+  left: 0;
+  width: 22px;
+  color: var(--muted);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  opacity: 0.7;
+}
+.db-doc-actions {
+  position: absolute;
+  z-index: 1;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-raised, rgba(24, 28, 34, 0.97));
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.db-doc-card:hover .db-doc-actions,
+.db-doc-card:focus-within .db-doc-actions {
+  opacity: 1;
+}
+.db-doc-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.db-doc-actions button:hover {
+  background: var(--mint-dim);
+  color: var(--mint);
+}
+.db-doc-actions button.danger:hover {
+  background: rgba(229, 99, 111, 0.14);
+  color: var(--danger);
+}
+.db-doc-line {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  gap: 4px;
+  white-space: nowrap;
+}
+.db-doc-caret,
+.db-doc-caret-space {
+  display: inline-flex;
+  flex: 0 0 14px;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: -18px;
+  align-self: center;
+}
+.db-doc-caret {
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+.db-doc-caret.open {
+  transform: rotate(90deg);
+}
+.db-doc-caret:hover {
+  color: var(--mint);
+}
+.db-doc-key {
+  flex: 0 0 auto;
+  color: var(--doc-key);
+  font-weight: 600;
+}
+.db-doc-colon {
+  flex: 0 0 auto;
+  margin-left: -4px;
+  color: var(--muted);
+}
+.db-doc-summary {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.db-doc-summary:hover {
+  color: var(--text);
+}
+.db-doc-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--doc-other);
+}
+.db-doc-value.kind-String {
+  color: var(--doc-string);
+}
+.db-doc-value.kind-Int32,
+.db-doc-value.kind-Int64,
+.db-doc-value.kind-Double,
+.db-doc-value.kind-Decimal128 {
+  color: var(--doc-number);
+}
+.db-doc-value.kind-Boolean,
+.db-doc-value.kind-Null,
+.db-doc-value.kind-Undefined {
+  color: var(--doc-literal);
+}
+.db-doc-value.kind-ObjectId {
+  color: var(--doc-objectid);
+}
+.db-doc-value.kind-Date,
+.db-doc-value.kind-Timestamp {
+  color: var(--doc-date);
+}
+.db-doc-show-more,
+.db-doc-more button {
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 9.5px;
+  cursor: pointer;
+}
+.db-doc-show-more:hover,
+.db-doc-more button:hover {
+  color: var(--mint);
+}
+.db-doc-more {
+  padding: 6px 0 2px;
+  text-align: center;
+}
+.db-doc-scroll.json .db-doc-card {
+  padding-right: 12px;
+}
+.db-doc-json {
+  margin: 0;
+  overflow-x: auto;
+  color: var(--text);
+  font: inherit;
+  white-space: pre;
+}
+.db-doc-json .json-key {
+  color: var(--doc-key);
+}
+.db-doc-json .json-string {
+  color: var(--doc-string);
+}
+.db-doc-json .json-number {
+  color: var(--doc-number);
+}
+.db-doc-json .json-literal {
+  color: var(--doc-literal);
+}
+
+/* Resizable columns: widths come from <col>, the filler soaks up spare room. */
+.db-result-table.sized th,
+.db-result-table.sized td {
+  min-width: 0;
+  max-width: none;
+}
+.db-result-table.sized th.db-row-index-head,
+.db-result-table.sized td.db-row-index {
+  min-width: 45px;
+  max-width: 45px;
+}
+.db-result-table th.db-col-filler,
+.db-result-table td.db-col-filler {
+  padding: 0;
+}
+.db-result-table th .db-column-filter-button {
+  right: 9px;
+}
+.db-col-resizer {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.db-col-resizer::after {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  right: 0;
+  width: 1px;
+  background: var(--border);
+  content: "";
+}
+.db-col-resizer:hover::after,
+.db-col-resizer:active::after {
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--mint);
+}
+.db-result-table th .db-col-label {
+  overflow: hidden;
+  min-width: 0;
+  font-weight: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.db-col-type {
+  margin-left: 3px;
+  color: var(--muted);
+  font-size: 0.85em;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+.db-result-table td.nested-cell {
+  color: var(--muted);
+  font-style: italic;
+}

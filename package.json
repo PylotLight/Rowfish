@@ -19,7 +19,7 @@
     "dist:mac": "electron-builder --mac",
     "dist:ci": "electron-builder --publish never --mac",
     "postinstall": "install-electron",
-    "test:smoke": "bun run build && node scripts/workbench-smoke.mjs && node scripts/modern-workbench-smoke.mjs && node scripts/settings-smoke.mjs && node scripts/query-connection-smoke.mjs && node scripts/layout-smoke.mjs",
+    "test:smoke": "bun run build && node scripts/workbench-smoke.mjs && node scripts/modern-workbench-smoke.mjs && node scripts/settings-smoke.mjs && node scripts/query-connection-smoke.mjs && node scripts/layout-smoke.mjs && node scripts/results-view-smoke.mjs",
     "format": "bun fmt",
     "format:check": "bun fmt --check"
   },
