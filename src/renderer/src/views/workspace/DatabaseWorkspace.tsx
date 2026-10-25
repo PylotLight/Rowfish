@@ -1,5 +1,4 @@
 import {
-  Database,
   Server,
   Search,
   RefreshCw,
@@ -58,6 +57,7 @@ import HelpDialog from "./components/HelpDialog";
 import MongoOperationDialog, {
   type MongoOperationFields,
 } from "./components/MongoOperationDialog";
+import QueryConnectionDialog from "./components/QueryConnectionDialog";
 import SaveQueryDialog from "./components/SaveQueryDialog";
 import TableMetadata from "./components/TableMetadata";
 import {
@@ -1550,6 +1550,18 @@ export default function DatabaseWorkspace({
     setQueryConnectionDatabases([]);
     setQueryConnectionError("");
     setShowQueryConnection(true);
+  }
+
+  /** Open the connect dialog prefilled for the active query's kind. */
+  function openConnectForQuery(): void {
+    setShowQueryConnection(false);
+    setConnectionError("");
+    setForm({
+      ...DEFAULT_FORM,
+      kind: activeTab?.kind ?? "postgres",
+      ...kindDefaults(activeTab?.kind ?? "postgres"),
+    });
+    setShowConnect(true);
   }
 
   function bindQueryConnection(connection: DatabaseConnectionSummary): void {
@@ -4384,162 +4396,20 @@ export default function DatabaseWorkspace({
         onClose={() => setSaveDialog(false)}
       />
       <HelpDialog open={showHelp} onClose={() => setShowHelp(false)} />
-      {showQueryConnection && (
-        <div
-          className="db-modal-backdrop"
-          onMouseDown={(event) => {
-            if (event.target !== event.currentTarget) return;
-            if (!queryConnectionBusy) cancelQueryConnection();
-          }}
-        >
-          <section
-            className="db-modal compact-modal query-connection-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Choose a query connection"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="db-modal-head">
-              <h2>Choose a query connection</h2>
-              <button
-                className="db-icon-button"
-                aria-label="Close"
-                disabled={queryConnectionBusy}
-                onClick={cancelQueryConnection}
-              >
-                ×
-              </button>
-            </div>
-            <p className="db-modal-copy">
-              Select a{" "}
-              {activeTab?.kind === "mongodb" ? "MongoDB" : "PostgreSQL"}{" "}
-              connection for {activeTab?.title ?? "this query"}. Your draft
-              stays intact. Connecting does not run the query.
-            </p>
-            <div className="query-connection-options">
-              {queryConnectionServer ? (
-                <>
-                  <b>{queryConnectionServer.name} · choose a database</b>
-                  {queryConnectionDatabases
-                    .filter((database) => database.canConnect)
-                    .map((database) => (
-                      <button
-                        key={database.name}
-                        disabled={queryConnectionBusy}
-                        aria-label={`Use database ${database.name}`}
-                        onClick={() =>
-                          void selectQueryConnection(
-                            queryConnectionServer,
-                            false,
-                            database.name,
-                          )
-                        }
-                      >
-                        <Database size={15} /> {database.name}
-                      </button>
-                    ))}
-                  {!queryConnectionDatabases.some(
-                    (database) => database.canConnect,
-                  ) &&
-                    !queryConnectionBusy && (
-                      <p>
-                        No accessible databases found. Choose another connection
-                        or retry.
-                      </p>
-                    )}
-                  <button
-                    disabled={queryConnectionBusy}
-                    onClick={() =>
-                      void selectQueryConnection(queryConnectionServer)
-                    }
-                  >
-                    Refresh databases
-                  </button>
-                  <button
-                    disabled={queryConnectionBusy}
-                    onClick={() => setQueryConnectionServer(null)}
-                  >
-                    Other connections
-                  </button>
-                </>
-              ) : (
-                <>
-                  {connections
-                    .filter((connection) => connection.kind === activeTab?.kind)
-                    .map((connection) => (
-                      <button
-                        key={connection.id}
-                        disabled={queryConnectionBusy}
-                        aria-label={`Use ${connection.name}`}
-                        onClick={() => void selectQueryConnection(connection)}
-                      >
-                        <Database size={15} /> {connection.name} ·{" "}
-                        {connection.database || "choose database"} · connected
-                      </button>
-                    ))}
-                  {savedConnections
-                    .filter((profile) => profile.kind === activeTab?.kind)
-                    .map((profile) => (
-                      <button
-                        key={profile.id}
-                        disabled={queryConnectionBusy}
-                        aria-label={`Reconnect ${profile.name}`}
-                        onClick={() =>
-                          void selectQueryConnection(profile, true)
-                        }
-                      >
-                        <RefreshCw size={15} /> {profile.name} ·{" "}
-                        {profile.database || "choose database"} · saved
-                      </button>
-                    ))}
-                  {!connections.some(
-                    (connection) => connection.kind === activeTab?.kind,
-                  ) &&
-                    !savedConnections.some(
-                      (profile) => profile.kind === activeTab?.kind,
-                    ) && (
-                      <p>
-                        No matching connections yet. Add a connection to use
-                        this draft.
-                      </p>
-                    )}
-                </>
-              )}
-            </div>
-            {queryConnectionBusy && <p role="status">Connecting…</p>}
-            {queryConnectionError && (
-              <div className="db-query-error" role="alert">
-                {queryConnectionError}
-              </div>
-            )}
-            <div className="db-modal-actions">
-              <button
-                className="db-quiet-button"
-                disabled={queryConnectionBusy}
-                onClick={cancelQueryConnection}
-              >
-                Cancel
-              </button>
-              <button
-                className="db-run-button"
-                disabled={queryConnectionBusy}
-                onClick={() => {
-                  setShowQueryConnection(false);
-                  setConnectionError("");
-                  setForm({
-                    ...DEFAULT_FORM,
-                    kind: activeTab?.kind ?? "postgres",
-                    ...kindDefaults(activeTab?.kind ?? "postgres"),
-                  });
-                  setShowConnect(true);
-                }}
-              >
-                New connection
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
+      <QueryConnectionDialog
+        server={queryConnectionServer}
+        databases={queryConnectionDatabases}
+        busy={queryConnectionBusy}
+        error={queryConnectionError}
+        tabKind={activeTab?.kind}
+        tabTitle={activeTab?.title}
+        connections={connections}
+        savedConnections={savedConnections}
+        onSelect={selectQueryConnection}
+        onCancel={cancelQueryConnection}
+        onServerChange={setQueryConnectionServer}
+        onConnectNew={openConnectForQuery}
+      />
       <ConnectionDialog
         form={form}
         onFormChange={setForm}
