@@ -5,6 +5,7 @@ import type {
 } from "../../../../shared/database";
 import {
   buildConnectionString,
+  canSwitchDatabase,
   connectionSubline,
   DEFAULT_FORM,
   dialogErrorMessage,
@@ -133,6 +134,15 @@ describe("dialog field helpers", () => {
         summary({ serverMode: true, host: "db", port: 5433, database: "" }),
       ),
     ).toBe("PostgreSQL · db:5433 · all databases");
+  });
+
+  test("canSwitchDatabase is only for plain PostgreSQL connections", () => {
+    expect(canSwitchDatabase(summary())).toBe(true);
+    expect(canSwitchDatabase(summary({ serverMode: true }))).toBe(false);
+    expect(canSwitchDatabase(summary({ kind: "mongodb" }))).toBe(false);
+    expect(canSwitchDatabase(summary({ parentConnectionId: "conn-1" }))).toBe(
+      false,
+    );
   });
 
   test("mongoBrowserKey namespaces the browser state per database", () => {

@@ -1,21 +1,14 @@
 import {
-  Server,
-  Search,
-  RefreshCw,
   Plus,
   Play,
   Square,
   Save,
   FileCode2,
-  History,
-  BookOpen,
   X,
   Download,
   Table2,
   Columns3,
   KeyRound,
-  ChevronDown,
-  ChevronsUpDown,
   ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
@@ -23,7 +16,6 @@ import {
   Copy,
   Eye,
   EyeOff,
-  Pencil,
   List,
   Braces,
 } from "lucide-react";
@@ -53,6 +45,7 @@ import {
 import { isSameRow } from "../../lib/row-editor";
 import DocumentResults from "../../components/DocumentResults";
 import ConnectionDialog from "./components/ConnectionDialog";
+import ConnectionRail from "./components/ConnectionRail";
 import DbSwitcher from "./components/DbSwitcher";
 import HelpDialog from "./components/HelpDialog";
 import MongoBrowser from "./components/MongoBrowser";
@@ -129,7 +122,6 @@ import {
 import {
   buildConnectionString,
   CONNECT_MODE_KEY,
-  connectionSubline,
   DEFAULT_FORM,
   dialogErrorMessage,
   kindDefaults,
@@ -146,6 +138,7 @@ import {
   typedDocuments,
   documentOf,
   type MongoOperation,
+  type RailView,
   type RunState,
   type TabResultSnapshot,
 } from "./workspace-helpers";
@@ -182,10 +175,6 @@ export default function DatabaseWorkspace({
   const [saveProfile, setSaveProfile] = useState(true);
   /** The saved profile the connection dialog is editing, or null for a new one. */
   const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
-  /** Connections whose object tree is folded away in the sidebar. */
-  const [collapsedConnections, setCollapsedConnections] = useState<
-    Record<string, boolean>
-  >({});
   /** Connection string mode (kind detected from the scheme) or manual details. */
   const [uriMode, setUriMode] = useState(loadConnectStringMode);
   const [revealUri, setRevealUri] = useState(false);
@@ -278,13 +267,7 @@ export default function DatabaseWorkspace({
       ),
     }));
   }
-  const [railView, setRailView] = useState<"servers" | "saved" | "history">(
-    "servers",
-  );
-  const [objectSearch, setObjectSearch] = useState("");
-  const [collapsedSchemas, setCollapsedSchemas] = useState<
-    Record<string, boolean>
-  >({});
+  const [railView, setRailView] = useState<RailView>("servers");
   const [sidebarHidden, setSidebarHidden] = useState(() => {
     try {
       return localStorage.getItem("rowfish.sidebar-hidden") !== "false";
@@ -1939,6 +1922,15 @@ export default function DatabaseWorkspace({
     }
   }
 
+  /** Rail card selection: close the row panel, then activate the connection. */
+  function selectRailConnection(
+    connection: DatabaseConnectionSummary,
+  ): boolean {
+    if (!closeRowPanel()) return false;
+    setActiveId(connection.id);
+    return true;
+  }
+
   async function openDatabase(
     server: DatabaseConnectionSummary,
     database: DatabaseBrowserDatabase,
@@ -2461,14 +2453,6 @@ export default function DatabaseWorkspace({
     }
   }
 
-  function canSwitchDatabase(connection: DatabaseConnectionSummary): boolean {
-    return (
-      connection.kind === "postgres" &&
-      !connection.serverMode &&
-      !connection.parentConnectionId
-    );
-  }
-
   async function toggleDbSwitcher(
     connection: DatabaseConnectionSummary,
   ): Promise<void> {
@@ -2645,74 +2629,6 @@ export default function DatabaseWorkspace({
     setForm((current) => ({ ...current, [key]: value }));
   }
 
-  function renderTables(
-    connection: DatabaseConnectionSummary,
-  ): React.JSX.Element {
-    const tables = (tableLists[connection.id] ?? []).filter((table) =>
-      `${table.schema}.${table.name}`
-        .toLowerCase()
-        .includes(objectSearch.toLowerCase()),
-    );
-    const grouped = tables.reduce<Record<string, DatabaseBrowserTable[]>>(
-      (groups, table) => {
-        (groups[table.schema] ??= []).push(table);
-        return groups;
-      },
-      {},
-    );
-    return (
-      <div className="db-browser-objects">
-        {browserLoading[connection.id] && (
-          <div className="db-browser-hint">
-            <span className="db-spinner small" /> Loading tables…
-          </div>
-        )}
-        {browserErrors[connection.id] && (
-          <div className="db-browser-error">{browserErrors[connection.id]}</div>
-        )}
-        {Object.entries(grouped).map(([schema, schemaTables]) => (
-          <div className="db-browser-schema" key={`${connection.id}:${schema}`}>
-            <button
-              className="db-browser-schema-name"
-              onClick={() =>
-                setCollapsedSchemas((current) => ({
-                  ...current,
-                  [`${connection.id}:${schema}`]:
-                    !current[`${connection.id}:${schema}`],
-                }))
-              }
-            >
-              {collapsedSchemas[`${connection.id}:${schema}`] ? (
-                <ChevronRight size={12} />
-              ) : (
-                <ChevronDown size={12} />
-              )}{" "}
-              {schema} <span>{schemaTables.length}</span>
-            </button>
-            {!collapsedSchemas[`${connection.id}:${schema}`] &&
-              schemaTables.map((table) => (
-                <button
-                  className={`db-browser-object${selectedTable?.connectionId === connection.id && selectedTable.schema === table.schema && selectedTable.name === table.name ? " active" : ""}`}
-                  key={`${table.schema}.${table.name}`}
-                  title={`${table.kind}: ${table.schema}.${table.name}`}
-                  onClick={() => selectTable(connection, table)}
-                >
-                  <Table2 size={13} />
-                  <span>{table.name}</span>
-                  <small>{table.kind === "view" ? "view" : ""}</small>
-                </button>
-              ))}
-          </div>
-        ))}
-        {!browserLoading[connection.id] &&
-          !browserErrors[connection.id] &&
-          tables.length === 0 && (
-            <div className="db-browser-hint">No tables or views found.</div>
-          )}
-      </div>
-    );
-  }
-
   return (
     <section
       ref={workspaceRef}
@@ -2744,502 +2660,75 @@ export default function DatabaseWorkspace({
           if (sidebarPeek && sidebarHidden) scheduleSidebarHide();
         }}
       >
-        <div className="db-rail-heading">
-          <h2>Explorer</h2>
-          {!settingsView && (
-            <button
-              className="db-icon-button rail-close"
-              aria-label={
-                sidebarHidden
-                  ? "Pin explorer sidebar"
-                  : "Collapse explorer sidebar"
-              }
-              title={sidebarHidden ? "Keep explorer open" : "Collapse explorer"}
-              aria-pressed={!sidebarHidden}
-              onClick={sidebarHidden ? dockSidebar : closeSidebar}
-            >
-              {sidebarHidden ? (
-                <PanelLeftOpen size={15} />
-              ) : (
-                <PanelLeftClose size={15} />
-              )}
-            </button>
-          )}
-        </div>
-        <button
-          className="db-connect-button"
-          onClick={() => {
+        <ConnectionRail
+          connections={connections}
+          savedConnections={savedConnections}
+          savedQueries={workspace.saved}
+          history={workspace.history}
+          activeId={activeId}
+          activeConnection={activeConnection}
+          railView={railView}
+          runState={runState}
+          connectBusy={connectBusy}
+          connectionError={connectionError}
+          rememberQueries={rememberQueries}
+          selectedTable={selectedTable}
+          tableLists={tableLists}
+          serverDatabases={serverDatabases}
+          browserLoading={browserLoading}
+          browserErrors={browserErrors}
+          mongoDatabases={mongoDatabases}
+          mongoCollections={mongoCollections}
+          expandedMongoDatabases={expandedMongoDatabases}
+          selectedMongoDatabase={selectedMongoDatabase}
+          selectedMongoCollection={selectedMongoCollection}
+          dbSwitcher={dbSwitcher}
+          sidebarHidden={sidebarHidden}
+          settingsView={Boolean(settingsView)}
+          sidebarActions={sidebarActions}
+          onNewConnection={() => {
             setShowConnect(true);
             setConnectionError("");
           }}
-        >
-          <span>＋</span> New connection
-        </button>
-        <div className="rail-tabs" role="tablist" aria-label="Explorer views">
-          {(
-            [
-              { id: "servers", label: "Servers", Icon: Server },
-              { id: "saved", label: "Queries", Icon: BookOpen },
-              { id: "history", label: "History", Icon: History },
-            ] as const
-          ).map(({ id, label, Icon }) => (
-            <button
-              role="tab"
-              aria-selected={railView === id}
-              key={id}
-              className={railView === id ? "active" : ""}
-              onClick={() => setRailView(id)}
-            >
-              <Icon size={14} aria-hidden="true" />
-              <span>{label}</span>
-            </button>
-          ))}
-        </div>
-        <div className="object-search">
-          <Search size={14} />
-          <input
-            aria-label="Search explorer"
-            placeholder={
-              railView === "servers"
-                ? "Filter tables and schemas…"
-                : "Search queries…"
-            }
-            value={objectSearch}
-            onChange={(event) => setObjectSearch(event.target.value)}
-          />
-          {railView === "servers" && (
-            <button
-              title="Refresh browser"
-              aria-label="Refresh browser"
-              disabled={!activeConnection || runState !== "idle"}
-              onClick={() =>
-                activeConnection && void inspectConnection(activeConnection)
-              }
-            >
-              <RefreshCw size={13} />
-            </button>
-          )}
-        </div>
-        {railView !== "servers" && (
-          <div className="query-library">
-            <div className="library-heading">
-              <span>
-                {railView === "saved" ? "SAVED QUERIES" : "RECENT EXECUTIONS"}
-              </span>
-              <button
-                onClick={() => {
-                  if (railView === "history")
-                    setWorkspace((current) => ({ ...current, history: [] }));
-                  else saveCurrentQuery();
-                }}
-              >
-                {railView === "history" ? "Clear" : "+ Save"}
-              </button>
-            </div>
-            {railView === "history" && (
-              <label className="history-toggle">
-                <input
-                  type="checkbox"
-                  checked={rememberQueries}
-                  onChange={(event) => setRememberQueries(event.target.checked)}
-                />{" "}
-                Record query text locally
-              </label>
-            )}
-            {railView === "saved"
-              ? workspace.saved
-                  .filter((item) =>
-                    `${item.title} ${item.query} ${item.folder}`
-                      .toLowerCase()
-                      .includes(objectSearch.toLowerCase()),
-                  )
-                  .map((item) => (
-                    <div className="library-item" key={item.id}>
-                      <button
-                        onClick={() => {
-                          newTab(item.query, item.title, null, item);
-                        }}
-                      >
-                        <span className="library-folder">{item.folder}</span>
-                        <b>
-                          <FileCode2 size={13} /> {item.title}
-                        </b>
-                        <code>{item.query.slice(0, 100)}</code>
-                      </button>
-                      <button
-                        className="library-delete"
-                        aria-label={`Delete saved query ${item.title}`}
-                        onClick={() =>
-                          setWorkspace((current) => ({
-                            ...current,
-                            saved: current.saved.filter(
-                              (entry) => entry.id !== item.id,
-                            ),
-                          }))
-                        }
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ))
-              : workspace.history
-                  .filter((item) =>
-                    `${item.query} ${item.connectionName}`
-                      .toLowerCase()
-                      .includes(objectSearch.toLowerCase()),
-                  )
-                  .map((item) => (
-                    <div className="library-item" key={item.id}>
-                      <button
-                        onClick={() => {
-                          newTab(item.query, "From history", null, item);
-                        }}
-                      >
-                        <span className={`history-status ${item.status}`}>
-                          {item.status} · {item.connectionName}
-                        </span>
-                        <code>{item.query.slice(0, 120)}</code>
-                        <small>
-                          {new Date(item.startedAt).toLocaleString()}
-                          {item.elapsedMs !== undefined
-                            ? ` · ${item.elapsedMs} ms`
-                            : ""}
-                        </small>
-                      </button>
-                    </div>
-                  ))}
-            {(railView === "saved" ? workspace.saved : workspace.history)
-              .length === 0 && (
-              <div className="db-empty-rail">
-                <FileCode2 size={26} />
-                <b>
-                  {railView === "saved"
-                    ? "Your query library"
-                    : "A clean slate"}
-                </b>
-                <p>
-                  {railView === "saved"
-                    ? "Save useful SQL with a name and folder. Your work stays on this device."
-                    : "Executed queries appear here with timing and status. Restore one without running it."}
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-        <div
-          className="db-connection-list"
-          style={{ display: railView === "servers" ? undefined : "none" }}
-          aria-label="Database server browser"
-        >
-          {connections
-            .filter((connection) => !connection.parentConnectionId)
-            .map((connection) => (
-              <div className="db-browser-server" key={connection.id}>
-                <div
-                  className={`db-connection${activeId === connection.id ? " selected" : ""}${canSwitchDatabase(connection) ? " switchable" : ""}${connection.savedConnectionId && !connection.parentConnectionId ? " editable" : ""}`}
-                >
-                  <button
-                    className="db-connection-select"
-                    disabled={runState !== "idle"}
-                    aria-expanded={!collapsedConnections[connection.id]}
-                    title={
-                      activeId === connection.id
-                        ? collapsedConnections[connection.id]
-                          ? "Expand"
-                          : "Collapse"
-                        : undefined
-                    }
-                    onClick={() => {
-                      // A second click on the selected card folds its tree.
-                      if (activeId === connection.id) {
-                        setCollapsedConnections((current) => ({
-                          ...current,
-                          [connection.id]: !current[connection.id],
-                        }));
-                        return;
-                      }
-                      if (!closeRowPanel()) return;
-                      setActiveId(connection.id);
-                      setCollapsedConnections((current) => ({
-                        ...current,
-                        [connection.id]: false,
-                      }));
-                    }}
-                  >
-                    <ChevronRight
-                      size={12}
-                      className={`db-connection-chevron${collapsedConnections[connection.id] ? "" : " open"}`}
-                      aria-hidden="true"
-                    />
-                    <span
-                      className={`db-engine-mark ${connection.kind}`}
-                      aria-hidden="true"
-                    >
-                      {connection.kind === "postgres" ? "P" : "M"}
-                    </span>
-                    <span className="db-connection-copy">
-                      <b>{connection.name}</b>
-                      <small>{connectionSubline(connection)}</small>
-                    </span>
-                    <span className="db-live-dot" aria-label="Connected" />
-                  </button>
-                  {canSwitchDatabase(connection) && (
-                    <button
-                      className={`db-db-switch${dbSwitcher?.connectionId === connection.id ? " open" : ""}`}
-                      title="Switch database"
-                      aria-label={`Switch database on ${connection.name}`}
-                      aria-expanded={dbSwitcher?.connectionId === connection.id}
-                      disabled={runState !== "idle"}
-                      onClick={() => void toggleDbSwitcher(connection)}
-                    >
-                      <ChevronsUpDown size={13} />
-                    </button>
-                  )}
-                  {connection.savedConnectionId &&
-                    !connection.parentConnectionId && (
-                      <button
-                        className="db-edit-connection"
-                        title={`Edit ${connection.name}`}
-                        aria-label={`Edit ${connection.name}`}
-                        disabled={connectBusy}
-                        onClick={() =>
-                          void editSaved(connection.savedConnectionId!)
-                        }
-                      >
-                        <Pencil size={12} />
-                      </button>
-                    )}
-                  <button
-                    className="db-disconnect"
-                    title={`Disconnect ${connection.name}`}
-                    aria-label={`Disconnect ${connection.name}`}
-                    onClick={() => void disconnect(connection)}
-                  >
-                    ×
-                  </button>
-                </div>
-                {dbSwitcher?.connectionId === connection.id && (
-                  <DbSwitcher
-                    connection={connection}
-                    state={dbSwitcher}
-                    onFilterChange={(filter) =>
-                      setDbSwitcher((current) =>
-                        current ? { ...current, filter } : current,
-                      )
-                    }
-                    onSwitch={(database) =>
-                      void switchDatabase(connection, database)
-                    }
-                    onClose={() => setDbSwitcher(null)}
-                  />
-                )}
-                {!collapsedConnections[connection.id] && (
-                  <>
-                    {connection.kind === "postgres" &&
-                      connection.serverMode && (
-                        <div className="db-browser-objects db-browser-databases">
-                          <div className="db-browser-section-title">
-                            SERVER BROWSER
-                          </div>
-                          {browserLoading[connection.id] && (
-                            <div className="db-browser-hint">
-                              <span className="db-spinner small" /> Loading
-                              databases…
-                            </div>
-                          )}
-                          {browserErrors[connection.id] && (
-                            <div className="db-browser-error">
-                              {browserErrors[connection.id]}
-                            </div>
-                          )}
-                          {(serverDatabases[connection.id] ?? []).map(
-                            (database) => {
-                              const child = connections.find(
-                                (item) =>
-                                  item.parentConnectionId === connection.id &&
-                                  item.database === database.name,
-                              );
-                              const loadingKey = `${connection.id}:${database.name}`;
-                              return (
-                                <div
-                                  className="db-browser-database-group"
-                                  key={database.name}
-                                >
-                                  <button
-                                    className="db-browser-database"
-                                    disabled={
-                                      !database.canConnect ||
-                                      browserLoading[loadingKey]
-                                    }
-                                    title={
-                                      database.canConnect
-                                        ? `Open ${database.name}`
-                                        : `No CONNECT permission for ${database.name}`
-                                    }
-                                    onClick={() =>
-                                      void openDatabase(connection, database)
-                                    }
-                                  >
-                                    <span aria-hidden="true">
-                                      {child ? "▾" : "›"}
-                                    </span>
-                                    <span>{database.name}</span>
-                                    {browserLoading[loadingKey] && (
-                                      <span className="db-spinner small" />
-                                    )}
-                                  </button>
-                                  {child && (
-                                    <button
-                                      className="db-child-close"
-                                      title={`Close ${database.name} session`}
-                                      aria-label={`Close ${database.name} session`}
-                                      onClick={() => void disconnect(child)}
-                                    >
-                                      ×
-                                    </button>
-                                  )}
-                                  {!database.canConnect && (
-                                    <div className="db-browser-hint db-browser-indent">
-                                      No CONNECT permission
-                                    </div>
-                                  )}
-                                  {child && renderTables(child)}
-                                  {browserErrors[loadingKey] && (
-                                    <div className="db-browser-error db-browser-indent">
-                                      {browserErrors[loadingKey]}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            },
-                          )}
-                          {!browserLoading[connection.id] &&
-                            serverDatabases[connection.id]?.length === 0 && (
-                              <div className="db-browser-hint">
-                                No databases were returned.
-                              </div>
-                            )}
-                        </div>
-                      )}
-                    {connection.kind === "postgres" &&
-                      !connection.serverMode &&
-                      renderTables(connection)}
-                    {connection.kind === "mongodb" && (
-                      <MongoBrowser
-                        connection={connection}
-                        databases={mongoDatabases[connection.id] ?? []}
-                        collections={mongoCollections}
-                        expanded={expandedMongoDatabases}
-                        selectedDatabase={selectedMongoDatabase}
-                        selectedCollection={selectedMongoCollection}
-                        activeId={activeId}
-                        loading={browserLoading}
-                        errors={browserErrors}
-                        onExpand={expandMongoDatabase}
-                        onSelectCollection={selectMongoCollection}
-                        onCreateDatabase={createMongoDatabase}
-                        onDropDatabase={dropMongoDatabase}
-                        onCreateCollection={createMongoCollection}
-                      />
-                    )}
-                  </>
-                )}
-              </div>
-            ))}
-          {connections.length === 0 && (
-            <div className="db-empty-rail">
-              {savedConnections.length > 0 ? (
-                <>
-                  <b>Not connected</b>
-                  <p>Pick a saved server to connect.</p>
-                </>
-              ) : (
-                <>
-                  <b>No connections</b>
-                  <p>Add a PostgreSQL or MongoDB connection.</p>
-                </>
-              )}
-            </div>
-          )}
-          {savedConnections.length > 0 && (
-            <div className="db-saved-connections">
-              <div className="db-browser-section-title">SAVED SERVERS</div>
-              {savedConnections
-                .filter((profile) =>
-                  `${profile.name} ${profile.host} ${profile.database}`
-                    .toLowerCase()
-                    .includes(objectSearch.toLowerCase()),
-                )
-                .map((profile) => {
-                  const active = connections.some(
-                    (connection) =>
-                      connection.savedConnectionId === profile.id &&
-                      !connection.parentConnectionId,
-                  );
-                  const loading = browserLoading[`saved:${profile.id}`];
-                  return (
-                    <div
-                      className={`db-saved-profile${active ? " active" : ""}`}
-                      key={profile.id}
-                    >
-                      <button
-                        className="db-saved-connect"
-                        disabled={loading}
-                        onClick={() => void connectSaved(profile)}
-                      >
-                        <span
-                          className={`db-engine-mark ${profile.kind}`}
-                          aria-hidden="true"
-                        >
-                          {profile.kind === "postgres" ? "P" : "M"}
-                        </span>
-                        <span className="db-connection-copy">
-                          <b>{profile.name}</b>
-                          <small>
-                            {profile.serverMode
-                              ? `${profile.host}:${profile.port} · all databases`
-                              : `${profile.kind === "postgres" ? "PostgreSQL" : "MongoDB"} · ${profile.database}`}
-                          </small>
-                        </span>
-                        {loading && <span className="db-spinner small" />}
-                      </button>
-                      <button
-                        className="db-disconnect db-edit-saved"
-                        title={`Edit ${profile.name}`}
-                        aria-label={`Edit ${profile.name}`}
-                        onClick={() => void editSaved(profile.id)}
-                      >
-                        <Pencil size={11} />
-                      </button>
-                      <button
-                        className="db-disconnect db-delete-saved"
-                        title={`Forget ${profile.name}`}
-                        aria-label={`Forget ${profile.name}`}
-                        onClick={() => void deleteSaved(profile)}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  );
-                })}
-            </div>
-          )}
-        </div>
-        {connectionError && (
-          <div className="db-query-error db-rail-error" role="alert">
-            {connectionError}
-          </div>
-        )}
-        <div className="db-rail-footer">
-          <span
-            className="db-security-note"
-            title="Saved passwords are encrypted by your operating system."
-          >
-            <KeyRound size={13} className="db-security-mark" />
-            Keychain encrypted
-          </span>
-          {sidebarActions}
-        </div>
+          onRailViewChange={setRailView}
+          onSelectConnection={selectRailConnection}
+          onEditSaved={editSaved}
+          onConnectSaved={connectSaved}
+          onDeleteSaved={deleteSaved}
+          onDisconnect={disconnect}
+          onInspectConnection={inspectConnection}
+          onOpenDatabase={openDatabase}
+          onOpenDbSwitcher={toggleDbSwitcher}
+          onDbSwitcherFilterChange={(filter) =>
+            setDbSwitcher((current) =>
+              current ? { ...current, filter } : current,
+            )
+          }
+          onDbSwitcherClose={() => setDbSwitcher(null)}
+          onSwitchDatabase={switchDatabase}
+          onExpandMongoDatabase={expandMongoDatabase}
+          onSelectMongoCollection={selectMongoCollection}
+          onCreateMongoDatabase={createMongoDatabase}
+          onDropMongoDatabase={dropMongoDatabase}
+          onCreateMongoCollection={createMongoCollection}
+          onSelectTable={selectTable}
+          onNewTab={(query, title, stored) =>
+            newTab(query, title, null, stored)
+          }
+          onSaveCurrentQuery={saveCurrentQuery}
+          onClearHistory={() =>
+            setWorkspace((current) => ({ ...current, history: [] }))
+          }
+          onDeleteSavedQuery={(id) =>
+            setWorkspace((current) => ({
+              ...current,
+              saved: current.saved.filter((entry) => entry.id !== id),
+            }))
+          }
+          onRememberQueriesChange={setRememberQueries}
+          onDockSidebar={dockSidebar}
+          onCloseSidebar={closeSidebar}
+        />
       </aside>
       {!railOpen && !settingsView && (
         <div

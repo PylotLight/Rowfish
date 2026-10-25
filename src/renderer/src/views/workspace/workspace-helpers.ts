@@ -144,7 +144,20 @@ export function connectionSubline(
   return `${connection.kind === "postgres" ? "PostgreSQL" : "MongoDB"} · ${connection.database}`;
 }
 
+/** Non-server-mode PostgreSQL connections expose a database switcher. */
+export function canSwitchDatabase(
+  connection: DatabaseConnectionSummary,
+): boolean {
+  return (
+    connection.kind === "postgres" &&
+    !connection.serverMode &&
+    !connection.parentConnectionId
+  );
+}
+
 export const MAX_CACHED_TAB_RESULTS = 12;
+/** The explorer rail's tabs. */
+export type RailView = "servers" | "saved" | "history";
 export type TabResultSnapshot = {
   rows: DatabaseRow[];
   columns: string[];
