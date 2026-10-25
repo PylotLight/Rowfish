@@ -54,6 +54,9 @@ import {
 import { isSameRow } from "../../lib/row-editor";
 import DocumentResults from "../../components/DocumentResults";
 import HelpDialog from "./components/HelpDialog";
+import MongoOperationDialog, {
+  type MongoOperationFields,
+} from "./components/MongoOperationDialog";
 import SaveQueryDialog from "./components/SaveQueryDialog";
 import TableMetadata from "./components/TableMetadata";
 import {
@@ -546,21 +549,14 @@ export default function DatabaseWorkspace({
   const [mongoOperation, setMongoOperation] = useState<MongoOperation | null>(
     null,
   );
+  const [mongoOperationConnection, setMongoOperationConnection] =
+    useState<DatabaseConnectionSummary | null>(null);
+  const [mongoOperationPrefill, setMongoOperationPrefill] = useState<
+    Partial<MongoOperationFields>
+  >({});
   const [mongoOperationBusy, setMongoOperationBusy] = useState(false);
-  const [mongoDocument, setMongoDocument] = useState("{}");
-  const [mongoFilter, setMongoFilter] = useState("{}");
-  const [mongoUpdate, setMongoUpdate] = useState('{"$set":{}}');
-  const [mongoMany, setMongoMany] = useState(false);
-  const [mongoUpsert, setMongoUpsert] = useState(false);
-  const [mongoIndexKeys, setMongoIndexKeys] = useState('{"field":1}');
-  const [mongoUniqueIndex, setMongoUniqueIndex] = useState(false);
-  const [mongoIndexName, setMongoIndexName] = useState("");
   const [mongoOperationError, setMongoOperationError] = useState("");
   const [mongoOperationSummary, setMongoOperationSummary] = useState("");
-  const [mongoCollectionName, setMongoCollectionName] = useState("");
-  const [mongoDatabaseName, setMongoDatabaseName] = useState("");
-  const [mongoCreateNewDatabase, setMongoCreateNewDatabase] = useState(false);
-  const [mongoConfirmName, setMongoConfirmName] = useState("");
   /** Indexes, validator and options under the collection bar; folded by default. */
   const [mongoDetailsOpen, setMongoDetailsOpen] = useState(() => {
     try {
@@ -597,7 +593,6 @@ export default function DatabaseWorkspace({
       return !open;
     });
   }
-  const [mongoDeleteConfirmed, setMongoDeleteConfirmed] = useState(false);
   const [viewport, setViewport] = useState({ top: 0, height: 480 });
   const scrollElement = useRef<HTMLDivElement>(null);
   const activeQuery = useRef<{ id: string; connectionId: string } | null>(null);
@@ -915,23 +910,22 @@ export default function DatabaseWorkspace({
   function editDocument(row: DatabaseRow): void {
     const document = documentOf(row);
     if (!("_id" in document)) return;
-    openMongoOperation("update");
-    setMongoFilter(JSON.stringify({ _id: toRelaxed(document._id) }));
-    setMongoUpdate(
-      JSON.stringify({ $set: toRelaxed(withoutId(document)) }, null, 2),
-    );
+    openMongoOperation("update", undefined, {
+      filter: JSON.stringify({ _id: toRelaxed(document._id) }),
+      update: JSON.stringify({ $set: toRelaxed(withoutId(document)) }, null, 2),
+    });
   }
   function cloneDocument(row: DatabaseRow): void {
-    openMongoOperation("insert");
-    setMongoDocument(
-      JSON.stringify(toRelaxed(withoutId(documentOf(row))), null, 2),
-    );
+    openMongoOperation("insert", undefined, {
+      document: JSON.stringify(toRelaxed(withoutId(documentOf(row))), null, 2),
+    });
   }
   function deleteDocument(row: DatabaseRow): void {
     const document = documentOf(row);
     if (!("_id" in document)) return;
-    openMongoOperation("delete");
-    setMongoFilter(JSON.stringify({ _id: toRelaxed(document._id) }));
+    openMongoOperation("delete", undefined, {
+      filter: JSON.stringify({ _id: toRelaxed(document._id) }),
+    });
   }
 
   function newTab(
@@ -2159,45 +2153,33 @@ export default function DatabaseWorkspace({
   function openMongoOperation(
     operation: MongoOperation,
     connectionOverride?: DatabaseConnectionSummary,
+    prefill: Partial<MongoOperationFields> = {},
   ): void {
     const operationConnection = connectionOverride ?? activeConnection;
     if (!operationConnection || operationConnection.kind !== "mongodb") return;
+    setMongoOperationConnection(operationConnection);
+    setMongoOperationPrefill(prefill);
     setMongoOperation(operation);
     setMongoOperationError("");
     setMongoOperationSummary("");
-    setMongoDocument("{}");
-    setMongoFilter("");
-    setMongoUpdate('{"$set":{}}');
-    setMongoMany(false);
-    setMongoUpsert(false);
-    setMongoIndexKeys('{"field":1}');
-    setMongoUniqueIndex(false);
-    setMongoIndexName("");
-    setMongoCollectionName(
-      operation === "drop-collection"
-        ? (selectedMongoCollection?.name ?? "")
-        : "",
-    );
-    setMongoDatabaseName(selectedMongoDatabase || operationConnection.database);
-    setMongoCreateNewDatabase(false);
-    setMongoConfirmName("");
-    setMongoDeleteConfirmed(false);
   }
 
-  async function submitMongoOperation(): Promise<void> {
+  async function submitMongoOperation(
+    fields: MongoOperationFields,
+  ): Promise<void> {
     if (
       !activeConnection ||
       activeConnection?.kind !== "mongodb" ||
       !mongoOperation
     )
       return;
-    const database = mongoCreateNewDatabase
-      ? mongoDatabaseName.trim()
-      : mongoDatabaseName.trim() ||
+    const database = fields.createNewDatabase
+      ? fields.databaseName.trim()
+      : fields.databaseName.trim() ||
         selectedMongoDatabase ||
         activeConnection!.database;
     const targetCollection =
-      mongoCollectionName.trim() ||
+      fields.collectionName.trim() ||
       (mongoOperation === "create-collection"
         ? ""
         : selectedMongoCollection?.name || collection);
@@ -2210,25 +2192,25 @@ export default function DatabaseWorkspace({
         ...base,
         operation: "insert",
         collection: targetCollection,
-        document: mongoDocument,
+        document: fields.document,
       };
     } else if (mongoOperation === "update") {
       request = {
         ...base,
         operation: "update",
         collection: targetCollection,
-        filter: mongoFilter,
-        update: mongoUpdate,
-        many: mongoMany,
-        upsert: mongoUpsert,
+        filter: fields.filter,
+        update: fields.update,
+        many: fields.many,
+        upsert: fields.upsert,
       };
     } else if (mongoOperation === "delete") {
       request = {
         ...base,
         operation: "delete",
         collection: targetCollection,
-        filter: mongoFilter,
-        many: mongoMany,
+        filter: fields.filter,
+        many: fields.many,
       };
     } else if (
       mongoOperation === "create-collection" ||
@@ -2244,15 +2226,15 @@ export default function DatabaseWorkspace({
         ...base,
         operation: "create-index",
         collection: targetCollection,
-        keys: mongoIndexKeys,
-        unique: mongoUniqueIndex,
+        keys: fields.indexKeys,
+        unique: fields.uniqueIndex,
       };
     } else {
       request = {
         ...base,
         operation: "drop-index",
         collection: targetCollection,
-        indexName: mongoIndexName,
+        indexName: fields.indexName,
       };
     }
     setMongoOperationBusy(true);
@@ -2750,10 +2732,11 @@ export default function DatabaseWorkspace({
               if (!closeRowPanel()) return;
               setActiveId(connection.id);
               setSelectedMongoDatabase("");
-              openMongoOperation("create-collection", connection);
-              setMongoDatabaseName("");
-              setMongoCreateNewDatabase(true);
-              setMongoCollectionName("");
+              openMongoOperation("create-collection", connection, {
+                databaseName: "",
+                createNewDatabase: true,
+                collectionName: "",
+              });
             }}
           >
             ＋
@@ -2797,8 +2780,9 @@ export default function DatabaseWorkspace({
                     if (!closeRowPanel()) return;
                     setActiveId(connection.id);
                     setSelectedMongoDatabase(database.name);
-                    openMongoOperation("drop-database", connection);
-                    setMongoDatabaseName(database.name);
+                    openMongoOperation("drop-database", connection, {
+                      databaseName: database.name,
+                    });
                   }}
                 >
                   ×
@@ -2819,8 +2803,9 @@ export default function DatabaseWorkspace({
                         setSelectedMongoDatabase(database.name);
                         if (!closeRowPanel()) return;
                         setActiveId(connection.id);
-                        openMongoOperation("create-collection", connection);
-                        setMongoDatabaseName(database.name);
+                        openMongoOperation("create-collection", connection, {
+                          databaseName: database.name,
+                        });
                       }}
                     >
                       ＋
@@ -3567,8 +3552,9 @@ export default function DatabaseWorkspace({
                               title={`Drop index ${index.name}`}
                               aria-label={`Drop index ${index.name}`}
                               onClick={() => {
-                                openMongoOperation("drop-index");
-                                setMongoIndexName(index.name);
+                                openMongoOperation("drop-index", undefined, {
+                                  indexName: index.name,
+                                });
                               }}
                             >
                               ×
@@ -5020,329 +5006,25 @@ export default function DatabaseWorkspace({
           </div>
         </div>
       )}
-      {mongoOperation && activeConnection?.kind === "mongodb" && (
-        <div
-          className="db-modal-backdrop"
-          onMouseDown={(event) => {
-            if (event.target !== event.currentTarget) return;
-            if (!mongoOperationBusy) setMongoOperation(null);
-          }}
-        >
-          <div
-            className="db-connect-modal db-mongo-operation-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="mongo-operation-title"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="db-modal-head">
-              <div>
-                <span className="db-overline">MONGODB OPERATION</span>
-                <h2 id="mongo-operation-title">
-                  {
-                    {
-                      insert: "Insert document",
-                      update: "Update documents",
-                      delete: "Delete documents",
-                      "create-collection": "Create collection",
-                      "drop-collection": "Drop collection",
-                      "create-index": "Create index",
-                      "drop-index": "Drop index",
-                      "drop-database": "Drop database",
-                    }[mongoOperation]
-                  }
-                </h2>
-              </div>
-              <button
-                className="db-icon-button"
-                aria-label="Close"
-                disabled={mongoOperationBusy}
-                onClick={() => setMongoOperation(null)}
-              >
-                ×
-              </button>
-            </div>
-            <div className="db-mongo-operation-context">
-              {mongoOperation === "create-collection" ? (
-                <label className="db-form-field">
-                  <span>Database</span>
-                  <input
-                    value={mongoDatabaseName}
-                    onChange={(event) =>
-                      setMongoDatabaseName(event.target.value)
-                    }
-                    maxLength={128}
-                  />
-                </label>
-              ) : (
-                <div>
-                  <span>Database</span>
-                  <b>
-                    {mongoDatabaseName ||
-                      selectedMongoDatabase ||
-                      activeConnection!.database}
-                  </b>
-                </div>
-              )}
-              {mongoOperation === "create-collection" ||
-              mongoOperation === "drop-collection" ? (
-                <label className="db-form-field">
-                  <span>Collection name</span>
-                  <input
-                    value={mongoCollectionName}
-                    onChange={(event) =>
-                      setMongoCollectionName(event.target.value)
-                    }
-                    maxLength={128}
-                    autoFocus
-                  />
-                </label>
-              ) : (
-                mongoOperation !== "drop-database" && (
-                  <div>
-                    <span>Collection</span>
-                    <b>{selectedMongoCollection?.name ?? collection}</b>
-                  </div>
-                )
-              )}
-            </div>
-            {mongoOperation === "create-collection" && (
-              <p className="db-modal-copy">
-                A new database is created automatically when its first
-                collection is created.
-              </p>
-            )}
-            {mongoOperation === "insert" && (
-              <label className="db-form-field">
-                <span>Document (JSON / Extended JSON)</span>
-                <textarea
-                  className="db-operation-json"
-                  rows={10}
-                  value={mongoDocument}
-                  onChange={(event) => setMongoDocument(event.target.value)}
-                  spellCheck={false}
-                />
-              </label>
-            )}
-            {(mongoOperation === "update" || mongoOperation === "delete") && (
-              <>
-                <label className="db-form-field">
-                  <span>Match filter (JSON)</span>
-                  <textarea
-                    className="db-operation-json"
-                    rows={5}
-                    value={mongoFilter}
-                    onChange={(event) => setMongoFilter(event.target.value)}
-                    spellCheck={false}
-                    placeholder={'{ "_id": { "$oid": "..." } }'}
-                  />
-                </label>
-                {mongoOperation === "update" && (
-                  <label className="db-form-field">
-                    <span>Update operators (JSON)</span>
-                    <textarea
-                      className="db-operation-json"
-                      rows={5}
-                      value={mongoUpdate}
-                      onChange={(event) => setMongoUpdate(event.target.value)}
-                      spellCheck={false}
-                      placeholder={'{ "$set": { "status": "ready" } }'}
-                    />
-                  </label>
-                )}
-                <div className="db-mongo-option-row">
-                  <label className="db-tls-toggle">
-                    <input
-                      type="checkbox"
-                      checked={mongoMany}
-                      onChange={(event) => setMongoMany(event.target.checked)}
-                    />
-                    <span>
-                      <b>
-                        {mongoOperation === "delete"
-                          ? "Delete all matches"
-                          : "Update all matches"}
-                      </b>
-                    </span>
-                  </label>
-                  {mongoOperation === "update" && (
-                    <label className="db-tls-toggle">
-                      <input
-                        type="checkbox"
-                        checked={mongoUpsert}
-                        onChange={(event) =>
-                          setMongoUpsert(event.target.checked)
-                        }
-                      />
-                      <span>
-                        <b>Upsert if none match</b>
-                      </span>
-                    </label>
-                  )}
-                </div>
-                {mongoOperation === "delete" && (
-                  <label className="db-tls-toggle db-destructive-confirm">
-                    <input
-                      type="checkbox"
-                      checked={mongoDeleteConfirmed}
-                      onChange={(event) =>
-                        setMongoDeleteConfirmed(event.target.checked)
-                      }
-                    />
-                    <span>
-                      <b>
-                        I reviewed the filter and want to delete matching
-                        documents.
-                      </b>
-                    </span>
-                  </label>
-                )}
-              </>
-            )}
-            {mongoOperation === "create-index" && (
-              <>
-                <label className="db-form-field">
-                  <span>Index keys (JSON)</span>
-                  <textarea
-                    className="db-operation-json"
-                    rows={4}
-                    value={mongoIndexKeys}
-                    onChange={(event) => setMongoIndexKeys(event.target.value)}
-                    spellCheck={false}
-                    placeholder={'{ "createdAt": -1 }'}
-                  />
-                </label>
-                <label className="db-tls-toggle">
-                  <input
-                    type="checkbox"
-                    checked={mongoUniqueIndex}
-                    onChange={(event) =>
-                      setMongoUniqueIndex(event.target.checked)
-                    }
-                  />
-                  <span>
-                    <b>Unique index</b>
-                  </span>
-                </label>
-              </>
-            )}
-            {mongoOperation === "drop-index" && (
-              <>
-                <label className="db-form-field">
-                  <span>Index name</span>
-                  <input
-                    value={mongoIndexName}
-                    onChange={(event) => setMongoIndexName(event.target.value)}
-                    maxLength={128}
-                    autoFocus
-                  />
-                </label>
-                <label className="db-tls-toggle db-destructive-confirm">
-                  <input
-                    type="checkbox"
-                    checked={mongoDeleteConfirmed}
-                    onChange={(event) =>
-                      setMongoDeleteConfirmed(event.target.checked)
-                    }
-                  />
-                  <span>
-                    <b>Queries relying on this index may slow down. Drop it.</b>
-                  </span>
-                </label>
-              </>
-            )}
-            {(mongoOperation === "drop-collection" ||
-              mongoOperation === "drop-database") && (
-              <>
-                <p className="db-query-error">
-                  This permanently drops{" "}
-                  {mongoOperation === "drop-database"
-                    ? "the database and all its collections"
-                    : "the collection and all its documents"}
-                  .
-                </p>
-                <label className="db-form-field">
-                  <span>
-                    Type{" "}
-                    {mongoOperation === "drop-database"
-                      ? mongoDatabaseName ||
-                        selectedMongoDatabase ||
-                        activeConnection!.database
-                      : mongoCollectionName}{" "}
-                    to confirm
-                  </span>
-                  <input
-                    value={mongoConfirmName}
-                    onChange={(event) =>
-                      setMongoConfirmName(event.target.value)
-                    }
-                    autoComplete="off"
-                  />
-                </label>
-              </>
-            )}
-            {mongoOperationError && (
-              <div className="db-query-error" role="alert">
-                {mongoOperationError}
-              </div>
-            )}
-            {mongoOperationSummary && (
-              <p className="db-results-summary">{mongoOperationSummary}</p>
-            )}
-            <div className="db-modal-actions">
-              <button
-                className="db-quiet-button"
-                disabled={mongoOperationBusy}
-                onClick={() => setMongoOperation(null)}
-              >
-                Cancel
-              </button>
-              <button
-                className={
-                  mongoOperation === "delete" ||
-                  mongoOperation === "drop-collection" ||
-                  mongoOperation === "drop-database" ||
-                  mongoOperation === "drop-index"
-                    ? "db-cancel-button"
-                    : "db-run-button"
-                }
-                disabled={
-                  mongoOperationBusy ||
-                  (mongoOperation === "create-collection" &&
-                    (!mongoCollectionName.trim() ||
-                      (mongoCreateNewDatabase && !mongoDatabaseName.trim()))) ||
-                  (mongoOperation === "delete" &&
-                    (!mongoFilter.trim() ||
-                      mongoFilter.trim() === "{}" ||
-                      !mongoDeleteConfirmed)) ||
-                  (mongoOperation === "update" &&
-                    (!mongoFilter.trim() || mongoFilter.trim() === "{}")) ||
-                  (mongoOperation === "create-index" &&
-                    !mongoIndexKeys.trim()) ||
-                  (mongoOperation === "drop-index" &&
-                    (!mongoIndexName.trim() || !mongoDeleteConfirmed)) ||
-                  (mongoOperation === "drop-collection" &&
-                    mongoConfirmName !== mongoCollectionName) ||
-                  (mongoOperation === "drop-database" &&
-                    mongoConfirmName !==
-                      (mongoDatabaseName ||
-                        selectedMongoDatabase ||
-                        activeConnection!.database))
-                }
-                onClick={() => void submitMongoOperation()}
-              >
-                {mongoOperationBusy
-                  ? "Working…"
-                  : mongoOperation === "delete" ||
-                      mongoOperation === "drop-collection" ||
-                      mongoOperation === "drop-database"
-                    ? "Confirm destructive action"
-                    : "Run operation"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {mongoOperation &&
+        mongoOperationConnection &&
+        activeConnection?.kind === "mongodb" && (
+          <MongoOperationDialog
+            key={`${mongoOperation}:${mongoOperationConnection.id}`}
+            operation={mongoOperation}
+            connection={mongoOperationConnection}
+            activeDatabase={activeConnection!.database}
+            selectedDatabase={selectedMongoDatabase}
+            selectedCollection={selectedMongoCollection}
+            fallbackCollection={collection}
+            prefill={mongoOperationPrefill}
+            busy={mongoOperationBusy}
+            error={mongoOperationError}
+            summary={mongoOperationSummary}
+            onSubmit={(fields) => void submitMongoOperation(fields)}
+            onClose={() => setMongoOperation(null)}
+          />
+        )}
     </section>
   );
 }
