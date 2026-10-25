@@ -26,7 +26,6 @@ import {
 } from "./database/validation";
 import {
   assertAllowedSender,
-  closeChildConnections,
   closeUnregistered,
   connections,
   attachedSenders,
@@ -34,7 +33,6 @@ import {
   sendEvent,
   startWorker,
   type ActiveConnection,
-  type PendingInspection,
   type WorkerMessage,
 } from "./database/worker-bridge";
 export {
