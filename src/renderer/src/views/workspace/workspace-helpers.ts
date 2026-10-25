@@ -158,13 +158,15 @@ export function canSwitchDatabase(
 export const MAX_CACHED_TAB_RESULTS = 12;
 /** The explorer rail's tabs. */
 export type RailView = "servers" | "saved" | "history";
+/** The main results panel modes (distinct from the document view's ResultsView). */
+export type ResultViewMode = "data" | "structure" | "indexes" | "plan";
 export type TabResultSnapshot = {
   rows: DatabaseRow[];
   columns: string[];
   queryError: string;
   queryPlan: unknown;
   querySummary: string;
-  resultView: "data" | "structure" | "indexes" | "plan";
+  resultView: ResultViewMode;
   sort: { column: string; direction: 1 | -1 } | null;
   rowSource: RowSource | null;
   selectedTable: { connectionId: string; schema: string; name: string } | null;

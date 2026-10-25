@@ -56,6 +56,7 @@ import QueryConnectionDialog from "./components/QueryConnectionDialog";
 import ResultsTable from "./components/ResultsTable";
 import SaveQueryDialog from "./components/SaveQueryDialog";
 import TableMetadata from "./components/TableMetadata";
+import { useQueryRunner, type QueryResultsApi } from "./hooks/useQueryRunner";
 import {
   cellSummary,
   columnKinds,
@@ -88,7 +89,6 @@ import {
   type QueryHistoryEntry,
 } from "../../lib/query-workspace";
 import {
-  startTransition,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -114,7 +114,6 @@ import type {
   SavedConnectionProfile,
 } from "../../../../shared/database";
 import {
-  DATABASE_LIMITS,
   detectConnectionStringKind,
   getVirtualRowRange,
   quotePostgresIdentifier,
@@ -127,7 +126,6 @@ import {
   kindDefaults,
   kindLabel,
   loadConnectStringMode,
-  MAX_CACHED_TAB_RESULTS,
   measureText,
   mongoBrowserKey,
   MONGO_DETAILS_KEY,
@@ -135,12 +133,10 @@ import {
   resultId,
   ROW_HEIGHT,
   ROW_INDEX_WIDTH,
-  typedDocuments,
   documentOf,
   type MongoOperation,
   type RailView,
   type RunState,
-  type TabResultSnapshot,
 } from "./workspace-helpers";
 
 export default function DatabaseWorkspace({
@@ -487,14 +483,6 @@ export default function DatabaseWorkspace({
     "find",
   );
   const [maxRows, setMaxRows] = useState(1_000);
-  const [runState, setRunState] = useState<RunState>("idle");
-  const [rows, setRows] = useState<DatabaseRow[]>([]);
-  const [columns, setColumns] = useState<string[]>([]);
-  const [queryError, setQueryError] = useState("");
-  const [queryPlan, setQueryPlan] = useState<unknown>(null);
-  const [sqlSelection, setSqlSelection] = useState("");
-  const explainPending = useRef(false);
-  const [querySummary, setQuerySummary] = useState("No query run.");
   const [serverDatabases, setServerDatabases] = useState<
     Record<string, DatabaseBrowserDatabase[]>
   >({});
@@ -578,78 +566,72 @@ export default function DatabaseWorkspace({
   }
   const [viewport, setViewport] = useState({ top: 0, height: 480 });
   const scrollElement = useRef<HTMLDivElement>(null);
-  const activeQuery = useRef<{ id: string; connectionId: string } | null>(null);
   const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase());
-  const deferredRows = useDeferredValue(rows);
-
-  // Each tab keeps its last result in memory, so switching back shows it
-  // without re-running. Capped so a pile of tabs can't hold unbounded rows.
-  const tabResults = useRef(new Map<string, TabResultSnapshot>());
-  const resultsTabId = useRef<string>(workspace.activeTabId ?? "");
-  const skipResultSave = useRef(false);
-  useEffect(() => {
-    const tabId = workspace.activeTabId ?? "";
-    if (resultsTabId.current === tabId) return;
-    resultsTabId.current = tabId;
-    skipResultSave.current = true;
-    const saved = tabResults.current.get(tabId);
-    setRows(saved?.rows ?? []);
-    setColumns(saved?.columns ?? []);
-    setQueryError(saved?.queryError ?? "");
-    setQueryPlan(saved?.queryPlan ?? null);
-    setSqlSelection("");
-    setColumnFilters({});
-    setFilterMenu(null);
-    setRowSource(saved?.rowSource ?? null);
-    setQuerySummary(saved?.querySummary ?? "Ready to execute.");
-    explainPending.current = false;
-    if (saved) {
-      setResultView(saved.resultView);
-      setSort(saved.sort);
-      setSelectedTable(saved.selectedTable);
-      setTableDetails(saved.tableDetails);
-    }
-  }, [workspace.activeTabId]);
-  useEffect(() => {
-    if (runState !== "idle") return;
-    if (skipResultSave.current) {
-      skipResultSave.current = false;
-      return;
-    }
-    const id = resultsTabId.current;
-    const cache = tabResults.current;
-    cache.delete(id);
-    if (!rows.length && !columns.length && !queryError && !queryPlan) return;
-    cache.set(id, {
-      rows,
-      columns,
-      queryError,
-      queryPlan,
-      querySummary,
-      resultView,
-      sort,
-      rowSource,
-      selectedTable,
-      tableDetails,
-    });
-    while (cache.size > MAX_CACHED_TAB_RESULTS)
-      cache.delete(cache.keys().next().value!);
-  }, [
-    rows,
-    columns,
-    queryError,
-    queryPlan,
-    querySummary,
-    resultView,
-    sort,
-    rowSource,
-    selectedTable,
-    tableDetails,
-    runState,
-  ]);
 
   const activeConnection =
     connections.find((connection) => connection.id === activeId) ?? null;
+
+  // Latest-value refs so hooks created later (the connections hook) can reach
+  // the runner without a circular dependency.
+  const runStateRef = useRef<RunState>("idle");
+  const queryResultsRef = useRef<QueryResultsApi | null>(null);
+  const queryRunner = useQueryRunner({
+    activeConnection,
+    queryText,
+    activeTab,
+    workspace,
+    rememberQueries,
+    onWorkspaceChange: setWorkspace,
+    onHistoryUpdate: updateHistory,
+    closeRowPanel,
+    setRowSource,
+    dismissPeek,
+    selectedTable,
+    tableDetails,
+    chooseQueryConnection,
+    collection,
+    mongoQueryMode,
+    maxRows,
+    selectedMongoDatabase,
+    resultView,
+    sort,
+    rowSource,
+    setResultView,
+    setSort,
+    setColumnFilters,
+    setFilterMenu,
+    setSelectedTable,
+    setTableDetails,
+    scrollElement,
+  });
+  runStateRef.current = queryRunner.runState;
+  queryResultsRef.current = {
+    setRows: queryRunner.setRows,
+    setColumns: queryRunner.setColumns,
+    setQueryError: queryRunner.setQueryError,
+    setQuerySummary: queryRunner.setQuerySummary,
+    runQuery: queryRunner.runQuery,
+  };
+  const {
+    runState,
+    rows,
+    setRows,
+    columns,
+    setColumns,
+    queryError,
+    setQueryError,
+    queryPlan,
+    setQueryPlan,
+    sqlSelection,
+    setSqlSelection,
+    explainPending,
+    querySummary,
+    setQuerySummary,
+    tabResults,
+    runQuery,
+    cancelQuery,
+  } = queryRunner;
+  const deferredRows = useDeferredValue(rows);
   const autocompleteTables = useMemo(() => {
     const byTable = new Map<string, string[]>();
     for (const column of completionColumns[activeId] ?? []) {
@@ -1342,78 +1324,10 @@ export default function DatabaseWorkspace({
             ),
           ),
         );
-        if (activeQuery.current?.connectionId === event.connectionId) {
-          updateHistory(activeQuery.current.id, {
-            status: "cancelled",
-            error: event.message,
-          });
-          activeQuery.current = null;
-          setRunState("idle");
-        }
-        if (event.message) setQuerySummary(event.message);
+        queryRunner.handleConnectionClosed(event);
         return;
       }
-
-      if (event.type === "query:cancelled") {
-        if (activeQuery.current?.id !== event.queryId) return;
-        updateHistory(event.queryId, { status: "cancelled" });
-        activeQuery.current = null;
-        setRunState("idle");
-        setQuerySummary(
-          "Query cancelled. The connection was closed to stop server-side work.",
-        );
-        return;
-      }
-
-      if (activeQuery.current?.id !== event.queryId) return;
-      if (event.type === "query:rows") {
-        if (event.documents)
-          event.rows.forEach((row, index) =>
-            typedDocuments.set(row, event.documents![index] ?? null),
-          );
-        if (explainPending.current && event.rows.length)
-          setQueryPlan(event.rows[0]);
-        startTransition(() => {
-          setRows((current) =>
-            current.length >= DATABASE_LIMITS.maxRows
-              ? current
-              : [...current, ...event.rows].slice(0, DATABASE_LIMITS.maxRows),
-          );
-          setColumns((current) =>
-            [...new Set([...current, ...event.columns])].slice(
-              0,
-              DATABASE_LIMITS.maxColumns,
-            ),
-          );
-        });
-        return;
-      }
-      if (event.type === "query:complete") {
-        updateHistory(event.queryId, {
-          status: "success",
-          elapsedMs: event.elapsedMs,
-          rowCount: event.receivedRows,
-        });
-        activeQuery.current = null;
-        setRunState("idle");
-        setQueryError("");
-        setQuerySummary(
-          explainPending.current
-            ? `Estimated plan · ${(event.elapsedMs / 1_000).toFixed(2)} s · no ANALYZE`
-            : `${event.receivedRows.toLocaleString()} rows${event.affectedRows ? ` · ${event.affectedRows.toLocaleString()} affected` : ""}${(event.statementCount ?? 1) > 1 ? ` · ${event.statementCount} statements (last result shown)` : ""} · ${(event.elapsedMs / 1_000).toFixed(2)} s${event.truncated ? " · result capped (row or 16 MB limit)" : ""}`,
-        );
-        return;
-      }
-      if (event.type === "query:error") {
-        updateHistory(event.queryId, {
-          status: "error",
-          error: event.message,
-        });
-        activeQuery.current = null;
-        setRunState("idle");
-        setQueryError(event.message);
-        setQuerySummary("Query failed.");
-      }
+      queryRunner.handleQueryEvent(event);
     });
     return unsubscribe;
   }, []);
@@ -1972,118 +1886,6 @@ export default function DatabaseWorkspace({
     }
   }
 
-  async function runQuery(
-    overrides: {
-      connection?: DatabaseConnectionSummary;
-      database?: string;
-      collection?: string;
-      query?: string;
-      mongoMode?: "find" | "aggregate";
-      explain?: boolean;
-    } = {},
-  ): Promise<void> {
-    const target = overrides.connection ?? activeConnection;
-    const rawQuery = overrides.query ?? queryText;
-    // An empty MongoDB query reads the whole collection, like {} / [].
-    const query =
-      !rawQuery.trim() && (activeTab?.kind ?? target?.kind) === "mongodb"
-        ? (overrides.mongoMode ?? mongoQueryMode) === "aggregate"
-          ? "[]"
-          : "{}"
-        : rawQuery;
-    const targetCollection = overrides.collection ?? collection;
-    if (runState !== "idle" || !query.trim()) return;
-    if (
-      !target ||
-      target.serverMode ||
-      (!overrides.connection &&
-        (activeTab?.kind !== target.kind ||
-          (activeTab?.connectionKey &&
-            activeTab.connectionKey !== queryConnectionKey(target))))
-    ) {
-      chooseQueryConnection();
-      return;
-    }
-    if (!closeRowPanel()) return;
-    dismissPeek();
-    const tableQuery = selectedTable
-      ? `SELECT * FROM ${quotePostgresIdentifier(selectedTable.schema)}.${quotePostgresIdentifier(selectedTable.name)} LIMIT 100;`
-      : "";
-    setRowSource(
-      target.kind === "postgres" &&
-        selectedTable?.connectionId === target.id &&
-        tableDetails &&
-        tableDetails.schema === selectedTable.schema &&
-        tableDetails.name === selectedTable.name &&
-        query.trim() === tableQuery
-        ? {
-            connectionId: target.id,
-            schema: selectedTable.schema,
-            table: selectedTable.name,
-            details: tableDetails,
-          }
-        : null,
-    );
-    const queryId = window.crypto.randomUUID();
-    activeQuery.current = { id: queryId, connectionId: target.id };
-    if (rememberQueries)
-      setWorkspace((current) => ({
-        ...current,
-        history: [
-          {
-            id: queryId,
-            query,
-            kind: target.kind,
-            connectionKey: queryConnectionKey(target),
-            connectionName: target.name,
-            startedAt: Date.now(),
-            status: "running" as const,
-          },
-          ...current.history,
-        ].slice(0, 200),
-      }));
-    setResultView(overrides.explain ? "plan" : "data");
-    setQueryPlan(null);
-    explainPending.current = overrides.explain === true;
-    setSort(null);
-    setColumnFilters({});
-    setFilterMenu(null);
-    setRows([]);
-    setColumns([]);
-    setQueryError("");
-    setQuerySummary("Starting query…");
-    setRunState("running");
-    if (scrollElement.current) scrollElement.current.scrollTop = 0;
-    try {
-      await window.api.database.run({
-        connectionId: target.id,
-        queryId,
-        query,
-        maxRows,
-        ...(target.kind === "mongodb"
-          ? {
-              collection: targetCollection,
-              database:
-                overrides.database ??
-                (selectedMongoDatabase || target.database),
-              mongoMode: overrides.mongoMode ?? mongoQueryMode,
-            }
-          : {}),
-      });
-    } catch (error) {
-      if (activeQuery.current?.id === queryId) activeQuery.current = null;
-      setRunState("idle");
-      setQueryError(
-        error instanceof Error ? error.message : "Could not start the query.",
-      );
-      setQuerySummary("Query was not started.");
-      updateHistory(queryId, {
-        status: "error",
-        error: error instanceof Error ? error.message : "Could not start query",
-      });
-    }
-  }
-
   async function expandMongoDatabase(
     connection: DatabaseConnectionSummary,
     database: MongoBrowserDatabase,
@@ -2436,20 +2238,6 @@ export default function DatabaseWorkspace({
       );
     } finally {
       setMongoOperationBusy(false);
-    }
-  }
-
-  async function cancelQuery(): Promise<void> {
-    const current = activeQuery.current;
-    if (!current) return;
-    setRunState("cancelling");
-    try {
-      await window.api.database.cancel(current.connectionId, current.id);
-    } catch (error) {
-      setRunState("idle");
-      setQueryError(
-        error instanceof Error ? error.message : "Could not cancel the query.",
-      );
     }
   }
 
