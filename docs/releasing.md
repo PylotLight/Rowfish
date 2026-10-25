@@ -28,7 +28,7 @@ The Mac targets already enable hardened runtime and use `build/entitlements.mac.
 
 ## Homebrew
 
-This repo doubles as the Homebrew tap (`brew tap pylotlight/rowfish https://github.com/PylotLight/Rowfish.git`, then `brew install --cask rowfish`). After a stable release publishes, the `homebrew` job in `release.yml` renders `Casks/rowfish.rb` from `Casks/rowfish.rb.tmpl` with the new version and the arm64 zip SHA-256 and pushes it to main. Prereleases don't touch the cask. Edit the template, never the rendered file.
+This repo doubles as the Homebrew tap (`brew tap pylotlight/rowfish https://github.com/PylotLight/Rowfish.git`, then `brew install --cask rowfish`). After a release publishes (including prereleases), the `homebrew` job in `release.yml` renders `Casks/rowfish.rb` from `Casks/rowfish.rb.tmpl` with the new version and the arm64 zip SHA-256 and pushes it to main. Edit the template, never the rendered file.
 
 ## Verification and preview workflows
 
