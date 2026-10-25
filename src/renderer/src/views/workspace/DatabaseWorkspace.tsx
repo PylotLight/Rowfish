@@ -30,27 +30,33 @@ import {
   Braces,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import "../components/query-connection.css";
-import type { UiPreferences } from "../lib/ui-preferences";
-import ColumnFilterMenu from "../components/ColumnFilterMenu";
+import "../../components/query-connection.css";
+import type { UiPreferences } from "../../lib/ui-preferences";
+import ColumnFilterMenu from "../../components/ColumnFilterMenu";
 import {
   applyColumnFilters,
   isColumnFilterActive,
   type ColumnFilters,
-} from "../lib/column-filters";
-import SqlEditor from "../components/SqlEditor";
-import QueryPlan from "../components/QueryPlan";
-import { buildExplainQuery, postgresDiagnostics } from "../lib/postgres-tools";
-import RowSidePanel, { type RowSource } from "../components/RowSidePanel";
-import ResizeSeparator from "../components/ResizeSeparator";
-import { clampLayout, loadLayout, saveLayout } from "../lib/layout-preferences";
-import { isSameRow } from "../lib/row-editor";
-import DocumentResults from "../components/DocumentResults";
+} from "../../lib/column-filters";
+import SqlEditor from "../../components/SqlEditor";
+import QueryPlan from "../../components/QueryPlan";
+import {
+  buildExplainQuery,
+  postgresDiagnostics,
+} from "../../lib/postgres-tools";
+import RowSidePanel, { type RowSource } from "../../components/RowSidePanel";
+import ResizeSeparator from "../../components/ResizeSeparator";
+import {
+  clampLayout,
+  loadLayout,
+  saveLayout,
+} from "../../lib/layout-preferences";
+import { isSameRow } from "../../lib/row-editor";
+import DocumentResults from "../../components/DocumentResults";
 import {
   cellSummary,
   columnKinds,
   describeValue,
-  documentFor,
   effectiveResultsView,
   isNestedKind,
   loadResultsView,
@@ -58,7 +64,7 @@ import {
   toRelaxed,
   withoutId,
   type ResultsView,
-} from "../lib/document-view";
+} from "../../lib/document-view";
 import {
   autoFitColumnWidth,
   defaultColumnWidth,
@@ -66,7 +72,7 @@ import {
   resizedWidth,
   saveColumnWidths,
   type ColumnWidths,
-} from "../lib/column-widths";
+} from "../../lib/column-widths";
 import {
   loadQueryWorkspace,
   saveQueryWorkspace,
@@ -77,7 +83,7 @@ import {
   downloadText,
   type SavedQuery,
   type QueryHistoryEntry,
-} from "../lib/query-workspace";
+} from "../../lib/query-workspace";
 import {
   startTransition,
   useCallback,
@@ -103,160 +109,40 @@ import type {
   MongoBrowserDatabase,
   MongoMutationRequest,
   SavedConnectionProfile,
-} from "../../../shared/database";
+} from "../../../../shared/database";
 import {
   POSTGRES_SSL_MODES,
   resolvePostgresSslMode,
   sslModeEncrypts,
   DATABASE_LIMITS,
-  buildMongoConnectionString,
-  buildPostgresConnectionString,
   detectConnectionStringKind,
   getVirtualRowRange,
   maskConnectionStringPassword,
-  parseMongoConnectionFields,
-  parsePostgresConnectionString,
   quotePostgresIdentifier,
-  type ConnectionStringFields,
-} from "../../../shared/database-helpers";
-
-const ROW_HEIGHT = 36;
-const ROW_INDEX_WIDTH = 45;
-
-/** Canonical EJSON per MongoDB result row, for the typed list / JSON views. */
-const typedDocuments = new WeakMap<DatabaseRow, string | null>();
-const parsedDocuments = new WeakMap<DatabaseRow, Record<string, unknown>>();
-function documentOf(row: DatabaseRow): Record<string, unknown> {
-  let document = parsedDocuments.get(row);
-  if (!document) {
-    document = documentFor(row, typedDocuments.get(row));
-    parsedDocuments.set(row, document);
-  }
-  return document;
-}
-const resultIds = new WeakMap<DatabaseRow, number>();
-let nextResultId = 1;
-function resultId(row: DatabaseRow | undefined): number {
-  if (!row) return 0;
-  let id = resultIds.get(row);
-  if (id === undefined) resultIds.set(row, (id = nextResultId++));
-  return id;
-}
-
-let measureContext: CanvasRenderingContext2D | null = null;
-function measureText(text: string, font: string): number {
-  measureContext ??= document.createElement("canvas").getContext("2d");
-  if (!measureContext) return text.length * 6.4;
-  measureContext.font = font;
-  return measureContext.measureText(text.slice(0, 400)).width;
-}
-
-function parseConnectionStringFields(
-  kind: DatabaseConnectionInput["kind"],
-  source: string,
-): ConnectionStringFields {
-  return kind === "postgres"
-    ? parsePostgresConnectionString(source)
-    : parseMongoConnectionFields(source);
-}
-
-const CONNECT_MODE_KEY = "rowfish.connect-mode";
-const MONGO_DETAILS_KEY = "rowfish.mongo-details";
-
-/** The connection dialog's last used mode: true for connection string. */
-function loadConnectStringMode(): boolean {
-  try {
-    return localStorage.getItem(CONNECT_MODE_KEY) !== "manual";
-  } catch {
-    return true;
-  }
-}
-
-function kindLabel(kind: DatabaseConnectionInput["kind"]): string {
-  return kind === "postgres" ? "PostgreSQL" : "MongoDB";
-}
-
-function kindDefaults(
-  kind: DatabaseConnectionInput["kind"],
-): Pick<DatabaseConnectionInput, "port" | "database"> {
-  return kind === "postgres"
-    ? { port: 5432, database: "postgres" }
-    : { port: 27017, database: "admin" };
-}
-
-/** An IPC error's own message, without Electron's "Error invoking remote method" prefix. */
-function dialogErrorMessage(error: unknown, fallback: string): string {
-  if (!(error instanceof Error) || !error.message) return fallback;
-  return error.message.replace(
-    /^Error invoking remote method '[^']+': (?:Error: )?/,
-    "",
-  );
-}
-
-function buildConnectionString(form: DatabaseConnectionInput): string {
-  const fields = {
-    host: form.host.trim(),
-    port: form.port,
-    database: form.kind === "postgres" && form.serverMode ? "" : form.database,
-    username: form.username.trim(),
-    password: form.password,
-    tls: form.tls,
-    ...(form.kind === "postgres"
-      ? { sslMode: resolvePostgresSslMode(form) }
-      : {}),
-  };
-  return form.kind === "postgres"
-    ? buildPostgresConnectionString(fields)
-    : buildMongoConnectionString(fields);
-}
-const DEFAULT_FORM: DatabaseConnectionInput = {
-  name: "Local database",
-  kind: "postgres",
-  host: "localhost",
-  port: 5432,
-  database: "postgres",
-  username: "postgres",
-  password: "",
-  tls: false,
-  sslMode: "prefer",
-  serverMode: false,
-  connectionString: "",
-};
-
-type RunState = "idle" | "running" | "cancelling";
-type MongoOperation =
-  | "insert"
-  | "update"
-  | "delete"
-  | "create-collection"
-  | "drop-collection"
-  | "create-index"
-  | "drop-index"
-  | "drop-database";
-
-function mongoBrowserKey(connectionId: string, database: string): string {
-  return `${connectionId}::${database}`;
-}
-
-function connectionSubline(connection: DatabaseConnectionSummary): string {
-  if (connection.serverMode)
-    return `PostgreSQL · ${connection.host}:${connection.port} · all databases`;
-  return `${connection.kind === "postgres" ? "PostgreSQL" : "MongoDB"} · ${connection.database}`;
-}
-
-const MAX_CACHED_TAB_RESULTS = 12;
-type TabResultSnapshot = {
-  rows: DatabaseRow[];
-  columns: string[];
-  queryError: string;
-  queryPlan: unknown;
-  querySummary: string;
-  resultView: "data" | "structure" | "indexes" | "plan";
-  sort: { column: string; direction: 1 | -1 } | null;
-  rowSource: RowSource | null;
-  selectedTable: { connectionId: string; schema: string; name: string } | null;
-  tableDetails: PostgresTableDetails | null;
-};
+} from "../../../../shared/database-helpers";
+import {
+  buildConnectionString,
+  CONNECT_MODE_KEY,
+  connectionSubline,
+  DEFAULT_FORM,
+  dialogErrorMessage,
+  kindDefaults,
+  kindLabel,
+  loadConnectStringMode,
+  MAX_CACHED_TAB_RESULTS,
+  measureText,
+  mongoBrowserKey,
+  MONGO_DETAILS_KEY,
+  parseConnectionStringFields,
+  resultId,
+  ROW_HEIGHT,
+  ROW_INDEX_WIDTH,
+  typedDocuments,
+  documentOf,
+  type MongoOperation,
+  type RunState,
+  type TabResultSnapshot,
+} from "./workspace-helpers";
 
 export default function DatabaseWorkspace({
   search,
