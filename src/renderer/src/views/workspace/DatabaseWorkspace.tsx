@@ -53,7 +53,9 @@ import {
 import { isSameRow } from "../../lib/row-editor";
 import DocumentResults from "../../components/DocumentResults";
 import ConnectionDialog from "./components/ConnectionDialog";
+import DbSwitcher from "./components/DbSwitcher";
 import HelpDialog from "./components/HelpDialog";
+import MongoBrowser from "./components/MongoBrowser";
 import MongoOperationDialog, {
   type MongoOperationFields,
 } from "./components/MongoOperationDialog";
@@ -2179,6 +2181,39 @@ export default function DatabaseWorkspace({
     setMongoOperationSummary("");
   }
 
+  function createMongoDatabase(connection: DatabaseConnectionSummary): void {
+    if (!closeRowPanel()) return;
+    setActiveId(connection.id);
+    setSelectedMongoDatabase("");
+    openMongoOperation("create-collection", connection, {
+      databaseName: "",
+      createNewDatabase: true,
+      collectionName: "",
+    });
+  }
+  function dropMongoDatabase(
+    connection: DatabaseConnectionSummary,
+    database: MongoBrowserDatabase,
+  ): void {
+    if (!closeRowPanel()) return;
+    setActiveId(connection.id);
+    setSelectedMongoDatabase(database.name);
+    openMongoOperation("drop-database", connection, {
+      databaseName: database.name,
+    });
+  }
+  function createMongoCollection(
+    connection: DatabaseConnectionSummary,
+    database: MongoBrowserDatabase,
+  ): void {
+    setSelectedMongoDatabase(database.name);
+    if (!closeRowPanel()) return;
+    setActiveId(connection.id);
+    openMongoOperation("create-collection", connection, {
+      databaseName: database.name,
+    });
+  }
+
   async function submitMongoOperation(
     fields: MongoOperationFields,
   ): Promise<void> {
@@ -2657,223 +2692,6 @@ export default function DatabaseWorkspace({
     );
   }
 
-  function renderDbSwitcher(connection: DatabaseConnectionSummary): ReactNode {
-    if (!dbSwitcher) return null;
-    const filter = dbSwitcher.filter.trim().toLowerCase();
-    const databases = (dbSwitcher.databases ?? []).filter((database) =>
-      database.name.toLowerCase().includes(filter),
-    );
-    const firstMatch = databases.find((database) => database.canConnect);
-    return (
-      <div
-        className="db-db-switcher"
-        role="dialog"
-        aria-label="Switch database"
-        onKeyDown={(event) => {
-          if (event.key === "Escape") setDbSwitcher(null);
-        }}
-      >
-        {(dbSwitcher.databases?.length ?? 0) > 6 && (
-          <input
-            className="db-db-switcher-filter"
-            autoFocus
-            placeholder="Filter databases"
-            value={dbSwitcher.filter}
-            onChange={(event) =>
-              setDbSwitcher((current) =>
-                current ? { ...current, filter: event.target.value } : current,
-              )
-            }
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && firstMatch)
-                void switchDatabase(connection, firstMatch);
-            }}
-          />
-        )}
-        {dbSwitcher.databases === null && (
-          <div className="db-browser-hint">
-            <span className="db-spinner small" /> Loading databases…
-          </div>
-        )}
-        {databases.map((database) => {
-          const current = database.name === connection.database;
-          return (
-            <button
-              key={database.name}
-              className={`db-db-switcher-item${current ? " current" : ""}`}
-              disabled={!database.canConnect || Boolean(dbSwitcher.busy)}
-              title={
-                database.canConnect
-                  ? current
-                    ? `${database.name} (current)`
-                    : `Switch to ${database.name}`
-                  : `No CONNECT permission for ${database.name}`
-              }
-              onClick={() => void switchDatabase(connection, database)}
-            >
-              <span aria-hidden="true">{current ? "✓" : ""}</span>
-              <span>{database.name}</span>
-              {dbSwitcher.busy === database.name && (
-                <span className="db-spinner small" />
-              )}
-            </button>
-          );
-        })}
-        {dbSwitcher.databases !== null &&
-          databases.length === 0 &&
-          !dbSwitcher.error && (
-            <div className="db-browser-hint">No matching databases.</div>
-          )}
-        {dbSwitcher.error && (
-          <div className="db-browser-error">{dbSwitcher.error}</div>
-        )}
-      </div>
-    );
-  }
-
-  function renderMongoDatabases(
-    connection: DatabaseConnectionSummary,
-  ): React.JSX.Element {
-    const databases = mongoDatabases[connection.id] ?? [];
-    return (
-      <div className="db-browser-objects db-browser-databases">
-        <div className="db-browser-section-title">
-          DATABASES{" "}
-          <button
-            className="db-inline-add"
-            title="Create a database"
-            aria-label="Create a database"
-            onClick={() => {
-              if (!closeRowPanel()) return;
-              setActiveId(connection.id);
-              setSelectedMongoDatabase("");
-              openMongoOperation("create-collection", connection, {
-                databaseName: "",
-                createNewDatabase: true,
-                collectionName: "",
-              });
-            }}
-          >
-            ＋
-          </button>
-        </div>
-        {browserLoading[connection.id] && (
-          <div className="db-browser-hint">
-            <span className="db-spinner small" /> Loading databases…
-          </div>
-        )}
-        {browserErrors[connection.id] && (
-          <div className="db-browser-error">{browserErrors[connection.id]}</div>
-        )}
-        {databases.map((database) => {
-          const key = mongoBrowserKey(connection.id, database.name);
-          const expanded = Boolean(expandedMongoDatabases[key]);
-          const items = mongoCollections[key] ?? [];
-          return (
-            <div className="db-browser-database-group" key={database.name}>
-              <button
-                className={`db-browser-database${selectedMongoDatabase === database.name && activeId === connection.id ? " active" : ""}`}
-                title={`${database.name}${database.sizeOnDisk !== undefined ? ` · ${database.sizeOnDisk.toLocaleString()} bytes` : ""}`}
-                onClick={() => void expandMongoDatabase(connection, database)}
-              >
-                <span aria-hidden="true">{expanded ? "▾" : "›"}</span>
-                <span>{database.name}</span>
-                {database.sizeOnDisk !== undefined && (
-                  <small className="db-browser-size">
-                    {database.sizeOnDisk >= 1024 * 1024
-                      ? `${(database.sizeOnDisk / (1024 * 1024)).toFixed(1)} MB`
-                      : `${Math.ceil(database.sizeOnDisk / 1024)} KB`}
-                  </small>
-                )}
-              </button>
-              {!["admin", "config", "local"].includes(database.name) && (
-                <button
-                  className="db-child-close"
-                  title={`Drop database ${database.name}`}
-                  aria-label={`Drop database ${database.name}`}
-                  onClick={() => {
-                    if (!closeRowPanel()) return;
-                    setActiveId(connection.id);
-                    setSelectedMongoDatabase(database.name);
-                    openMongoOperation("drop-database", connection, {
-                      databaseName: database.name,
-                    });
-                  }}
-                >
-                  ×
-                </button>
-              )}
-              {expanded && (
-                <div className="db-browser-mongo-collections">
-                  <div className="db-browser-collection-actions">
-                    <span>
-                      {items.length}{" "}
-                      {items.length === 1 ? "collection" : "collections"}
-                    </span>
-                    <button
-                      className="db-inline-add"
-                      title={`Create collection in ${database.name}`}
-                      aria-label={`Create collection in ${database.name}`}
-                      onClick={() => {
-                        setSelectedMongoDatabase(database.name);
-                        if (!closeRowPanel()) return;
-                        setActiveId(connection.id);
-                        openMongoOperation("create-collection", connection, {
-                          databaseName: database.name,
-                        });
-                      }}
-                    >
-                      ＋
-                    </button>
-                  </div>
-                  {browserLoading[key] && (
-                    <div className="db-browser-hint">
-                      <span className="db-spinner small" /> Loading collections…
-                    </div>
-                  )}
-                  {browserErrors[key] && (
-                    <div className="db-browser-error">{browserErrors[key]}</div>
-                  )}
-                  {items.map((item) => (
-                    <button
-                      className={`db-browser-object${selectedMongoCollection?.name === item.name && selectedMongoDatabase === database.name ? " active" : ""}`}
-                      key={item.name}
-                      title={`${item.type}: ${database.name}.${item.name}`}
-                      onClick={() =>
-                        void selectMongoCollection(
-                          connection,
-                          database.name,
-                          item,
-                        )
-                      }
-                    >
-                      <span aria-hidden="true">
-                        {item.type === "view" ? "◉" : "▤"}
-                      </span>
-                      <span>{item.name}</span>
-                    </button>
-                  ))}
-                  {!browserLoading[key] &&
-                    !browserErrors[key] &&
-                    items.length === 0 && (
-                      <div className="db-browser-hint">No collections yet.</div>
-                    )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {!browserLoading[connection.id] &&
-          !browserErrors[connection.id] &&
-          databases.length === 0 && (
-            <div className="db-browser-hint">
-              No accessible databases found.
-            </div>
-          )}
-      </div>
-    );
-  }
-
   return (
     <section
       ref={workspaceRef}
@@ -3179,8 +2997,21 @@ export default function DatabaseWorkspace({
                     ×
                   </button>
                 </div>
-                {dbSwitcher?.connectionId === connection.id &&
-                  renderDbSwitcher(connection)}
+                {dbSwitcher?.connectionId === connection.id && (
+                  <DbSwitcher
+                    connection={connection}
+                    state={dbSwitcher}
+                    onFilterChange={(filter) =>
+                      setDbSwitcher((current) =>
+                        current ? { ...current, filter } : current,
+                      )
+                    }
+                    onSwitch={(database) =>
+                      void switchDatabase(connection, database)
+                    }
+                    onClose={() => setDbSwitcher(null)}
+                  />
+                )}
                 {!collapsedConnections[connection.id] && (
                   <>
                     {connection.kind === "postgres" &&
@@ -3272,8 +3103,24 @@ export default function DatabaseWorkspace({
                     {connection.kind === "postgres" &&
                       !connection.serverMode &&
                       renderTables(connection)}
-                    {connection.kind === "mongodb" &&
-                      renderMongoDatabases(connection)}
+                    {connection.kind === "mongodb" && (
+                      <MongoBrowser
+                        connection={connection}
+                        databases={mongoDatabases[connection.id] ?? []}
+                        collections={mongoCollections}
+                        expanded={expandedMongoDatabases}
+                        selectedDatabase={selectedMongoDatabase}
+                        selectedCollection={selectedMongoCollection}
+                        activeId={activeId}
+                        loading={browserLoading}
+                        errors={browserErrors}
+                        onExpand={expandMongoDatabase}
+                        onSelectCollection={selectMongoCollection}
+                        onCreateDatabase={createMongoDatabase}
+                        onDropDatabase={dropMongoDatabase}
+                        onCreateCollection={createMongoCollection}
+                      />
+                    )}
                   </>
                 )}
               </div>
