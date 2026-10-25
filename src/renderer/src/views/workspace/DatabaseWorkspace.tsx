@@ -54,6 +54,7 @@ import {
 import { isSameRow } from "../../lib/row-editor";
 import DocumentResults from "../../components/DocumentResults";
 import HelpDialog from "./components/HelpDialog";
+import SaveQueryDialog from "./components/SaveQueryDialog";
 import TableMetadata from "./components/TableMetadata";
 import {
   cellSummary,
@@ -993,6 +994,31 @@ export default function DatabaseWorkspace({
       activeTab?.title === "Untitled query" ? "" : (activeTab?.title ?? ""),
     );
     setSaveDialog(true);
+  }
+  function saveQueryToLibrary(title: string): void {
+    const item: SavedQuery = {
+      id: crypto.randomUUID(),
+      title,
+      query: queryText,
+      kind: activeTab?.kind ?? "postgres",
+      connectionKey: activeTab?.connectionKey ?? "",
+      folder: queryFolder.trim() || "General",
+      updatedAt: Date.now(),
+    };
+    setWorkspace((current) => ({
+      ...current,
+      saved: [
+        item,
+        ...current.saved.filter(
+          (entry) => entry.title !== item.title || entry.folder !== item.folder,
+        ),
+      ].slice(0, 500),
+      tabs: current.tabs.map((tab) =>
+        tab.id === current.activeTabId ? { ...tab, title } : tab,
+      ),
+    }));
+    setSaveDialog(false);
+    setRailView("saved");
   }
   async function formatQuery(): Promise<void> {
     const original = queryText;
@@ -4359,89 +4385,15 @@ export default function DatabaseWorkspace({
         </>
       )}
 
-      {saveDialog && (
-        <div
-          className="db-modal-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setSaveDialog(false);
-          }}
-        >
-          <form
-            className="db-modal compact-modal"
-            onClick={(event) => event.stopPropagation()}
-            onSubmit={(event) => {
-              event.preventDefault();
-              const title = queryName.trim();
-              if (!title) return;
-              const item: SavedQuery = {
-                id: crypto.randomUUID(),
-                title,
-                query: queryText,
-                kind: activeTab?.kind ?? "postgres",
-                connectionKey: activeTab?.connectionKey ?? "",
-                folder: queryFolder.trim() || "General",
-                updatedAt: Date.now(),
-              };
-              setWorkspace((current) => ({
-                ...current,
-                saved: [
-                  item,
-                  ...current.saved.filter(
-                    (entry) =>
-                      entry.title !== item.title ||
-                      entry.folder !== item.folder,
-                  ),
-                ].slice(0, 500),
-                tabs: current.tabs.map((tab) =>
-                  tab.id === current.activeTabId ? { ...tab, title } : tab,
-                ),
-              }));
-              setSaveDialog(false);
-              setRailView("saved");
-            }}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Save query"
-          >
-            <div className="db-modal-head">
-              <h2>Save to query library</h2>
-              <button
-                type="button"
-                className="db-icon-button"
-                onClick={() => setSaveDialog(false)}
-              >
-                ×
-              </button>
-            </div>
-            <label className="save-label">
-              Query name
-              <input
-                autoFocus
-                required
-                value={queryName}
-                onChange={(event) => setQueryName(event.target.value)}
-                maxLength={100}
-                placeholder="e.g. Monthly revenue"
-              />
-            </label>
-            <label className="save-label">
-              Folder
-              <input
-                value={queryFolder}
-                onChange={(event) => setQueryFolder(event.target.value)}
-                maxLength={80}
-              />
-            </label>
-            <p className="privacy-note">
-              SQL is stored locally, not encrypted. Avoid saving passwords or
-              sensitive literals.
-            </p>
-            <button className="db-run-button" type="submit">
-              Save query
-            </button>
-          </form>
-        </div>
-      )}
+      <SaveQueryDialog
+        open={saveDialog}
+        name={queryName}
+        onNameChange={setQueryName}
+        folder={queryFolder}
+        onFolderChange={setQueryFolder}
+        onSave={saveQueryToLibrary}
+        onClose={() => setSaveDialog(false)}
+      />
       <HelpDialog open={showHelp} onClose={() => setShowHelp(false)} />
       {showQueryConnection && (
         <div
