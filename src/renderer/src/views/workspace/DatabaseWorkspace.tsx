@@ -23,7 +23,6 @@ import {
   Copy,
   Eye,
   EyeOff,
-  ListFilter,
   Pencil,
   List,
   Braces,
@@ -35,6 +34,7 @@ import ColumnFilterMenu from "../../components/ColumnFilterMenu";
 import {
   applyColumnFilters,
   isColumnFilterActive,
+  type ColumnFilter,
   type ColumnFilters,
 } from "../../lib/column-filters";
 import SqlEditor from "../../components/SqlEditor";
@@ -60,6 +60,7 @@ import MongoOperationDialog, {
   type MongoOperationFields,
 } from "./components/MongoOperationDialog";
 import QueryConnectionDialog from "./components/QueryConnectionDialog";
+import ResultsTable from "./components/ResultsTable";
 import SaveQueryDialog from "./components/SaveQueryDialog";
 import TableMetadata from "./components/TableMetadata";
 import {
@@ -724,6 +725,26 @@ export default function DatabaseWorkspace({
     return applyColumnFilters(searchedRows, others);
   }, [filterMenu, columnFilters, searchedRows]);
   const closeFilterMenu = useCallback(() => setFilterMenu(null), []);
+  function toggleSortColumn(column: string): void {
+    setSort((current) => ({
+      column,
+      direction: current?.column === column && current.direction === 1 ? -1 : 1,
+    }));
+  }
+  function toggleFilterMenu(
+    column: string,
+    position: { left: number; top: number },
+  ): void {
+    setFilterMenu((current) =>
+      current?.column === column ? null : { column, ...position },
+    );
+  }
+  function setColumnFilter(column: string, filter: ColumnFilter): void {
+    setColumnFilters((current) => ({ ...current, [column]: filter }));
+  }
+  function sortColumn(column: string, direction: 1 | -1): void {
+    setSort({ column, direction });
+  }
   const pickerCollections = useMemo(
     () =>
       activeId && selectedMongoDatabase
@@ -3945,203 +3966,33 @@ export default function DatabaseWorkspace({
                   onDelete={documentActionsEnabled ? deleteDocument : undefined}
                 />
               ) : columns.length > 0 ? (
-                <div
-                  className="db-table-scroll"
-                  ref={scrollElement}
-                  onScroll={(event) =>
-                    setViewport({
-                      top: event.currentTarget.scrollTop,
-                      height: event.currentTarget.clientHeight,
-                    })
-                  }
-                >
-                  <table
-                    className="db-result-table sized"
-                    style={{ width: tableWidth }}
-                  >
-                    <colgroup>
-                      <col style={{ width: ROW_INDEX_WIDTH }} />
-                      {columns.map((column) => (
-                        <col key={column} style={{ width: widthOf(column) }} />
-                      ))}
-                      <col />
-                    </colgroup>
-                    <thead>
-                      <tr>
-                        <th className="db-row-index-head">#</th>
-                        {columns.map((column) => (
-                          <th
-                            key={column}
-                            title={`Sort ${column}`}
-                            className={
-                              isColumnFilterActive(columnFilters[column])
-                                ? "filtered"
-                                : undefined
-                            }
-                          >
-                            <button
-                              className="db-column-filter-button"
-                              title={`Filter ${column}`}
-                              aria-label={`Filter ${column}`}
-                              aria-expanded={filterMenu?.column === column}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                const box =
-                                  event.currentTarget.getBoundingClientRect();
-                                setFilterMenu((current) =>
-                                  current?.column === column
-                                    ? null
-                                    : {
-                                        column,
-                                        left: box.left - 240,
-                                        top: box.bottom + 4,
-                                      },
-                                );
-                              }}
-                            >
-                              <ListFilter size={11} />
-                            </button>
-                            <button
-                              onClick={() =>
-                                setSort((current) => ({
-                                  column,
-                                  direction:
-                                    current?.column === column &&
-                                    current.direction === 1
-                                      ? -1
-                                      : 1,
-                                }))
-                              }
-                            >
-                              <b className="db-col-label">
-                                {column}
-                                {mongoColumnKinds[column] && (
-                                  <>
-                                    {" "}
-                                    <small className="db-col-type">
-                                      {mongoColumnKinds[column]}
-                                    </small>
-                                  </>
-                                )}
-                              </b>
-                              <span>
-                                {sort?.column === column
-                                  ? sort.direction === 1
-                                    ? " ↑"
-                                    : " ↓"
-                                  : " ↕"}
-                              </span>
-                            </button>
-                            <span
-                              className="db-col-resizer"
-                              role="separator"
-                              aria-orientation="vertical"
-                              aria-label={`Resize ${column}`}
-                              title="Drag to resize · double-click to fit"
-                              onPointerDown={(event) =>
-                                startColumnResize(event, column)
-                              }
-                              onDoubleClick={(event) =>
-                                autoFitColumn(event, column)
-                              }
-                              onClick={(event) => event.stopPropagation()}
-                            />
-                          </th>
-                        ))}
-                        <th className="db-col-filler" aria-hidden="true" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {firstVisible > 0 && (
-                        <tr aria-hidden="true" className="db-spacer-row">
-                          <td
-                            colSpan={columns.length + 2}
-                            style={{ height: firstVisible * ROW_HEIGHT }}
-                          />
-                        </tr>
-                      )}
-                      {windowedRows.map((row, offset) => {
-                        const index = firstVisible + offset;
-                        const selected =
-                          row === inspectedRow ||
-                          !!(
-                            inspectedRow &&
-                            rowSource &&
-                            isSameRow(rowSource.details, row, inspectedRow)
-                          );
-                        return (
-                          <tr
-                            key={index}
-                            className={selected ? "selected-row" : ""}
-                            tabIndex={0}
-                            aria-selected={selected}
-                            onClick={() => inspectRow(row)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                inspectRow(row);
-                              }
-                            }}
-                            title="Click to inspect or edit row"
-                          >
-                            <td className="db-row-index">{index + 1}</td>
-                            {columns.map((column) => {
-                              const text = cellText(row, column);
-                              const nested =
-                                row[column] !== null &&
-                                text !== String(row[column] ?? "NULL");
-                              return (
-                                <td
-                                  key={column}
-                                  className={
-                                    row[column] === null
-                                      ? "null-cell"
-                                      : nested
-                                        ? "nested-cell"
-                                        : ""
-                                  }
-                                  title={String(row[column] ?? "")}
-                                >
-                                  {text}
-                                </td>
-                              );
-                            })}
-                            <td className="db-col-filler" />
-                          </tr>
-                        );
-                      })}
-                      {lastVisible < visibleRows.length && (
-                        <tr aria-hidden="true" className="db-spacer-row">
-                          <td
-                            colSpan={columns.length + 2}
-                            style={{
-                              height:
-                                (visibleRows.length - lastVisible) * ROW_HEIGHT,
-                            }}
-                          />
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                  {filterMenu && columns.includes(filterMenu.column) && (
-                    <ColumnFilterMenu
-                      column={filterMenu.column}
-                      rows={filterMenuRows}
-                      filter={columnFilters[filterMenu.column]}
-                      position={filterMenu}
-                      onChange={(filter) =>
-                        setColumnFilters((current) => ({
-                          ...current,
-                          [filterMenu.column]: filter,
-                        }))
-                      }
-                      onSort={(direction) =>
-                        setSort({ column: filterMenu.column, direction })
-                      }
-                      onClose={closeFilterMenu}
-                    />
-                  )}
-                </div>
+                <ResultsTable
+                  columns={columns}
+                  windowedRows={windowedRows}
+                  firstVisible={firstVisible}
+                  lastVisible={lastVisible}
+                  visibleRowCount={visibleRows.length}
+                  tableWidth={tableWidth}
+                  widthOf={widthOf}
+                  mongoColumnKinds={mongoColumnKinds}
+                  sort={sort}
+                  columnFilters={columnFilters}
+                  filterMenu={filterMenu}
+                  filterMenuRows={filterMenuRows}
+                  inspectedRow={inspectedRow}
+                  rowSource={rowSource}
+                  cellText={cellText}
+                  scrollElement={scrollElement}
+                  onScroll={setViewport}
+                  onSortColumn={toggleSortColumn}
+                  onFilterMenuToggle={toggleFilterMenu}
+                  onFilterChange={setColumnFilter}
+                  onMenuSort={sortColumn}
+                  onCloseFilterMenu={closeFilterMenu}
+                  onResizeStart={startColumnResize}
+                  onAutoFit={autoFitColumn}
+                  onInspect={inspectRow}
+                />
               ) : (
                 <div
                   className={`db-results-empty${runState !== "idle" ? " loading" : ""}`}
