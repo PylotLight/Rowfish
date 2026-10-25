@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Power, Settings as SettingsIcon } from "lucide-react";
 import rowfishIcon from "./assets/rowfish-icon.png";
-import DatabaseWorkspace from "./views/DatabaseWorkspace";
+import DatabaseWorkspace from "./views/workspace/DatabaseWorkspace";
 import Settings from "./views/Settings";
 import {
   applyUiPreferences,
