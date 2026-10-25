@@ -2684,49 +2684,53 @@ export default function DatabaseWorkspace({
         onClose={() => setSaveDialog(false)}
       />
       <HelpDialog open={showHelp} onClose={() => setShowHelp(false)} />
-      <QueryConnectionDialog
-        server={queryConnectionServer}
-        databases={queryConnectionDatabases}
-        busy={queryConnectionBusy}
-        error={queryConnectionError}
-        tabKind={activeTab?.kind}
-        tabTitle={activeTab?.title}
-        connections={connections}
-        savedConnections={savedConnections}
-        onSelect={selectQueryConnection}
-        onCancel={cancelQueryConnection}
-        onServerChange={setQueryConnectionServer}
-        onConnectNew={openConnectForQuery}
-      />
-      <ConnectionDialog
-        form={form}
-        onFormChange={setForm}
-        onUpdateForm={updateForm}
-        onTestFailureChange={setTestFailure}
-        uriMode={uriMode}
-        onSwitchMode={switchConnectMode}
-        detectedKind={detectedKind}
-        revealUri={revealUri}
-        onRevealUriChange={setRevealUri}
-        uriCopied={uriCopied}
-        onCopyConnectionString={copyConnectionString}
-        onConnectionStringChange={updateConnectionString}
-        connectionStringStatus={connectionStringStatus}
-        generatedConnectionString={generatedConnectionString}
-        saveProfile={saveProfile}
-        onSaveProfileChange={setSaveProfile}
-        editingProfileId={editingProfileId}
-        testFailure={testFailure}
-        onSaveWithoutTesting={saveConnectionWithoutTesting}
-        saveBusy={saveBusy}
-        connectionError={connectionError}
-        connectBusy={connectBusy}
-        connecting={connecting}
-        onConnect={() => void connect()}
-        onTestAndSave={() => void testAndSaveConnection()}
-        onClose={closeConnectionDialog}
-        connectionStringBlocked={connectionStringBlocked}
-      />
+      {showQueryConnection && (
+        <QueryConnectionDialog
+          server={queryConnectionServer}
+          databases={queryConnectionDatabases}
+          busy={queryConnectionBusy}
+          error={queryConnectionError}
+          tabKind={activeTab?.kind}
+          tabTitle={activeTab?.title}
+          connections={connections}
+          savedConnections={savedConnections}
+          onSelect={selectQueryConnection}
+          onCancel={cancelQueryConnection}
+          onServerChange={setQueryConnectionServer}
+          onConnectNew={openConnectForQuery}
+        />
+      )}
+      {showConnect && (
+        <ConnectionDialog
+          form={form}
+          onFormChange={setForm}
+          onUpdateForm={updateForm}
+          onTestFailureChange={setTestFailure}
+          uriMode={uriMode}
+          onSwitchMode={switchConnectMode}
+          detectedKind={detectedKind}
+          revealUri={revealUri}
+          onRevealUriChange={setRevealUri}
+          uriCopied={uriCopied}
+          onCopyConnectionString={copyConnectionString}
+          onConnectionStringChange={updateConnectionString}
+          connectionStringStatus={connectionStringStatus}
+          generatedConnectionString={generatedConnectionString}
+          saveProfile={saveProfile}
+          onSaveProfileChange={setSaveProfile}
+          editingProfileId={editingProfileId}
+          testFailure={testFailure}
+          onSaveWithoutTesting={saveConnectionWithoutTesting}
+          saveBusy={saveBusy}
+          connectionError={connectionError}
+          connectBusy={connectBusy}
+          connecting={connecting}
+          onConnect={() => void connect()}
+          onTestAndSave={() => void testAndSaveConnection()}
+          onClose={closeConnectionDialog}
+          connectionStringBlocked={connectionStringBlocked}
+        />
+      )}
       {mongoOperation &&
         mongoOperationConnection &&
         activeConnection?.kind === "mongodb" && (
