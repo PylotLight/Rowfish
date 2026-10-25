@@ -58,6 +58,7 @@ import SaveQueryDialog from "./components/SaveQueryDialog";
 import TableMetadata from "./components/TableMetadata";
 import { useConnections } from "./hooks/useConnections";
 import { useQueryRunner, type QueryResultsApi } from "./hooks/useQueryRunner";
+import { useWorkspaceTabs } from "./hooks/useWorkspaceTabs";
 import {
   cellSummary,
   columnKinds,
@@ -79,15 +80,12 @@ import {
   type ColumnWidths,
 } from "../../lib/column-widths";
 import {
-  loadQueryWorkspace,
-  saveQueryWorkspace,
   makeQueryTab,
   queryConnectionKey,
   exportResultsCsv,
   exportResultsJson,
   downloadText,
   type SavedQuery,
-  type QueryHistoryEntry,
 } from "../../lib/query-workspace";
 import {
   useCallback,
@@ -233,29 +231,6 @@ export default function DatabaseWorkspace({
     setRevealUri(false);
     setUriCopied(false);
   }, [showConnect]);
-  const [workspace, setWorkspace] = useState(() => {
-    const loaded = loadQueryWorkspace();
-    if (!loaded.tabs.length) {
-      const tab = makeQueryTab();
-      loaded.tabs = [tab];
-      loaded.activeTabId = tab.id;
-    } else if (!loaded.activeTabId) loaded.activeTabId = loaded.tabs[0]!.id;
-    return loaded;
-  });
-  const activeTab =
-    workspace.tabs.find((tab) => tab.id === workspace.activeTabId) ??
-    workspace.tabs[0];
-  const queryText = activeTab?.query ?? "";
-  function setQueryText(query: string): void {
-    setWorkspace((current) => ({
-      ...current,
-      tabs: current.tabs.map((tab) =>
-        tab.id === current.activeTabId
-          ? { ...tab, query, updatedAt: Date.now() }
-          : tab,
-      ),
-    }));
-  }
   const [railView, setRailView] = useState<RailView>("servers");
   const [sidebarHidden, setSidebarHidden] = useState(() => {
     try {
@@ -435,42 +410,6 @@ export default function DatabaseWorkspace({
     window.addEventListener("beforeunload", prevent);
     return () => window.removeEventListener("beforeunload", prevent);
   }, [rowDirty]);
-  const [rememberQueries, setRememberQueries] = useState(() => {
-    try {
-      return localStorage.getItem("rowfish.remember-query-history") !== "false";
-    } catch {
-      return true;
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        "rowfish.remember-query-history",
-        String(rememberQueries),
-      );
-    } catch {}
-  }, [rememberQueries]);
-  const workspaceSnapshot = useRef(workspace);
-  workspaceSnapshot.current = workspace;
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (!saveQueryWorkspace(workspace))
-        setNotice(
-          "Workspace could not be saved locally. Export important SQL before closing.",
-        );
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [workspace]);
-  useEffect(() => {
-    const flush = (): void => {
-      saveQueryWorkspace(workspaceSnapshot.current);
-    };
-    window.addEventListener("beforeunload", flush);
-    return () => {
-      flush();
-      window.removeEventListener("beforeunload", flush);
-    };
-  }, []);
   const [collection, setCollection] = useState("documents");
   const [mongoQueryMode, setMongoQueryMode] = useState<"find" | "aggregate">(
     "find",
@@ -527,6 +466,14 @@ export default function DatabaseWorkspace({
   const scrollElement = useRef<HTMLDivElement>(null);
   const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase());
 
+  const tabs = useWorkspaceTabs({
+    queryFolder,
+    onNotice: setNotice,
+    onQueryNameChange: setQueryName,
+    onSaveDialogChange: setSaveDialog,
+    onRailViewChange: setRailView,
+  });
+
   // Latest-value refs so the connections hook can reach the runner (created
   // just below) without a circular dependency.
   const runStateRef = useRef<RunState>("idle");
@@ -534,8 +481,8 @@ export default function DatabaseWorkspace({
   const connectionState = useConnections({
     runStateRef,
     queryResultsRef,
-    setQueryText,
-    queryText,
+    setQueryText: tabs.setQueryText,
+    queryText: tabs.queryText,
     mongoQueryMode,
     setCollection,
     setMongoQueryMode,
@@ -580,6 +527,19 @@ export default function DatabaseWorkspace({
     switchDatabase,
     disconnect,
   } = connectionState;
+  const {
+    workspace,
+    setWorkspace,
+    activeTab,
+    queryText,
+    setQueryText,
+    rememberQueries,
+    setRememberQueries,
+    workspaceSnapshot,
+    saveCurrentQuery,
+    saveQueryToLibrary,
+  } = tabs;
+
   const queryRunner = useQueryRunner({
     activeConnection,
     queryText,
@@ -587,7 +547,7 @@ export default function DatabaseWorkspace({
     workspace,
     rememberQueries,
     onWorkspaceChange: setWorkspace,
-    onHistoryUpdate: updateHistory,
+    onHistoryUpdate: tabs.updateHistory,
     closeRowPanel,
     setRowSource,
     dismissPeek,
@@ -963,46 +923,6 @@ export default function DatabaseWorkspace({
             : current.activeTabId,
       };
     });
-  }
-  function updateHistory(id: string, update: Partial<QueryHistoryEntry>): void {
-    setWorkspace((current) => ({
-      ...current,
-      history: current.history.map((entry) =>
-        entry.id === id ? { ...entry, ...update } : entry,
-      ),
-    }));
-  }
-  function saveCurrentQuery(): void {
-    if (!queryText.trim()) return;
-    setQueryName(
-      activeTab?.title === "Untitled query" ? "" : (activeTab?.title ?? ""),
-    );
-    setSaveDialog(true);
-  }
-  function saveQueryToLibrary(title: string): void {
-    const item: SavedQuery = {
-      id: crypto.randomUUID(),
-      title,
-      query: queryText,
-      kind: activeTab?.kind ?? "postgres",
-      connectionKey: activeTab?.connectionKey ?? "",
-      folder: queryFolder.trim() || "General",
-      updatedAt: Date.now(),
-    };
-    setWorkspace((current) => ({
-      ...current,
-      saved: [
-        item,
-        ...current.saved.filter(
-          (entry) => entry.title !== item.title || entry.folder !== item.folder,
-        ),
-      ].slice(0, 500),
-      tabs: current.tabs.map((tab) =>
-        tab.id === current.activeTabId ? { ...tab, title } : tab,
-      ),
-    }));
-    setSaveDialog(false);
-    setRailView("saved");
   }
   async function formatQuery(): Promise<void> {
     const original = queryText;
