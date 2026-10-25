@@ -1,7 +1,5 @@
 import {
   Plus,
-  Play,
-  Square,
   Save,
   FileCode2,
   X,
@@ -9,13 +7,9 @@ import {
   Table2,
   Columns3,
   KeyRound,
-  ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
   CircleHelp,
-  Copy,
-  Eye,
-  EyeOff,
   List,
   Braces,
 } from "lucide-react";
@@ -49,6 +43,7 @@ import ConnectionRail from "./components/ConnectionRail";
 import DbSwitcher from "./components/DbSwitcher";
 import HelpDialog from "./components/HelpDialog";
 import MongoBrowser from "./components/MongoBrowser";
+import MongoCollectionBar from "./components/MongoCollectionBar";
 import MongoOperationDialog, {
   type MongoOperationFields,
 } from "./components/MongoOperationDialog";
@@ -102,7 +97,6 @@ import type {
   DatabaseBrowserDatabase,
   DatabaseBrowserTable,
   DatabaseConnectionInput,
-  PostgresSslMode,
   DatabaseConnectionSummary,
   DatabaseConnectionTestResult,
   DatabaseRow,
@@ -122,11 +116,9 @@ import {
   DEFAULT_FORM,
   dialogErrorMessage,
   kindDefaults,
-  kindLabel,
   loadConnectStringMode,
   measureText,
   mongoBrowserKey,
-  MONGO_DETAILS_KEY,
   parseConnectionStringFields,
   resultId,
   ROW_HEIGHT,
@@ -137,6 +129,25 @@ import {
   type RunState,
 } from "./workspace-helpers";
 
+/**
+ * Composition root for the database workspace: wires the three state hooks
+ * (tabs -> connections -> query runner, with two latest-value refs breaking
+ * the runner/connections cycle) and lays out rail | main | dialogs.
+ *
+ * - hooks/useWorkspaceTabs     tabs, active tab, query text, saved queries, history
+ * - hooks/useConnections       live/saved connections + per-connection browser data
+ * - hooks/useQueryRunner       run/cancel, streamed results, per-tab result cache
+ * - components/ConnectionRail  servers/saved/history rail (hosts MongoBrowser, DbSwitcher)
+ * - components/ConnectionDialog connect/test/save dialog (owns its form state)
+ * - components/QueryConnectionDialog  "connect to run a query" dialog
+ * - components/MongoCollectionBar     collection summary, actions and details
+ * - components/MongoOperationDialog   insert/update/index/delete/drop operations
+ * - components/ResultsTable           virtualized results grid
+ * - components/SaveQueryDialog, HelpDialog, TableMetadata  small leaf dialogs
+ *
+ * The root keeps the connect flow, the query-connection binding, the Mongo
+ * operation submit, tab open/close, and the layout/keyboard effects.
+ */
 export default function DatabaseWorkspace({
   search,
   preferences,
@@ -426,42 +437,6 @@ export default function DatabaseWorkspace({
   const [mongoOperationBusy, setMongoOperationBusy] = useState(false);
   const [mongoOperationError, setMongoOperationError] = useState("");
   const [mongoOperationSummary, setMongoOperationSummary] = useState("");
-  /** Indexes, validator and options under the collection bar; folded by default. */
-  const [mongoDetailsOpen, setMongoDetailsOpen] = useState(() => {
-    try {
-      return localStorage.getItem(MONGO_DETAILS_KEY) === "open";
-    } catch {
-      return false;
-    }
-  });
-  const [mongoMoreOpen, setMongoMoreOpen] = useState(false);
-  const mongoMoreRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!mongoMoreOpen) return;
-    const close = (event: MouseEvent): void => {
-      if (!mongoMoreRef.current?.contains(event.target as Node))
-        setMongoMoreOpen(false);
-    };
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") setMongoMoreOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [mongoMoreOpen]);
-  function toggleMongoDetails(): void {
-    setMongoDetailsOpen((open) => {
-      try {
-        localStorage.setItem(MONGO_DETAILS_KEY, open ? "closed" : "open");
-      } catch {
-        // Only a display preference.
-      }
-      return !open;
-    });
-  }
   const [viewport, setViewport] = useState({ top: 0, height: 480 });
   const scrollElement = useRef<HTMLDivElement>(null);
   const deferredSearch = useDeferredValue(search.trim().toLocaleLowerCase());
@@ -2068,149 +2043,15 @@ export default function DatabaseWorkspace({
         {activeConnection?.kind === "mongodb" &&
           selectedMongoCollection &&
           selectedMongoDatabase && (
-            <section
-              className="db-mongo-details"
-              aria-label="MongoDB collection details"
-            >
-              <div className="db-mongo-details-bar">
-                <button
-                  type="button"
-                  className="db-mongo-details-toggle"
-                  aria-expanded={mongoDetailsOpen}
-                  onClick={() => toggleMongoDetails()}
-                  title={
-                    mongoDetailsOpen
-                      ? "Hide collection details"
-                      : "Show indexes, validator and options"
-                  }
-                >
-                  <ChevronRight
-                    size={13}
-                    className={mongoDetailsOpen ? "open" : undefined}
-                    aria-hidden="true"
-                  />
-                  <strong>
-                    {selectedMongoDatabase}.{selectedMongoCollection.name}
-                  </strong>
-                  <span>
-                    {selectedMongoCollection.type}
-                    {selectedMongoCollection.estimatedDocuments !== undefined
-                      ? ` · ~${selectedMongoCollection.estimatedDocuments.toLocaleString()} docs`
-                      : ""}{" "}
-                    · {(selectedMongoCollection.indexes ?? []).length} indexes
-                  </span>
-                </button>
-                <div className="db-mongo-actions">
-                  <button
-                    className="db-quiet-button"
-                    disabled={runState !== "idle" || mongoOperationBusy}
-                    onClick={() => openMongoOperation("insert")}
-                  >
-                    ＋ Insert
-                  </button>
-                  <button
-                    className="db-quiet-button"
-                    disabled={runState !== "idle" || mongoOperationBusy}
-                    onClick={() => openMongoOperation("update")}
-                  >
-                    Update
-                  </button>
-                  <div className="db-mongo-more" ref={mongoMoreRef}>
-                    <button
-                      className="db-quiet-button"
-                      aria-label="More collection actions"
-                      aria-haspopup="menu"
-                      aria-expanded={mongoMoreOpen}
-                      disabled={mongoOperationBusy}
-                      onClick={() => setMongoMoreOpen((open) => !open)}
-                    >
-                      ⋯
-                    </button>
-                    {mongoMoreOpen && (
-                      <div className="db-mongo-more-menu" role="menu">
-                        <button
-                          role="menuitem"
-                          onClick={() => {
-                            setMongoMoreOpen(false);
-                            openMongoOperation("create-index");
-                          }}
-                        >
-                          ＋ Create index
-                        </button>
-                        <div className="db-mongo-more-label">Danger zone</div>
-                        <button
-                          role="menuitem"
-                          className="danger"
-                          disabled={runState !== "idle"}
-                          onClick={() => {
-                            setMongoMoreOpen(false);
-                            openMongoOperation("delete");
-                          }}
-                        >
-                          Delete documents…
-                        </button>
-                        <button
-                          role="menuitem"
-                          className="danger"
-                          onClick={() => {
-                            setMongoMoreOpen(false);
-                            openMongoOperation("drop-collection");
-                          }}
-                        >
-                          Drop collection…
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-              {mongoDetailsOpen && (
-                <>
-                  {(selectedMongoCollection.indexes?.length ?? 0) > 0 && (
-                    <div className="db-mongo-indexes">
-                      {selectedMongoCollection.indexes?.map((index) => (
-                        <div className="db-mongo-index" key={index.name}>
-                          <span>
-                            <b>{index.name}</b>
-                            {index.unique ? " · unique" : ""}
-                            {index.expireAfterSeconds !== undefined
-                              ? ` · TTL ${index.expireAfterSeconds}s`
-                              : ""}
-                            <code>{index.keys}</code>
-                          </span>
-                          {index.name !== "_id_" && (
-                            <button
-                              className="db-inline-add danger"
-                              title={`Drop index ${index.name}`}
-                              aria-label={`Drop index ${index.name}`}
-                              onClick={() => {
-                                openMongoOperation("drop-index", undefined, {
-                                  indexName: index.name,
-                                });
-                              }}
-                            >
-                              ×
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {selectedMongoCollection.validator && (
-                    <details className="db-mongo-validator">
-                      <summary>Collection validator</summary>
-                      <code>{selectedMongoCollection.validator}</code>
-                    </details>
-                  )}
-                  {selectedMongoCollection.options && (
-                    <details className="db-mongo-validator">
-                      <summary>Collection options</summary>
-                      <code>{selectedMongoCollection.options}</code>
-                    </details>
-                  )}
-                </>
-              )}
-            </section>
+            <MongoCollectionBar
+              collection={selectedMongoCollection}
+              database={selectedMongoDatabase}
+              runState={runState}
+              mongoOperationBusy={mongoOperationBusy}
+              onOpenOperation={(operation, prefill) =>
+                openMongoOperation(operation, undefined, prefill)
+              }
+            />
           )}
 
         {notice && (
