@@ -1,7 +1,7 @@
 {
   "name": "rowfish",
   "version": "0.2.0-beta.2",
-  "description": "A desktop PostgreSQL and MongoDB client built with Electron, React and TypeScript",
+  "description": "A desktop PostgreSQL, SQLite and MongoDB client built with Electron, React and TypeScript",
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",

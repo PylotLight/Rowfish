@@ -9,6 +9,7 @@ import type {
   DatabaseQueryRequest,
   DatabaseConnectionTestResult,
   AlembicStatus,
+  AlembicModelComparison,
   SavedConnectionProfile,
 } from "../shared/database";
 import { DATABASE_LIMITS, isValidRowLimit } from "../shared/database-helpers";
@@ -24,6 +25,7 @@ import {
   analyzeAlembicVersionsDirectory,
   compareAlembicRevisions,
 } from "./alembic-graph.js";
+import { compareAlembicModelState } from "./alembic-model-compare.js";
 import {
   isPlainRecord,
   validateText,
@@ -457,6 +459,54 @@ export async function getAlembicStatus(
       diagnostics: comparison.diagnostics,
     },
   };
+}
+
+export async function compareAlembicModels(
+  event: IpcMainInvokeEvent,
+  connectionIdValue: unknown,
+  configPathValue: unknown,
+  pythonPathValue: unknown,
+): Promise<AlembicModelComparison> {
+  assertAllowedSender(event.sender);
+  const connectionId = validateText(
+    connectionIdValue,
+    "Connection id",
+    80,
+    true,
+  );
+  const configPath = validateText(
+    configPathValue,
+    "Alembic configuration file",
+    4_096,
+    true,
+  );
+  if (!isAbsolute(configPath))
+    throw new Error("Choose an absolute Alembic configuration file.");
+  const pythonPath =
+    typeof pythonPathValue === "string"
+      ? validateText(pythonPathValue, "Python interpreter path", 4_096, true)
+      : "";
+  if (pythonPath && !isAbsolute(pythonPath))
+    throw new Error("Choose an absolute Python interpreter path.");
+  const connection = getOwnedConnection(event, connectionId);
+  if (connection.config.kind !== "postgres" || connection.config.serverMode)
+    throw new Error(
+      "Model comparison requires a live PostgreSQL database connection.",
+    );
+  if (connection.activeQueryId || connection.rowBusy)
+    throw new Error(
+      "Wait for the active database operation to finish before comparing models.",
+    );
+  const { host, port, database, username, password, tls, sslMode } =
+    connection.config;
+  const result = await compareAlembicModelState({
+    configPath,
+    pythonPath,
+    connection: { host, port, database, username, password, tls, sslMode },
+  });
+  if (connection.closed)
+    throw new Error("The database disconnected while comparing models.");
+  return result;
 }
 
 export function runDatabaseQuery(

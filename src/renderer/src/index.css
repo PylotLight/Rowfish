@@ -675,6 +675,89 @@ select option {
 .db-migration-footnote {
   margin-top: auto;
 }
+.db-model-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.db-model-browse {
+  align-self: flex-start;
+  min-height: 27px;
+  padding: 5px 8px;
+  font-size: 8px;
+}
+.db-model-compare-button {
+  min-height: 31px;
+  padding: 7px 9px;
+  border: 1px solid rgba(126, 226, 168, 0.25);
+  border-radius: 7px;
+  background: rgba(126, 226, 168, 0.14);
+  color: var(--mint);
+  font-size: 9px;
+  font-weight: 650;
+}
+.db-model-compare-button:hover:not(:disabled) {
+  background: rgba(126, 226, 168, 0.22);
+}
+.db-model-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.db-model-operation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.db-model-operation {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.025);
+}
+.db-model-operation small {
+  color: #edbd7d;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.db-model-operation span {
+  color: rgba(242, 244, 246, 0.88);
+  font-size: 8px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.db-model-sql {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.18);
+}
+.db-model-sql summary {
+  padding: 8px;
+  color: var(--mint);
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 650;
+}
+.db-model-sql pre {
+  max-height: 300px;
+  margin: 0;
+  padding: 0 8px 9px;
+  overflow: auto;
+  color: rgba(242, 244, 246, 0.88);
+  font-family: var(--editor-font, ui-monospace, monospace);
+  font-size: 8px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .db-browser-mongo-collections {
   position: relative;
   padding: 0 3px 5px 14px;

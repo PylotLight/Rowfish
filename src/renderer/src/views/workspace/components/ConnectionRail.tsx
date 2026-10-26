@@ -23,6 +23,7 @@ import type {
   DatabaseBrowserDatabase,
   DatabaseBrowserTable,
   DatabaseConnectionSummary,
+  AlembicModelComparison,
   MongoBrowserCollection,
   MongoBrowserDatabase,
   SavedConnectionProfile,
@@ -199,6 +200,13 @@ export default function ConnectionRail({
   );
   const [migrationLoading, setMigrationLoading] = useState(false);
   const [migrationError, setMigrationError] = useState("");
+  const [modelConnectionId, setModelConnectionId] = useState("");
+  const [modelConfigPath, setModelConfigPath] = useState("");
+  const [modelPythonPath, setModelPythonPath] = useState("");
+  const [modelComparison, setModelComparison] =
+    useState<AlembicModelComparison | null>(null);
+  const [modelLoading, setModelLoading] = useState(false);
+  const [modelError, setModelError] = useState("");
   const migrationConnections = connections.filter(
     (connection) =>
       (connection.kind === "postgres" || connection.kind === "sqlite") &&
@@ -211,10 +219,24 @@ export default function ConnectionRail({
     migrationConnections.find((connection) => connection.id === activeId) ??
     migrationConnections[0] ??
     null;
+  const modelConnections = connections.filter(
+    (connection) => connection.kind === "postgres" && !connection.serverMode,
+  );
+  const selectedModelConnection =
+    modelConnections.find(
+      (connection) => connection.id === modelConnectionId,
+    ) ??
+    modelConnections.find((connection) => connection.id === activeId) ??
+    modelConnections[0] ??
+    null;
   useEffect(() => {
     setMigrationStatus(null);
     setMigrationError("");
   }, [selectedMigrationConnection?.id]);
+  useEffect(() => {
+    setModelComparison(null);
+    setModelError("");
+  }, [selectedModelConnection?.id]);
   const orderedMigrationNodes = migrationStatus
     ? [
         ...migrationStatus.graph.topologicalOrder
@@ -279,6 +301,72 @@ export default function ConnectionRail({
           ? error.message
           : "Could not open the Alembic versions directory picker.",
       );
+    }
+  }
+
+  async function chooseModelConfig(): Promise<void> {
+    try {
+      const configPath = await window.api.app.chooseAlembicConfig();
+      if (!configPath) return;
+      setModelConfigPath(configPath);
+      setModelComparison(null);
+      setModelError("");
+    } catch (error) {
+      setModelError(
+        error instanceof Error
+          ? error.message
+          : "Could not open the Alembic configuration picker.",
+      );
+    }
+  }
+
+  async function chooseModelPython(): Promise<void> {
+    try {
+      const pythonPath = await window.api.app.choosePythonInterpreter();
+      if (!pythonPath) return;
+      setModelPythonPath(pythonPath);
+      setModelComparison(null);
+      setModelError("");
+    } catch (error) {
+      setModelError(
+        error instanceof Error
+          ? error.message
+          : "Could not open the Python interpreter picker.",
+      );
+    }
+  }
+
+  async function compareModelState(): Promise<void> {
+    if (!selectedModelConnection) {
+      setModelError("Connect to a live PostgreSQL database first.");
+      return;
+    }
+    if (!modelConfigPath.trim()) {
+      setModelError("Select an Alembic configuration file first.");
+      return;
+    }
+    const approved = window.confirm(
+      "Rowfish will run this repository's Alembic environment and import its SQLAlchemy models to inspect schema differences. The database connection requests a read-only session, and generated SQL is shown for review only—it is never run. Repository Python code can still have local side effects. Continue only if you trust this project.",
+    );
+    if (!approved) return;
+    setModelLoading(true);
+    setModelError("");
+    setModelComparison(null);
+    try {
+      const result = await window.api.database.compareAlembicModels(
+        selectedModelConnection.id,
+        modelConfigPath,
+        modelPythonPath,
+      );
+      setModelComparison(result);
+    } catch (error) {
+      setModelError(
+        error instanceof Error
+          ? error.message
+          : "Could not compare PostgreSQL with SQLAlchemy model metadata.",
+      );
+    } finally {
+      setModelLoading(false);
     }
   }
 
@@ -689,6 +777,146 @@ export default function ConnectionRail({
               </small>
             </>
           )}
+          <div className="db-model-compare">
+            <div className="db-migration-heading">
+              <b>SQLALCHEMY MODEL DRIFT</b>
+              <span>PREVIEW ONLY</span>
+            </div>
+            <label className="db-migration-field">
+              <span>Live PostgreSQL database</span>
+              <select
+                value={selectedModelConnection?.id ?? ""}
+                onChange={(event) => {
+                  setModelConnectionId(event.target.value);
+                  setModelComparison(null);
+                  setModelError("");
+                }}
+                disabled={modelConnections.length === 0}
+              >
+                {modelConnections.length === 0 ? (
+                  <option value="">No live PostgreSQL connection</option>
+                ) : (
+                  modelConnections.map((connection) => (
+                    <option key={connection.id} value={connection.id}>
+                      {connection.name} · {connection.database}
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
+            <label className="db-migration-field">
+              <span>Alembic configuration file</span>
+              <input
+                aria-label="Alembic configuration file"
+                value={modelConfigPath}
+                onChange={(event) => {
+                  setModelConfigPath(event.target.value);
+                  setModelComparison(null);
+                }}
+                placeholder="Path to alembic.ini"
+                spellCheck={false}
+              />
+            </label>
+            <button
+              type="button"
+              className="db-quiet-button db-model-browse"
+              onClick={() => void chooseModelConfig()}
+              disabled={modelLoading}
+            >
+              Browse for Alembic config…
+            </button>
+            <label className="db-migration-field">
+              <span>Python interpreter (optional)</span>
+              <input
+                aria-label="Python interpreter path"
+                value={modelPythonPath}
+                onChange={(event) => {
+                  setModelPythonPath(event.target.value);
+                  setModelComparison(null);
+                }}
+                placeholder="Auto-detect project .venv"
+                spellCheck={false}
+              />
+            </label>
+            <button
+              type="button"
+              className="db-quiet-button db-model-browse"
+              onClick={() => void chooseModelPython()}
+              disabled={modelLoading}
+            >
+              Choose Python interpreter…
+            </button>
+            <div className="db-migration-warning">
+              Comparison runs the repository’s Alembic environment and model
+              imports. The database session requests read-only mode, but project
+              Python code can have local side effects. Only compare code you
+              trust. Generated SQL is for review and is never run.
+            </div>
+            <button
+              type="button"
+              className="db-primary-button db-model-compare-button"
+              onClick={() => void compareModelState()}
+              disabled={
+                modelLoading ||
+                !selectedModelConnection ||
+                !modelConfigPath.trim()
+              }
+            >
+              {modelLoading ? "Comparing…" : "Compare live DB with models"}
+            </button>
+            {modelError && (
+              <div className="db-migration-warning" role="alert">
+                {modelError}
+              </div>
+            )}
+            {modelComparison && (
+              <div className="db-model-results" aria-live="polite">
+                <div className="db-migration-summary">
+                  <b>
+                    {modelComparison.operations.length === 0
+                      ? "No model/schema differences detected"
+                      : `${modelComparison.operations.length} difference${modelComparison.operations.length === 1 ? "" : "s"} found`}
+                  </b>
+                  <small>
+                    Alembic {modelComparison.alembicVersion} · SQLAlchemy{" "}
+                    {modelComparison.sqlalchemyVersion}
+                  </small>
+                </div>
+                {modelComparison.diagnostics.map((message) => (
+                  <div className="db-migration-warning" key={message}>
+                    {message}
+                  </div>
+                ))}
+                {modelComparison.operations.length > 0 && (
+                  <div
+                    className="db-model-operation-list"
+                    aria-label="Model differences"
+                  >
+                    {modelComparison.operations.map((operation, index) => (
+                      <div
+                        className="db-model-operation"
+                        key={`${operation.kind}:${index}`}
+                      >
+                        <small>{operation.kind.replaceAll("-", " ")}</small>
+                        <span>{operation.description}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {modelComparison.sqlPreview ? (
+                  <details className="db-model-sql">
+                    <summary>Generated SQL preview · not executed</summary>
+                    <pre>{modelComparison.sqlPreview}</pre>
+                  </details>
+                ) : modelComparison.operations.length > 0 ? (
+                  <div className="db-migration-warning">
+                    No complete SQL preview is available. Review the comparison
+                    diagnostics before taking any action.
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
         </section>
       )}
       <div

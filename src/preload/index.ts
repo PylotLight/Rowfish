@@ -7,6 +7,7 @@ import type {
   DatabaseConnectionTestResult,
   DatabaseEvent,
   AlembicStatus,
+  AlembicModelComparison,
   DatabaseQueryRequest,
   MongoBrowserCollection,
   MongoBrowserDatabase,
@@ -29,6 +30,10 @@ const api = {
       ipcRenderer.invoke("app:choose-sqlite-file"),
     chooseAlembicDirectory: (): Promise<string | null> =>
       ipcRenderer.invoke("app:choose-alembic-directory"),
+    chooseAlembicConfig: (): Promise<string | null> =>
+      ipcRenderer.invoke("app:choose-alembic-config"),
+    choosePythonInterpreter: (): Promise<string | null> =>
+      ipcRenderer.invoke("app:choose-python-interpreter"),
   },
   database: {
     connect: (
@@ -66,6 +71,17 @@ const api = {
       directory: string,
     ): Promise<AlembicStatus> =>
       ipcRenderer.invoke("database:alembic-status", connectionId, directory),
+    compareAlembicModels: (
+      connectionId: string,
+      configPath: string,
+      pythonPath: string,
+    ): Promise<AlembicModelComparison> =>
+      ipcRenderer.invoke(
+        "database:alembic-model-compare",
+        connectionId,
+        configPath,
+        pythonPath,
+      ),
     getPostgresTableDetails: (
       connectionId: string,
       schema: string,

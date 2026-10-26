@@ -11,6 +11,7 @@ import {
   getPostgresTableDetails,
   getPostgresRow,
   getAlembicStatus,
+  compareAlembicModels,
   updatePostgresRow,
   listMongoCollections,
   listMongoDatabases,
@@ -76,6 +77,30 @@ export function registerIpc(): void {
     });
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
+  ipcMain.handle("app:choose-alembic-config", async (event) => {
+    assertAppSender(event);
+    const win = getMainWindow();
+    if (!win) return null;
+    const result = await dialog.showOpenDialog(win, {
+      title: "Select Alembic configuration",
+      properties: ["openFile"],
+      filters: [
+        { name: "Alembic configuration", extensions: ["ini"] },
+        { name: "All files", extensions: ["*"] },
+      ],
+    });
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
+  ipcMain.handle("app:choose-python-interpreter", async (event) => {
+    assertAppSender(event);
+    const win = getMainWindow();
+    if (!win) return null;
+    const result = await dialog.showOpenDialog(win, {
+      title: "Select Python interpreter",
+      properties: ["openFile"],
+    });
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
   ipcMain.handle("database:connect", (event, input: unknown, save: unknown) =>
     connectDatabase(event, input, save as boolean),
   );
@@ -112,6 +137,11 @@ export function registerIpc(): void {
     "database:alembic-status",
     (event, connectionId: unknown, directory: unknown) =>
       getAlembicStatus(event, connectionId, directory),
+  );
+  ipcMain.handle(
+    "database:alembic-model-compare",
+    (event, connectionId: unknown, configPath: unknown, pythonPath: unknown) =>
+      compareAlembicModels(event, connectionId, configPath, pythonPath),
   );
   ipcMain.handle(
     "database:postgres-table-details",

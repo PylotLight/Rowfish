@@ -1,13 +1,13 @@
 # Database client
 
-Rowfish connects to PostgreSQL and MongoDB when you enter connection details and choose **Connect**. The connection dialog saves profiles by default so they remain available between app sessions. Saved profiles are not live sockets: after a restart, choose a saved server in the sidebar to reconnect.
+Rowfish connects to PostgreSQL, MongoDB and local SQLite database files. The connection dialog saves profiles by default so they remain available between app sessions. Saved profiles are not live sockets: after a restart, choose a saved server or file in the sidebar to reconnect.
 
 ## Save and reconnect
 
 The dialog has two modes, chosen with the **Connection string | Manual** toggle at the top. It reopens in whichever mode you used last (connection string the first time).
 
-- **Connection string**: paste a URI and Rowfish works out the database type from its scheme: `postgres://` or `postgresql://` is PostgreSQL, `mongodb://` or `mongodb+srv://` is MongoDB. There is no type dropdown; a small badge shows what was detected (for example _Detected: PostgreSQL_). An empty string or an unknown scheme shows an inline hint and keeps **Connect**, **Test & Save** and **Save without testing** disabled until the scheme is recognised.
-- **Manual**: choose the database type, then fill in host, port, database and optional username/password, with a live preview of the matching connection string. PostgreSQL defaults to port `5432`; MongoDB defaults to `27017`. PostgreSQL has an **SSL mode** picker with the libpq modes; MongoDB has a **Require TLS** toggle (certificate-verified, trusted by the operating system).
+- **Connection string**: paste a URI and Rowfish works out the database type from its scheme: `postgres://` or `postgresql://` is PostgreSQL, `mongodb://` or `mongodb+srv://` is MongoDB. SQLite uses a local file and has no connection-string mode. There is no type dropdown in this mode; a small badge shows what was detected (for example _Detected: PostgreSQL_). An empty string or an unknown scheme shows an inline hint and keeps **Connect**, **Test & Save** and **Save without testing** disabled until the scheme is recognised.
+- **Manual**: choose PostgreSQL, MongoDB or SQLite. PostgreSQL and MongoDB use host, port, database and optional username/password; SQLite asks you to choose an existing database file such as `.db` or `.sqlite`. PostgreSQL defaults to port `5432`; MongoDB defaults to `27017`. PostgreSQL has an **SSL mode** picker with the libpq modes; MongoDB has a **Require TLS** toggle (certificate-verified, trusted by the operating system).
 
 Switching modes carries the values across: going to **Connection string** starts from a string built from the fields, and going back to **Manual** keeps the type, host, port, database and credentials parsed from the string. When a pasted string changes the type, the port and database fall back to that type's defaults until the rest of the string parses.
 
@@ -37,6 +37,20 @@ To browse multiple databases on one PostgreSQL server, choose **Browse all datab
 
 This mode does not grant database access or bypass PostgreSQL permissions. It depends on being able to connect to the server's `postgres` maintenance database; if that is unavailable, connect directly to a database you can access instead. A direct PostgreSQL connection also shows its tables and views in the sidebar. Select a table to place a schema-qualified `SELECT * ... LIMIT 100` starter query in the editor; review it before running.
 
+## SQLite files
+
+Choose **SQLite** in Manual mode, then browse to an existing local `.db`, `.sqlite` or `.sqlite3` file. SQLite is file-backed: it does not use a network host, credentials or a connection string. Rowfish lists tables and views under `main`; the editor uses live table and column names for autocomplete and runs SQLite SQL against the selected file. Select a table to create a quoted `SELECT * ... LIMIT 100` starter query.
+
+The SQLite browser is for inspection and query work; PostgreSQL's row-edit side panel and server/database switcher do not apply. SQL submitted from the editor can change the file, so review statements before running them. SQLite support does not make a database portable to PostgreSQL or vice versa.
+
+## Alembic migration status and model comparison
+
+Open the **Migrations** view in the explorer to compare a live PostgreSQL or SQLite database's `alembic_version` rows with revision files from a checkout. Choose the `versions` directory; to inspect a different repository state or branch, point Rowfish at that other checkout (for example, a Git worktree). This view compares revision graph metadata and does not compare tables or run migrations.
+
+For schema drift against SQLAlchemy models, choose a live PostgreSQL connection and an Alembic configuration file (usually `alembic.ini`), then choose **Compare live DB with models**. Rowfish uses the target metadata exposed by the Alembic environment to identify autogenerate differences such as tables, columns, indexes and constraints. An optional Python interpreter path lets you select the project's virtual environment; otherwise Rowfish checks nearby `.venv`/`venv` directories and then the system Python. That environment needs Alembic, SQLAlchemy and a PostgreSQL driver installed, and the selected Alembic environment must expose `target_metadata`.
+
+The comparison runs the repository's Alembic environment and model imports to load metadata. Only run it for code you trust: Python code can have local side effects, even though Rowfish requests a read-only PostgreSQL session and does not run Alembic upgrade steps. Differences and generated SQL are shown for review; Rowfish never applies the preview. Autogenerate is not a complete semantic verifier for every database feature, so review diagnostics and SQL rather than treating a clean result as proof that every database object matches.
+
 ## PostgreSQL TLS (sslmode)
 
 Rowfish follows libpq's `sslmode` rules, in the SSL mode picker or as `?sslmode=` in a connection string:
@@ -61,9 +75,9 @@ From a selected collection you can insert a document, update one or many documen
 
 ## Run a query
 
-### PostgreSQL
+### PostgreSQL and SQLite
 
-Use the SQL editor for one statement, a selected fragment, or a script. Ctrl/⌘ Enter runs the selection or current statement; Ctrl/⌘ Shift Enter and the Run query button run the whole editor. Statements execute sequentially on the same session and stop at the first error. Only the final statement’s result is displayed, fetched through a cursor in bounded batches. Earlier statements are not automatically rolled back: use explicit BEGIN/COMMIT/ROLLBACK when appropriate. Query parameters are not provided.
+Use the SQL editor for one statement, a selected fragment, or a script. Ctrl/⌘ Enter runs the selection or current statement; Ctrl/⌘ Shift Enter and the Run query button run the whole editor. Statements execute sequentially on the same session and stop at the first error. Only the final statement’s result is displayed, fetched in bounded batches. Earlier statements are not automatically rolled back: use explicit BEGIN/COMMIT/ROLLBACK when appropriate. Query parameters are not provided.
 
 For the included fictional dataset, run:
 
@@ -76,6 +90,8 @@ LIMIT 8;
 ```
 
 Rowfish executes the SQL you submit, including write statements. Review a statement before running it against a database that contains data you care about.
+
+The same editor supports SQLite files. SQLite statements run through the selected file connection; use SQLite syntax and remember that writes change the file. SQLite statement selection preserves quoted text, comments and trigger bodies when splitting scripts.
 
 ### MongoDB
 
@@ -142,12 +158,12 @@ The checked-in [PostgreSQL seed script](examples/postgres.sql) and [MongoDB seed
 ## Test against a database
 
 1. Start the app with `bun run dev`.
-2. Connect to a reachable PostgreSQL or MongoDB server using valid credentials; leave **Save this connection** enabled to test profile persistence.
-3. For PostgreSQL, try both a direct database connection and **Browse all databases on this server**. Open an accessible database, select a table in the sidebar, and run the generated query.
+2. Connect to a reachable PostgreSQL or MongoDB server using valid credentials, or choose a local SQLite database file; leave **Save this connection** enabled to test profile persistence.
+3. For PostgreSQL, try both a direct database connection and **Browse all databases on this server**. For SQLite, select a table in the sidebar. Run the generated query and check live schema autocomplete.
 4. Quit and relaunch. Confirm the saved profile remains visible, reconnect works, and live sessions are not automatically reopened.
 5. Run a small read query or filter, change the row limit, try local result search, then choose **Cancel** and reconnect before another query.
 
-Run `bun test`, `bun run typecheck` and `bun run build` for automated checks. `bun run test:smoke` launches the actual Electron app and expects the isolated local fixture described below. A successful live database session requires a reachable server and valid credentials.
+Run `bun test`, `bun check` and `bun run build` for automated checks. `node scripts/sqlite-worker-smoke.mjs` exercises SQLite file open, browser metadata, Alembic revision reads, query results and close. `bun run test:smoke` launches the actual Electron app and expects the isolated local fixture described below. A successful live network database session requires a reachable server and valid credentials.
 
 ## Repeat the desktop smoke test
 

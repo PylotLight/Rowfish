@@ -72,6 +72,19 @@ export interface AlembicStatus {
   };
 }
 
+export interface AlembicModelOperation {
+  kind: string;
+  description: string;
+}
+
+export interface AlembicModelComparison {
+  operations: AlembicModelOperation[];
+  sqlPreview: string;
+  diagnostics: string[];
+  alembicVersion: string;
+  sqlalchemyVersion: string;
+}
+
 export interface SavedConnectionProfile extends Omit<
   DatabaseConnectionInput,
   "password" | "connectionString"
