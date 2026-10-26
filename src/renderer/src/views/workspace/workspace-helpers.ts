@@ -68,15 +68,17 @@ export function loadConnectStringMode(): boolean {
 }
 
 export function kindLabel(kind: DatabaseConnectionInput["kind"]): string {
-  return kind === "postgres" ? "PostgreSQL" : "MongoDB";
+  if (kind === "postgres") return "PostgreSQL";
+  return kind === "mongodb" ? "MongoDB" : "SQLite";
 }
 
 export function kindDefaults(
   kind: DatabaseConnectionInput["kind"],
 ): Pick<DatabaseConnectionInput, "port" | "database"> {
-  return kind === "postgres"
-    ? { port: 5432, database: "postgres" }
-    : { port: 27017, database: "admin" };
+  if (kind === "postgres") return { port: 5432, database: "postgres" };
+  return kind === "mongodb"
+    ? { port: 27017, database: "admin" }
+    : { port: 0, database: "" };
 }
 
 /** An IPC error's own message, without Electron's "Error invoking remote method" prefix. */
@@ -89,6 +91,7 @@ export function dialogErrorMessage(error: unknown, fallback: string): string {
 }
 
 export function buildConnectionString(form: DatabaseConnectionInput): string {
+  if (form.kind === "sqlite") return "";
   const fields = {
     host: form.host.trim(),
     port: form.port,
@@ -141,7 +144,7 @@ export function connectionSubline(
 ): string {
   if (connection.serverMode)
     return `PostgreSQL · ${connection.host}:${connection.port} · all databases`;
-  return `${connection.kind === "postgres" ? "PostgreSQL" : "MongoDB"} · ${connection.database}`;
+  return `${kindLabel(connection.kind)} · ${connection.database}`;
 }
 
 /** Non-server-mode PostgreSQL connections expose a database switcher. */
@@ -157,7 +160,7 @@ export function canSwitchDatabase(
 
 export const MAX_CACHED_TAB_RESULTS = 12;
 /** The explorer rail's tabs. */
-export type RailView = "servers" | "saved" | "history";
+export type RailView = "servers" | "saved" | "history" | "migrations";
 /** The main results panel modes (distinct from the document view's ResultsView). */
 export type ResultViewMode = "data" | "structure" | "indexes" | "plan";
 export type TabResultSnapshot = {

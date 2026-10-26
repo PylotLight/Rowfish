@@ -14,11 +14,13 @@ import {
   readPostgres,
 } from "./worker/postgres";
 import { mutateMongo, readMongo } from "./worker/mongo";
+import { closeSqliteDatabase, readSqlite } from "./worker/sqlite";
 import { inspect } from "./worker/inspect";
 
 async function run(request: DatabaseQueryRequest): Promise<void> {
   try {
     if (config.kind === "postgres") await readPostgres(request);
+    else if (config.kind === "sqlite") readSqlite(request);
     else await readMongo(request);
   } catch (error) {
     post({
@@ -36,6 +38,7 @@ parentPort?.on("message", (message: WorkerRequest) => {
       try {
         if (state.postgres) await state.postgres.end();
         if (state.mongo) await state.mongo.close();
+        closeSqliteDatabase();
       } finally {
         post({ type: "closed" });
         parentPort?.close();
@@ -52,6 +55,7 @@ parentPort?.on("message", (message: WorkerRequest) => {
     message.type === "inspect-postgres-table" ||
     message.type === "inspect-postgres-server" ||
     message.type === "inspect-postgres-columns" ||
+    message.type === "inspect-alembic-version" ||
     message.type === "get-postgres-row" ||
     message.type === "update-postgres-row"
   ) {

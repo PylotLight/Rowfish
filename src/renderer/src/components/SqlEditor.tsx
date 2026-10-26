@@ -8,6 +8,8 @@ import {
   sql,
   PostgreSQL,
   MySQL,
+  SQLite,
+  type SQLDialect,
   schemaCompletionSource,
   keywordCompletionSource,
 } from "@codemirror/lang-sql";
@@ -36,7 +38,7 @@ export interface SqlEditorProps {
   onChange: (value: string) => void;
   onRun: (query?: string) => void;
   disabled?: boolean;
-  kind?: "postgres" | "mongodb";
+  kind?: "postgres" | "mongodb" | "sqlite";
   tables?: { schema: string; name: string; columns?: string[] }[];
   onSelectionChange?: (selection: string) => void;
   lineNumbers?: boolean;
@@ -111,10 +113,7 @@ const hiddenLineNumbers = EditorView.theme({
   ".cm-lineNumbers": { display: "none !important" },
 });
 
-function schemaConfig(
-  tables: SqlEditorProps["tables"],
-  dialect: typeof PostgreSQL,
-) {
+function schemaConfig(tables: SqlEditorProps["tables"], dialect: SQLDialect) {
   const schema: Record<
     string,
     Record<string, readonly string[]>
@@ -123,7 +122,11 @@ function schemaConfig(
     const tablesInSchema = (schema[schemaName] ??= Object.create(null));
     tablesInSchema[name] = columns;
   }
-  return { dialect, schema, defaultSchema: "public" };
+  return {
+    dialect,
+    schema,
+    defaultSchema: dialect === SQLite ? "main" : "public",
+  };
 }
 
 const EMPTY_MONGO: MongoCompletionOptions = { mode: "find", fields: [] };
@@ -181,7 +184,8 @@ export default function SqlEditor({
 
   useEffect(() => {
     if (!container.current) return;
-    const dialect = kind === "postgres" ? PostgreSQL : MySQL;
+    const dialect =
+      kind === "postgres" ? PostgreSQL : kind === "sqlite" ? SQLite : MySQL;
     const schema = schemaConfig(tables, dialect);
     const language =
       kind === "mongodb" ? json() : sql({ ...schema, upperCaseKeywords: true });
@@ -196,7 +200,11 @@ export default function SqlEditor({
             .trim();
           latest.current.onRun(
             selected ||
-              getSqlStatement(editor.state.doc.toString(), selection.head),
+              getSqlStatement(
+                editor.state.doc.toString(),
+                selection.head,
+                kind === "sqlite" ? "sqlite" : "postgres",
+              ),
           );
           return true;
         },
@@ -268,7 +276,8 @@ export default function SqlEditor({
   useEffect(() => {
     const editor = view.current;
     if (!editor) return;
-    const dialect = kind === "postgres" ? PostgreSQL : MySQL;
+    const dialect =
+      kind === "postgres" ? PostgreSQL : kind === "sqlite" ? SQLite : MySQL;
     const schema = schemaConfig(tables, dialect);
     editor.dispatch({
       effects: [

@@ -1,4 +1,7 @@
-import { postgresStatementRanges } from "../../../shared/sql-statements";
+import {
+  postgresStatementRanges,
+  sqliteStatementRanges,
+} from "../../../shared/sql-statements";
 import type {
   DatabaseConnectionSummary,
   DatabaseKind,
@@ -297,9 +300,16 @@ export function downloadText(
 }
 
 /** Extract the complete statement surrounding a zero-based cursor, ignoring delimiters in quoted/commented text. */
-export function getSqlStatement(text: string, cursor: number): string {
+export function getSqlStatement(
+  text: string,
+  cursor: number,
+  kind: "postgres" | "sqlite" = "postgres",
+): string {
   const position = Math.max(0, Math.min(text.length, cursor));
-  const ranges = postgresStatementRanges(text, false);
+  const ranges =
+    kind === "sqlite"
+      ? sqliteStatementRanges(text, false)
+      : postgresStatementRanges(text, false);
   const range =
     ranges.find((item) => item.end >= position && item.start <= position) ??
     (position >= (ranges.at(-1)?.end ?? 0) ? ranges.at(-1) : undefined);

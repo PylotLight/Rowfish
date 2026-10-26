@@ -7,6 +7,7 @@ import type {
   DatabaseConnectionInput,
   DatabaseConnectionSummary,
   DatabaseEvent,
+  AlembicDatabaseStatus,
   DatabaseRow,
   MongoBrowserCollection,
   MongoMutationResult,
@@ -26,6 +27,7 @@ export interface WorkerMessage {
   postgresTable?: PostgresTableDetails;
   postgresRow?: PostgresRowDetails;
   postgresServer?: PostgresServerInfo;
+  alembicStatus?: AlembicDatabaseStatus;
   postgresColumns?: { schema: string; table: string; name: string }[];
   mongoDatabases?: { name: string; sizeOnDisk?: number; empty?: boolean }[];
   mongoCollections?: MongoBrowserCollection[];

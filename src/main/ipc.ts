@@ -1,4 +1,4 @@
-import { app, ipcMain } from "electron";
+import { app, dialog, ipcMain } from "electron";
 import { getMainWindow } from "./window";
 import {
   cancelDatabaseQuery,
@@ -10,6 +10,8 @@ import {
   getPostgresServerInfo,
   getPostgresTableDetails,
   getPostgresRow,
+  getAlembicStatus,
+  compareAlembicModels,
   updatePostgresRow,
   listMongoCollections,
   listMongoDatabases,
@@ -51,6 +53,54 @@ export function registerIpc(): void {
     if (process.platform === "darwin")
       getMainWindow()?.setVibrancy(enabled ? "fullscreen-ui" : null);
   });
+  ipcMain.handle("app:choose-sqlite-file", async (event) => {
+    assertAppSender(event);
+    const win = getMainWindow();
+    if (!win) return null;
+    const result = await dialog.showOpenDialog(win, {
+      title: "Open SQLite database",
+      properties: ["openFile"],
+      filters: [
+        { name: "SQLite databases", extensions: ["db", "sqlite", "sqlite3"] },
+        { name: "All files", extensions: ["*"] },
+      ],
+    });
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
+  ipcMain.handle("app:choose-alembic-directory", async (event) => {
+    assertAppSender(event);
+    const win = getMainWindow();
+    if (!win) return null;
+    const result = await dialog.showOpenDialog(win, {
+      title: "Select Alembic versions directory",
+      properties: ["openDirectory"],
+    });
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
+  ipcMain.handle("app:choose-alembic-config", async (event) => {
+    assertAppSender(event);
+    const win = getMainWindow();
+    if (!win) return null;
+    const result = await dialog.showOpenDialog(win, {
+      title: "Select Alembic configuration",
+      properties: ["openFile"],
+      filters: [
+        { name: "Alembic configuration", extensions: ["ini"] },
+        { name: "All files", extensions: ["*"] },
+      ],
+    });
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
+  ipcMain.handle("app:choose-python-interpreter", async (event) => {
+    assertAppSender(event);
+    const win = getMainWindow();
+    if (!win) return null;
+    const result = await dialog.showOpenDialog(win, {
+      title: "Select Python interpreter",
+      properties: ["openFile"],
+    });
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
   ipcMain.handle("database:connect", (event, input: unknown, save: unknown) =>
     connectDatabase(event, input, save as boolean),
   );
@@ -82,6 +132,16 @@ export function registerIpc(): void {
   );
   ipcMain.handle("database:list-tables", (event, connectionId: unknown) =>
     listPostgresTables(event, connectionId),
+  );
+  ipcMain.handle(
+    "database:alembic-status",
+    (event, connectionId: unknown, directory: unknown) =>
+      getAlembicStatus(event, connectionId, directory),
+  );
+  ipcMain.handle(
+    "database:alembic-model-compare",
+    (event, connectionId: unknown, configPath: unknown, pythonPath: unknown) =>
+      compareAlembicModels(event, connectionId, configPath, pythonPath),
   );
   ipcMain.handle(
     "database:postgres-table-details",

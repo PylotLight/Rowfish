@@ -67,7 +67,9 @@ async function readProfiles(): Promise<StoredConnectionProfile[]> {
           profile &&
           typeof profile.id === "string" &&
           typeof profile.name === "string" &&
-          (profile.kind === "postgres" || profile.kind === "mongodb") &&
+          (profile.kind === "postgres" ||
+            profile.kind === "mongodb" ||
+            profile.kind === "sqlite") &&
           typeof profile.host === "string" &&
           Number.isInteger(profile.port) &&
           typeof profile.database === "string" &&

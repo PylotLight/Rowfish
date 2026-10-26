@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isAbsolute } from "node:path";
 import type { IpcMainInvokeEvent } from "electron";
 import type { Worker } from "node:worker_threads";
 import createDatabaseWorker from "./database-worker?nodeWorker";
@@ -7,6 +8,8 @@ import type {
   DatabaseConnectionSummary,
   DatabaseQueryRequest,
   DatabaseConnectionTestResult,
+  AlembicStatus,
+  AlembicModelComparison,
   SavedConnectionProfile,
 } from "../shared/database";
 import { DATABASE_LIMITS, isValidRowLimit } from "../shared/database-helpers";
@@ -18,6 +21,11 @@ import {
   saveConnectionProfile,
 } from "./saved-connections";
 import { validateMongoDatabase } from "./database/mongo";
+import {
+  analyzeAlembicVersionsDirectory,
+  compareAlembicRevisions,
+} from "./alembic-graph.js";
+import { compareAlembicModelState } from "./alembic-model-compare.js";
 import {
   isPlainRecord,
   validateText,
@@ -351,6 +359,7 @@ type InspectionType =
   | "inspect-postgres-table"
   | "inspect-postgres-server"
   | "inspect-postgres-columns"
+  | "inspect-alembic-version"
   | "get-postgres-row"
   | "update-postgres-row";
 export function inspectConnection(
@@ -383,6 +392,121 @@ export function inspectConnection(
       ...(table !== undefined ? { table } : {}),
     });
   });
+}
+
+export async function getAlembicStatus(
+  event: IpcMainInvokeEvent,
+  connectionIdValue: unknown,
+  directoryValue: unknown,
+): Promise<AlembicStatus> {
+  assertAllowedSender(event.sender);
+  const connectionId = validateText(
+    connectionIdValue,
+    "Connection id",
+    80,
+    true,
+  );
+  const directory = validateText(
+    directoryValue,
+    "Alembic versions directory",
+    4_096,
+    true,
+  );
+  if (!isAbsolute(directory))
+    throw new Error("Choose an absolute Alembic versions directory.");
+  const connection = getOwnedConnection(event, connectionId);
+  if (connection.config.kind === "mongodb" || connection.config.serverMode)
+    throw new Error(
+      "Alembic migration status requires a PostgreSQL or SQLite database connection.",
+    );
+  if (connection.activeQueryId || connection.rowBusy)
+    throw new Error(
+      "Wait for the active database operation to finish before checking migrations.",
+    );
+  const [graph, message] = await Promise.all([
+    analyzeAlembicVersionsDirectory(directory),
+    inspectConnection(connection, "inspect-alembic-version"),
+  ]);
+  if (!message.alembicStatus)
+    throw new Error(
+      "Could not read Alembic's current revision from this database.",
+    );
+  const comparison = compareAlembicRevisions(
+    graph.nodes,
+    message.alembicStatus.revisions,
+  );
+  return {
+    directory,
+    database: message.alembicStatus,
+    graph: {
+      revisions: graph.nodes.map((node) => ({
+        revision: node.revision ?? "",
+        downRevisions: node.down_revision,
+        dependsOn: node.depends_on,
+        branchLabels: node.branch_labels,
+        filename: node.filename,
+        message: node.message,
+      })),
+      heads: graph.heads,
+      topologicalOrder: graph.topologicalOrder,
+      diagnostics: graph.errors,
+    },
+    comparison: {
+      knownCurrent: comparison.knownDatabaseRevisions,
+      applied: comparison.appliedAncestors,
+      pending: comparison.pendingRevisions,
+      unknown: comparison.unknownDatabaseRevisions,
+      diagnostics: comparison.diagnostics,
+    },
+  };
+}
+
+export async function compareAlembicModels(
+  event: IpcMainInvokeEvent,
+  connectionIdValue: unknown,
+  configPathValue: unknown,
+  pythonPathValue: unknown,
+): Promise<AlembicModelComparison> {
+  assertAllowedSender(event.sender);
+  const connectionId = validateText(
+    connectionIdValue,
+    "Connection id",
+    80,
+    true,
+  );
+  const configPath = validateText(
+    configPathValue,
+    "Alembic configuration file",
+    4_096,
+    true,
+  );
+  if (!isAbsolute(configPath))
+    throw new Error("Choose an absolute Alembic configuration file.");
+  const pythonPath =
+    typeof pythonPathValue === "string"
+      ? validateText(pythonPathValue, "Python interpreter path", 4_096, true)
+      : "";
+  if (pythonPath && !isAbsolute(pythonPath))
+    throw new Error("Choose an absolute Python interpreter path.");
+  const connection = getOwnedConnection(event, connectionId);
+  if (connection.config.kind !== "postgres" || connection.config.serverMode)
+    throw new Error(
+      "Model comparison requires a live PostgreSQL database connection.",
+    );
+  if (connection.activeQueryId || connection.rowBusy)
+    throw new Error(
+      "Wait for the active database operation to finish before comparing models.",
+    );
+  const { host, port, database, username, password, tls, sslMode } =
+    connection.config;
+  const result = await compareAlembicModelState({
+    configPath,
+    pythonPath,
+    connection: { host, port, database, username, password, tls, sslMode },
+  });
+  if (connection.closed)
+    throw new Error("The database disconnected while comparing models.");
+  return result;
 }
 
 export function runDatabaseQuery(

@@ -1,4 +1,5 @@
 import type { DatabaseConnectionInput } from "../../shared/database";
+import { isAbsolute } from "node:path";
 import {
   isPostgresSslMode,
   parseMongoConnectionString,
@@ -51,9 +52,36 @@ export function validateConnectionInput(
 ): DatabaseConnectionInput {
   if (!isPlainRecord(value)) throw new Error("Invalid connection details.");
   const kind = value.kind;
-  if (kind !== "postgres" && kind !== "mongodb")
-    throw new Error("Choose PostgreSQL or MongoDB.");
+  if (kind !== "postgres" && kind !== "mongodb" && kind !== "sqlite")
+    throw new Error("Choose PostgreSQL, MongoDB, or SQLite.");
   const name = validateText(value.name, "Connection name", 80, true);
+  if (kind === "sqlite") {
+    if (value.serverMode !== undefined && typeof value.serverMode !== "boolean")
+      throw new Error("Server-browser selection is invalid.");
+    const database = validateText(
+      value.database,
+      "SQLite database file",
+      4_096,
+      true,
+    );
+    if (!isAbsolute(database))
+      throw new Error("Choose an absolute path to a SQLite database file.");
+    if (value.serverMode === true || value.connectionString)
+      throw new Error(
+        "SQLite uses a local database file, not a server or connection string.",
+      );
+    return {
+      name,
+      kind,
+      host: "",
+      port: 0,
+      database,
+      username: "",
+      password: "",
+      tls: false,
+      serverMode: false,
+    };
+  }
   const host = validateText(value.host, "Host", 253, true);
   if (/[\s/@?#\\]/.test(host))
     throw new Error(

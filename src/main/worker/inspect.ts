@@ -9,6 +9,11 @@ import {
   type WorkerRequest,
 } from "./shared";
 import { getOrUpdatePostgresRow } from "./postgres";
+import {
+  listSqliteColumns,
+  listSqliteTables,
+  readSqliteAlembicVersion,
+} from "./sqlite";
 
 export async function inspect(
   request: Extract<
@@ -23,6 +28,7 @@ export async function inspect(
         | "inspect-postgres-table"
         | "inspect-postgres-server"
         | "inspect-postgres-columns"
+        | "inspect-alembic-version"
         | "get-postgres-row"
         | "update-postgres-row";
     }
@@ -138,6 +144,95 @@ export async function inspect(
               : {}),
           })),
         },
+      });
+      return;
+    }
+    if (request.type === "inspect-alembic-version") {
+      if (config.kind === "postgres" && state.postgres) {
+        const found = await state.postgres.query<{
+          schema: string;
+          visible: boolean;
+        }>(
+          `
+          SELECT n.nspname AS schema, pg_table_is_visible(c.oid) AS visible
+          FROM pg_catalog.pg_class c
+          JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+          WHERE c.relname = $1 AND c.relkind IN ('r', 'p')
+            AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+            AND has_table_privilege(c.oid, 'SELECT')
+          ORDER BY pg_table_is_visible(c.oid) DESC,
+            array_position(current_schemas(true), n.nspname) NULLS LAST,
+            n.nspname
+        `,
+          ["alembic_version"],
+        );
+        if (found.rows.length === 0) {
+          post({
+            type: "inspection-result",
+            requestId: request.requestId,
+            alembicStatus: { tableFound: false, revisions: [] },
+          });
+          return;
+        }
+        const visible = found.rows.filter((row) => row.visible);
+        const versionTable =
+          visible[0] ?? (found.rows.length === 1 ? found.rows[0] : undefined);
+        if (!versionTable) {
+          post({
+            type: "inspection-result",
+            requestId: request.requestId,
+            alembicStatus: {
+              tableFound: true,
+              revisions: [],
+              error:
+                "Multiple accessible alembic_version tables exist outside the connection search path.",
+            },
+          });
+          return;
+        }
+        const quotedSchema = `"${versionTable.schema.replaceAll('"', '""')}"`;
+        const result = await state.postgres.query<{ version_num: string }>(
+          `SELECT version_num FROM ${quotedSchema}."alembic_version" ORDER BY version_num`,
+        );
+        post({
+          type: "inspection-result",
+          requestId: request.requestId,
+          alembicStatus: {
+            tableFound: true,
+            schema: versionTable.schema,
+            revisions: result.rows.map((row) => row.version_num),
+          },
+        });
+        return;
+      }
+      if (config.kind === "sqlite") {
+        post({
+          type: "inspection-result",
+          requestId: request.requestId,
+          alembicStatus: readSqliteAlembicVersion(),
+        });
+        return;
+      }
+      throw new Error(
+        "Alembic status is available for PostgreSQL or SQLite connections.",
+      );
+    }
+    if (request.type === "inspect-tables" && config.kind === "sqlite") {
+      post({
+        type: "inspection-result",
+        requestId: request.requestId,
+        tables: listSqliteTables() as DatabaseBrowserTable[],
+      });
+      return;
+    }
+    if (
+      request.type === "inspect-postgres-columns" &&
+      config.kind === "sqlite"
+    ) {
+      post({
+        type: "inspection-result",
+        requestId: request.requestId,
+        postgresColumns: listSqliteColumns(),
       });
       return;
     }
