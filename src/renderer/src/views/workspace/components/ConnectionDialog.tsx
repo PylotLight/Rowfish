@@ -30,6 +30,7 @@ export default function ConnectionDialog({
   uriCopied,
   onCopyConnectionString,
   onConnectionStringChange,
+  onChooseSqliteFile,
   connectionStringStatus,
   generatedConnectionString,
   saveProfile,
@@ -62,6 +63,7 @@ export default function ConnectionDialog({
   onCopyConnectionString: (value: string) => void;
   /** The parent's URI handler: kind detection plus field parsing. */
   onConnectionStringChange: (value: string) => void;
+  onChooseSqliteFile: () => void;
   connectionStringStatus: { text: string; error: boolean } | null;
   generatedConnectionString: string;
   saveProfile: boolean;
@@ -142,7 +144,7 @@ export default function ConnectionDialog({
                 role="radio"
                 aria-checked={uriMode === useString}
                 className={uriMode === useString ? "active" : undefined}
-                disabled={connectBusy}
+                disabled={connectBusy || (useString && form.kind === "sqlite")}
                 onClick={() => onSwitchMode(useString)}
               >
                 {label}
@@ -231,29 +233,36 @@ export default function ConnectionDialog({
                 >
                   <option value="postgres">PostgreSQL</option>
                   <option value="mongodb">MongoDB</option>
+                  <option value="sqlite">SQLite</option>
                 </select>
               </label>
-              <label className="db-form-field">
-                <span>Host</span>
-                <input
-                  value={form.host}
-                  onChange={(event) => onUpdateForm("host", event.target.value)}
-                  placeholder="localhost"
-                  autoComplete="off"
-                />
-              </label>
-              <label className="db-form-field">
-                <span>Port</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={65535}
-                  value={form.port}
-                  onChange={(event) =>
-                    onUpdateForm("port", Number(event.target.value))
-                  }
-                />
-              </label>
+              {form.kind !== "sqlite" && (
+                <>
+                  <label className="db-form-field">
+                    <span>Host</span>
+                    <input
+                      value={form.host}
+                      onChange={(event) =>
+                        onUpdateForm("host", event.target.value)
+                      }
+                      placeholder="localhost"
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label className="db-form-field">
+                    <span>Port</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={65535}
+                      value={form.port}
+                      onChange={(event) =>
+                        onUpdateForm("port", Number(event.target.value))
+                      }
+                    />
+                  </label>
+                </>
+              )}
               {form.kind === "postgres" && (
                 <label className="db-form-field">
                   <span>
@@ -289,7 +298,37 @@ export default function ConnectionDialog({
                   />
                 </label>
               )}
-              {!uriMode && (
+              {form.kind === "sqlite" && (
+                <div className="db-form-field full">
+                  <label htmlFor="sqlite-database-file">
+                    SQLite database file
+                  </label>
+                  <div className="db-uri-input-row">
+                    <input
+                      id="sqlite-database-file"
+                      value={form.database}
+                      onChange={(event) =>
+                        onUpdateForm("database", event.target.value)
+                      }
+                      placeholder="Choose an existing .db or .sqlite file"
+                      autoComplete="off"
+                    />
+                    <button
+                      type="button"
+                      className="db-quiet-button"
+                      disabled={connectBusy}
+                      onClick={onChooseSqliteFile}
+                    >
+                      Browse…
+                    </button>
+                  </div>
+                  <small>
+                    Opens a local database file; SQL changes affect that file
+                    directly.
+                  </small>
+                </div>
+              )}
+              {!uriMode && form.kind !== "sqlite" && (
                 <label className="db-form-field">
                   <span>
                     Username <small>optional</small>
@@ -303,7 +342,7 @@ export default function ConnectionDialog({
                   />
                 </label>
               )}
-              {!uriMode && (
+              {!uriMode && form.kind !== "sqlite" && (
                 <label className="db-form-field">
                   <span>
                     Password <small>optional</small>
@@ -351,30 +390,32 @@ export default function ConnectionDialog({
                   </select>
                 </label>
               )}
-              <div className="db-form-field full">
-                <span>
-                  Connection string <small>updates as you type</small>
-                </span>
-                <div className="db-uri-input-row">
-                  <code
-                    className="db-uri-preview"
-                    aria-label="Generated connection string, password hidden"
-                  >
-                    {maskConnectionStringPassword(generatedConnectionString)}
-                  </code>
-                  <button
-                    type="button"
-                    className="db-icon-button"
-                    aria-label="Copy connection string"
-                    title={uriCopied ? "Copied" : "Copy"}
-                    onClick={() =>
-                      onCopyConnectionString(generatedConnectionString)
-                    }
-                  >
-                    <Copy size={14} />
-                  </button>
+              {form.kind !== "sqlite" && (
+                <div className="db-form-field full">
+                  <span>
+                    Connection string <small>updates as you type</small>
+                  </span>
+                  <div className="db-uri-input-row">
+                    <code
+                      className="db-uri-preview"
+                      aria-label="Generated connection string, password hidden"
+                    >
+                      {maskConnectionStringPassword(generatedConnectionString)}
+                    </code>
+                    <button
+                      type="button"
+                      className="db-icon-button"
+                      aria-label="Copy connection string"
+                      title={uriCopied ? "Copied" : "Copy"}
+                      onClick={() =>
+                        onCopyConnectionString(generatedConnectionString)
+                      }
+                    >
+                      <Copy size={14} />
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </>
           )}
         </div>

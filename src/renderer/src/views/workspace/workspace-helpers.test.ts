@@ -108,6 +108,14 @@ describe("connection string round-trip", () => {
     expect(fields.tls).toBe(true);
     expect(fields.representable).toBe(true);
   });
+
+  test("SQLite file connections do not generate a connection URI", () => {
+    expect(
+      buildConnectionString(
+        postgresForm({ kind: "sqlite", database: "/tmp/local.db" }),
+      ),
+    ).toBe("");
+  });
 });
 
 describe("dialog field helpers", () => {
@@ -117,15 +125,20 @@ describe("dialog field helpers", () => {
       database: "postgres",
     });
     expect(kindDefaults("mongodb")).toEqual({ port: 27017, database: "admin" });
+    expect(kindDefaults("sqlite")).toEqual({ port: 0, database: "" });
   });
 
   test("kindLabel names the engine", () => {
     expect(kindLabel("postgres")).toBe("PostgreSQL");
     expect(kindLabel("mongodb")).toBe("MongoDB");
+    expect(kindLabel("sqlite")).toBe("SQLite");
   });
 
   test("connectionSubline describes the connection target", () => {
     expect(connectionSubline(summary())).toBe("PostgreSQL · postgres");
+    expect(
+      connectionSubline(summary({ kind: "sqlite", database: "/tmp/local.db" })),
+    ).toBe("SQLite · /tmp/local.db");
     expect(
       connectionSubline(summary({ kind: "mongodb", database: "shop" })),
     ).toBe("MongoDB · shop");

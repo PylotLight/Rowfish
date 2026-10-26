@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { splitPostgresStatements } from "./sql-statements";
+import {
+  splitPostgresStatements,
+  splitSqliteStatements,
+} from "./sql-statements";
 
 describe("splitPostgresStatements", () => {
   test("splits ordinary statements and ignores empty segments", () => {
@@ -55,4 +58,38 @@ test("ignores trailing comments and comment-only segments", () => {
   expect(splitPostgresStatements("/* info */; SELECT 1; -- end")).toEqual([
     "SELECT 1",
   ]);
+});
+
+describe("splitSqliteStatements", () => {
+  test("keeps semicolons in strings, quoted identifiers, comments, and trigger bodies", () => {
+    expect(
+      splitSqliteStatements(
+        `SELECT 'a;b', [semi;colon]; -- ignored ;\nCREATE TRIGGER t AFTER INSERT ON x BEGIN INSERT INTO audit VALUES ('one;two'); UPDATE x SET v = CASE WHEN v = 1 THEN 2 ELSE 3 END; END; SELECT 3;`,
+      ),
+    ).toEqual([
+      "SELECT 'a;b', [semi;colon]",
+      "-- ignored ;\nCREATE TRIGGER t AFTER INSERT ON x BEGIN INSERT INTO audit VALUES ('one;two'); UPDATE x SET v = CASE WHEN v = 1 THEN 2 ELSE 3 END; END",
+      "SELECT 3",
+    ]);
+  });
+
+  test("keeps trigger bodies intact when comments separate CREATE and TRIGGER", () => {
+    expect(
+      splitSqliteStatements(
+        "CREATE /* comment */ TRIGGER t AFTER INSERT ON x BEGIN INSERT INTO audit VALUES (1); END; SELECT 2;",
+      ),
+    ).toEqual([
+      "CREATE /* comment */ TRIGGER t AFTER INSERT ON x BEGIN INSERT INTO audit VALUES (1); END",
+      "SELECT 2",
+    ]);
+  });
+
+  test("rejects unterminated SQLite literals and comments", () => {
+    expect(() => splitSqliteStatements("SELECT 'unfinished")).toThrow(
+      "Unterminated",
+    );
+    expect(() => splitSqliteStatements("SELECT 1; /* missing close")).toThrow(
+      "Unterminated",
+    );
+  });
 });

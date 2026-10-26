@@ -18,6 +18,11 @@ import {
 } from "../../shared/database-helpers";
 import { splitPostgresStatements } from "../../shared/sql-statements";
 import {
+  openSqliteDatabase,
+  closeSqliteDatabase,
+  probeSqliteDatabase,
+} from "./sqlite";
+import {
   assertCompletePrimaryKey,
   buildRowUpdate,
   quoteIdentifier,
@@ -147,6 +152,8 @@ export async function openConnection(): Promise<void> {
       if (!state.closing)
         post({ type: "connect-error", message: safeError(error) });
     });
+  } else if (config.kind === "sqlite") {
+    openSqliteDatabase();
   } else {
     const uri = config.connectionString || buildMongoConnectionString(config);
     state.mongo = new MongoClient(uri, {
@@ -181,6 +188,9 @@ export async function probeConnection(): Promise<void> {
       state.closing = true;
       await state.postgres.end().catch(() => undefined);
       post({ type: "probe-result", elapsedMs, serverVersion });
+    } else if (config.kind === "sqlite") {
+      state.closing = true;
+      probeSqliteDatabase();
     } else {
       state.mongo = new MongoClient(
         config.connectionString || buildMongoConnectionString(config),
@@ -213,6 +223,11 @@ export async function probeConnection(): Promise<void> {
     state.closing = true;
     await state.postgres?.end().catch(() => undefined);
     await state.mongo?.close().catch(() => undefined);
+    try {
+      closeSqliteDatabase();
+    } catch {
+      // Preserve the original connection error.
+    }
     post({ type: "connect-error", message: connectError(error) });
   }
 }

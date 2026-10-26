@@ -1048,7 +1048,9 @@ export default function DatabaseWorkspace({
       const input = await window.api.database.getSaved(profileId);
       setTestFailure("");
       setForm({ ...DEFAULT_FORM, ...input });
-      setUriMode(Boolean(input.connectionString));
+      setUriMode(
+        input.kind === "sqlite" ? false : Boolean(input.connectionString),
+      );
       setRevealUri(false);
       setEditingProfileId(profileId);
       setShowConnect(true);
@@ -1836,6 +1838,10 @@ export default function DatabaseWorkspace({
     });
     setTableDetails(null);
     setMetadataError("");
+    if (connection.kind === "sqlite") {
+      setMetadataLoading(false);
+      return;
+    }
     setMetadataLoading(true);
     const request = ++metadataRequest.current;
     void window.api.database
@@ -1862,6 +1868,19 @@ export default function DatabaseWorkspace({
   ): void {
     setTestFailure("");
     setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  async function chooseSqliteFile(): Promise<void> {
+    try {
+      const file = await window.api.app.chooseSqliteFile();
+      if (!file) return;
+      setConnectionError("");
+      setForm((current) => ({ ...current, database: file }));
+    } catch (error) {
+      setConnectionError(
+        dialogErrorMessage(error, "Could not open a SQLite database file."),
+      );
+    }
   }
 
   return (
@@ -2714,6 +2733,7 @@ export default function DatabaseWorkspace({
           uriCopied={uriCopied}
           onCopyConnectionString={copyConnectionString}
           onConnectionStringChange={updateConnectionString}
+          onChooseSqliteFile={() => void chooseSqliteFile()}
           connectionStringStatus={connectionStringStatus}
           generatedConnectionString={generatedConnectionString}
           saveProfile={saveProfile}

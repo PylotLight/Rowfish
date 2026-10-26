@@ -1,4 +1,4 @@
-export type DatabaseKind = "postgres" | "mongodb";
+export type DatabaseKind = "postgres" | "mongodb" | "sqlite";
 
 /** libpq sslmode values Rowfish supports for PostgreSQL. */
 export type PostgresSslMode =
@@ -38,6 +38,38 @@ export interface DatabaseConnectionSummary {
   serverMode?: boolean;
   savedConnectionId?: string;
   parentConnectionId?: string;
+}
+
+export interface AlembicDatabaseStatus {
+  tableFound: boolean;
+  schema?: string;
+  revisions: string[];
+  error?: string;
+}
+
+export interface AlembicStatus {
+  directory: string;
+  database: AlembicDatabaseStatus;
+  graph: {
+    revisions: {
+      revision: string;
+      downRevisions: string[];
+      dependsOn: string[];
+      branchLabels: string[];
+      filename: string;
+      message: string;
+    }[];
+    heads: string[];
+    topologicalOrder: string[];
+    diagnostics: string[];
+  };
+  comparison: {
+    knownCurrent: string[];
+    applied: string[];
+    pending: string[];
+    unknown: string[];
+    diagnostics: string[];
+  };
 }
 
 export interface SavedConnectionProfile extends Omit<

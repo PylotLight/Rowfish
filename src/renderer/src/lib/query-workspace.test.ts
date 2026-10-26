@@ -144,3 +144,14 @@ test("statement selection follows PostgreSQL backslash rules", () => {
     "SELECT E'a\\\';b'",
   );
 });
+
+test("SQLite statement selection keeps trigger bodies and bracket names intact", () => {
+  const sql =
+    "SELECT [semi;colon]; CREATE TRIGGER t AFTER INSERT ON x BEGIN INSERT INTO audit VALUES ('a;b'); END; SELECT 3;";
+  expect(getSqlStatement(sql, sql.indexOf("INSERT INTO audit"), "sqlite")).toBe(
+    "CREATE TRIGGER t AFTER INSERT ON x BEGIN INSERT INTO audit VALUES ('a;b'); END",
+  );
+  expect(getSqlStatement(sql, sql.indexOf("SELECT 3"), "sqlite")).toBe(
+    "SELECT 3",
+  );
+});

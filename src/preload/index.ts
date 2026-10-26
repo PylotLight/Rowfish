@@ -6,6 +6,7 @@ import type {
   DatabaseConnectionSummary,
   DatabaseConnectionTestResult,
   DatabaseEvent,
+  AlembicStatus,
   DatabaseQueryRequest,
   MongoBrowserCollection,
   MongoBrowserDatabase,
@@ -24,6 +25,10 @@ const api = {
     quit: (): Promise<void> => ipcRenderer.invoke("app:quit"),
     setBlur: (enabled: boolean): Promise<void> =>
       ipcRenderer.invoke("app:set-blur", enabled),
+    chooseSqliteFile: (): Promise<string | null> =>
+      ipcRenderer.invoke("app:choose-sqlite-file"),
+    chooseAlembicDirectory: (): Promise<string | null> =>
+      ipcRenderer.invoke("app:choose-alembic-directory"),
   },
   database: {
     connect: (
@@ -56,6 +61,11 @@ const api = {
       ipcRenderer.invoke("database:list-databases", connectionId),
     listTables: (connectionId: string): Promise<DatabaseBrowserTable[]> =>
       ipcRenderer.invoke("database:list-tables", connectionId),
+    getAlembicStatus: (
+      connectionId: string,
+      directory: string,
+    ): Promise<AlembicStatus> =>
+      ipcRenderer.invoke("database:alembic-status", connectionId, directory),
     getPostgresTableDetails: (
       connectionId: string,
       schema: string,

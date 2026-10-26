@@ -1,11 +1,13 @@
 import { parentPort, workerData } from "node:worker_threads";
 import { BSON, type Db, type MongoClient } from "mongodb";
+import type { DatabaseSync } from "node:sqlite";
 import type { Client as PostgresClient } from "pg";
 import type {
   DatabaseBrowserDatabase,
   DatabaseBrowserTable,
   DatabaseCell,
   DatabaseConnectionInput,
+  AlembicDatabaseStatus,
   DatabaseQueryRequest,
   DatabaseRow,
   MongoBrowserCollection,
@@ -44,6 +46,7 @@ export type WorkerRequest =
         | "inspect-postgres-table"
         | "inspect-postgres-server"
         | "inspect-postgres-columns"
+        | "inspect-alembic-version"
         | "get-postgres-row"
         | "update-postgres-row";
       requestId: string;
@@ -75,6 +78,7 @@ export type WorkerEvent =
       tables?: DatabaseBrowserTable[];
       postgresTable?: PostgresTableDetails;
       postgresServer?: PostgresServerInfo;
+      alembicStatus?: AlembicDatabaseStatus;
       postgresColumns?: { schema: string; table: string; name: string }[];
       postgresRow?: PostgresRowDetails;
       mongoDatabases?: { name: string; sizeOnDisk?: number; empty?: boolean }[];
@@ -120,6 +124,7 @@ export const state = {
   postgres: null as PostgresClient | null,
   mongo: null as MongoClient | null,
   mongoDb: null as Db | null,
+  sqlite: null as DatabaseSync | null,
   closing: false,
 };
 

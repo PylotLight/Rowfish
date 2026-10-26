@@ -496,6 +496,185 @@ select option {
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
+.db-engine-mark.sqlite {
+  color: #c9b8ff;
+  background: rgba(157, 124, 255, 0.16);
+}
+.db-migration-panel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 0 5px 10px;
+  overflow-y: auto;
+  color: var(--text);
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+.db-migration-heading,
+.db-migration-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.db-migration-heading b {
+  color: rgba(242, 244, 246, 0.62);
+  font-size: 8px;
+  letter-spacing: 0.12em;
+}
+.db-migration-heading span {
+  padding: 3px 5px;
+  border: 1px solid rgba(126, 226, 168, 0.2);
+  border-radius: 5px;
+  color: var(--mint);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.db-migration-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 9px;
+}
+.db-migration-field input,
+.db-migration-field select {
+  width: 100%;
+  min-width: 0;
+  min-height: 31px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-subtle);
+  color: var(--text);
+  font: inherit;
+  font-size: 9px;
+}
+.db-migration-field option {
+  background: #1b222d;
+  color: var(--text);
+}
+.db-migration-actions button {
+  min-height: 30px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  font-size: 9px;
+}
+.db-migration-actions .db-primary-button {
+  border: 1px solid rgba(126, 226, 168, 0.25);
+  background: rgba(126, 226, 168, 0.14);
+  color: var(--mint);
+  font-weight: 650;
+}
+.db-migration-actions .db-primary-button:hover:not(:disabled) {
+  background: rgba(126, 226, 168, 0.22);
+}
+.db-migration-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+.db-migration-summary b {
+  font-size: 10px;
+}
+.db-migration-summary small,
+.db-migration-footnote {
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.db-migration-warning {
+  padding: 7px 8px;
+  border: 1px solid rgba(236, 175, 105, 0.2);
+  border-radius: 7px;
+  background: rgba(236, 175, 105, 0.07);
+  color: #f0c38d;
+  font-size: 8px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.db-migration-list {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 4px;
+}
+.db-migration-node {
+  position: relative;
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 7px;
+  padding: 8px 0;
+}
+.db-migration-node:not(:last-child)::before {
+  position: absolute;
+  top: 17px;
+  bottom: -7px;
+  left: 3px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.13);
+  content: "";
+}
+.db-migration-dot {
+  z-index: 1;
+  width: 7px;
+  height: 7px;
+  margin-top: 3px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  background: #1b222d;
+}
+.db-migration-dot.current,
+.db-migration-state.current {
+  color: #88dba3;
+}
+.db-migration-dot.applied,
+.db-migration-state.applied {
+  color: #9ec4ff;
+}
+.db-migration-dot.pending,
+.db-migration-state.pending {
+  color: #edbd7d;
+}
+.db-migration-dot.unknown,
+.db-migration-state.unknown {
+  color: #c6b7df;
+}
+.db-migration-node-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.db-migration-node-copy b {
+  overflow-wrap: anywhere;
+  color: rgba(242, 244, 246, 0.88);
+  font-family: var(--editor-font, ui-monospace, monospace);
+  font-size: 8px;
+}
+.db-migration-node-copy small {
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.db-migration-state {
+  padding-top: 1px;
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.db-migration-footnote {
+  margin-top: auto;
+}
 .db-browser-mongo-collections {
   position: relative;
   padding: 0 3px 5px 14px;

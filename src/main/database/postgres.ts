@@ -49,8 +49,14 @@ export async function listPostgresTables(
 ): Promise<DatabaseBrowserTable[]> {
   assertAllowedSender(event.sender);
   const connection = getOwnedConnection(event, connectionIdValue);
-  if (connection.config.kind !== "postgres" || connection.config.serverMode) {
-    throw new Error("Choose a PostgreSQL database session to list its tables.");
+  if (
+    (connection.config.kind !== "postgres" &&
+      connection.config.kind !== "sqlite") ||
+    connection.config.serverMode
+  ) {
+    throw new Error(
+      "Choose a PostgreSQL or SQLite database session to list its tables.",
+    );
   }
   const message = await inspectConnection(connection, "inspect-tables");
   return message.tables ?? [];
@@ -162,9 +168,12 @@ export async function listPostgresColumns(
 ): Promise<{ schema: string; table: string; name: string }[]> {
   assertAllowedSender(event.sender);
   const connection = getOwnedConnection(event, connectionIdValue);
-  if (connection.config.kind !== "postgres")
+  if (
+    connection.config.kind !== "postgres" &&
+    connection.config.kind !== "sqlite"
+  )
     throw new Error(
-      "Column metadata is available only for PostgreSQL connections.",
+      "Column metadata is available only for PostgreSQL or SQLite connections.",
     );
   const message = await inspectConnection(
     connection,
