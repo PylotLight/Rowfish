@@ -29,6 +29,15 @@ export function quotePostgresIdentifier(identifier: string): string {
   return `"${identifier.replaceAll('"', '""')}"`;
 }
 
+/** Serialize clipboard cells as TSV, quoting embedded tabs, quotes, and lines. */
+export function serializeTsvRow(values: readonly string[]): string {
+  return values
+    .map((value) =>
+      /[\t\r\n"]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value,
+    )
+    .join("\t");
+}
+
 export interface MongoConnectionDetails {
   host: string;
   port: number;

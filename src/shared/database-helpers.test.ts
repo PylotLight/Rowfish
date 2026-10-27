@@ -18,7 +18,20 @@ import {
   parseMongoFilter,
   parseMongoPipeline,
   quotePostgresIdentifier,
+  serializeTsvRow,
 } from "./database-helpers";
+
+describe("clipboard row serialization", () => {
+  test("joins result cells with tabs", () => {
+    expect(serializeTsvRow(["id", "name", "ready"])).toBe("id\tname\tready");
+  });
+
+  test("quotes embedded tabs, line breaks, and quotes", () => {
+    expect(
+      serializeTsvRow(["north\twest", "line one\nline two", 'say "hi"']),
+    ).toBe('"north\twest"\t"line one\nline two"\t"say ""hi"""');
+  });
+});
 
 describe("database query guards", () => {
   test("quotes table-browser identifiers without allowing SQL injection", () => {
