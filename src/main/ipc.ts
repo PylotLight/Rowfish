@@ -1,6 +1,12 @@
 import { app, dialog, ipcMain } from "electron";
 import { getMainWindow } from "./window";
 import {
+  generateMongoQueryWithAi,
+  getAiQuerySettings,
+  saveAiQuerySettings,
+  testAiQueryProvider,
+} from "./ai-query.js";
+import {
   cancelDatabaseQuery,
   connectDatabase,
   connectSavedDatabase,
@@ -42,6 +48,22 @@ export function registerIpc(): void {
         "Application controls are available only to the Rowfish window.",
       );
   };
+  ipcMain.handle("ai-query:get-settings", (event) => {
+    assertAppSender(event);
+    return getAiQuerySettings(event);
+  });
+  ipcMain.handle("ai-query:save-settings", (event, input: unknown) => {
+    assertAppSender(event);
+    return saveAiQuerySettings(event, input);
+  });
+  ipcMain.handle("ai-query:test-provider", (event) => {
+    assertAppSender(event);
+    return testAiQueryProvider(event);
+  });
+  ipcMain.handle("ai-query:generate-mongo", (event, request: unknown) => {
+    assertAppSender(event);
+    return generateMongoQueryWithAi(event, request);
+  });
   ipcMain.handle("app:quit", (event) => {
     assertAppSender(event);
     app.quit();

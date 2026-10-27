@@ -1,6 +1,7 @@
-import { ListFilter } from "lucide-react";
-import type { RefObject } from "react";
+import { Check, Copy, ListFilter } from "lucide-react";
+import { useState, type RefObject } from "react";
 import type { DatabaseRow } from "../../../../../shared/database";
+import { serializeTsvRow } from "../../../../../shared/database-helpers";
 import {
   isColumnFilterActive,
   type ColumnFilter,
@@ -10,6 +11,8 @@ import { isSameRow } from "../../../lib/row-editor";
 import { ROW_HEIGHT, ROW_INDEX_WIDTH } from "../workspace-helpers";
 import ColumnFilterMenu from "../../../components/ColumnFilterMenu";
 import type { RowSource } from "../../../components/RowSidePanel";
+
+const ROW_COPY_COLUMN_WIDTH = 144;
 
 /**
  * The virtualized results grid. Presentational: the workspace owns the
@@ -76,6 +79,35 @@ export default function ResultsTable({
   onAutoFit: (event: React.MouseEvent<HTMLSpanElement>, column: string) => void;
   onInspect: (row: DatabaseRow) => void;
 }): React.JSX.Element {
+  const [copyFeedback, setCopyFeedback] = useState<{
+    row: DatabaseRow;
+    includeHeaders: boolean;
+    result: "copied" | "failed";
+  } | null>(null);
+  const [copyAnnouncement, setCopyAnnouncement] = useState("");
+
+  async function copyRow(
+    row: DatabaseRow,
+    includeHeaders: boolean,
+  ): Promise<void> {
+    const cells = columns.map((column) => cellText(row, column));
+    const text = includeHeaders
+      ? `${serializeTsvRow(columns)}\n${serializeTsvRow(cells)}`
+      : serializeTsvRow(cells);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyFeedback({ row, includeHeaders, result: "copied" });
+      setCopyAnnouncement(
+        `Copied result row${includeHeaders ? " with headers" : ""} to clipboard.`,
+      );
+    } catch {
+      setCopyFeedback({ row, includeHeaders, result: "failed" });
+      setCopyAnnouncement(
+        "Could not access the clipboard. Try again from the app window.",
+      );
+    }
+  }
+
   return (
     <div
       className="db-table-scroll"
@@ -87,13 +119,17 @@ export default function ResultsTable({
         })
       }
     >
-      <table className="db-result-table sized" style={{ width: tableWidth }}>
+      <table
+        className="db-result-table sized"
+        style={{ width: tableWidth + ROW_COPY_COLUMN_WIDTH }}
+      >
         <colgroup>
           <col style={{ width: ROW_INDEX_WIDTH }} />
           {columns.map((column) => (
             <col key={column} style={{ width: widthOf(column) }} />
           ))}
           <col />
+          <col style={{ width: ROW_COPY_COLUMN_WIDTH }} />
         </colgroup>
         <thead>
           <tr>
@@ -157,19 +193,28 @@ export default function ResultsTable({
               </th>
             ))}
             <th className="db-col-filler" aria-hidden="true" />
+            <th className="db-row-copy-head">Copy</th>
           </tr>
         </thead>
         <tbody>
           {firstVisible > 0 && (
             <tr aria-hidden="true" className="db-spacer-row">
               <td
-                colSpan={columns.length + 2}
+                colSpan={columns.length + 3}
                 style={{ height: firstVisible * ROW_HEIGHT }}
               />
             </tr>
           )}
           {windowedRows.map((row, offset) => {
             const index = firstVisible + offset;
+            const rowFeedback =
+              copyFeedback?.row === row && !copyFeedback.includeHeaders
+                ? copyFeedback.result
+                : null;
+            const headerFeedback =
+              copyFeedback?.row === row && copyFeedback.includeHeaders
+                ? copyFeedback.result
+                : null;
             const selected =
               row === inspectedRow ||
               !!(
@@ -185,6 +230,7 @@ export default function ResultsTable({
                 aria-selected={selected}
                 onClick={() => onInspect(row)}
                 onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget) return;
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
                     onInspect(row);
@@ -215,13 +261,73 @@ export default function ResultsTable({
                   );
                 })}
                 <td className="db-col-filler" />
+                <td className="db-row-copy-actions">
+                  <button
+                    type="button"
+                    className={`db-row-copy-btn${rowFeedback === "copied" ? " copied" : rowFeedback === "failed" ? " failed" : ""}`}
+                    title={
+                      rowFeedback === "copied"
+                        ? "Row copied to clipboard"
+                        : rowFeedback === "failed"
+                          ? "Clipboard access failed — try again"
+                          : "Copy this row as tab-separated text"
+                    }
+                    aria-label={`Copy result row ${index + 1}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void copyRow(row, false);
+                    }}
+                  >
+                    {rowFeedback === "copied" ? (
+                      <Check size={12} aria-hidden="true" />
+                    ) : (
+                      <Copy size={12} aria-hidden="true" />
+                    )}
+                    <span>
+                      {rowFeedback === "copied"
+                        ? "Copied"
+                        : rowFeedback === "failed"
+                          ? "Failed"
+                          : "Row"}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`db-row-copy-btn${headerFeedback === "copied" ? " copied" : headerFeedback === "failed" ? " failed" : ""}`}
+                    title={
+                      headerFeedback === "copied"
+                        ? "Row and headers copied to clipboard"
+                        : headerFeedback === "failed"
+                          ? "Clipboard access failed — try again"
+                          : "Copy this row with column headers"
+                    }
+                    aria-label={`Copy result row ${index + 1} with headers`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void copyRow(row, true);
+                    }}
+                  >
+                    {headerFeedback === "copied" ? (
+                      <Check size={12} aria-hidden="true" />
+                    ) : (
+                      <Copy size={12} aria-hidden="true" />
+                    )}
+                    <span>
+                      {headerFeedback === "copied"
+                        ? "Copied"
+                        : headerFeedback === "failed"
+                          ? "Failed"
+                          : "+ headers"}
+                    </span>
+                  </button>
+                </td>
               </tr>
             );
           })}
           {lastVisible < visibleRowCount && (
             <tr aria-hidden="true" className="db-spacer-row">
               <td
-                colSpan={columns.length + 2}
+                colSpan={columns.length + 3}
                 style={{
                   height: (visibleRowCount - lastVisible) * ROW_HEIGHT,
                 }}
@@ -230,6 +336,11 @@ export default function ResultsTable({
           )}
         </tbody>
       </table>
+      {copyAnnouncement && (
+        <span className="visually-hidden" role="status">
+          {copyAnnouncement}
+        </span>
+      )}
       {filterMenu && columns.includes(filterMenu.column) && (
         <ColumnFilterMenu
           column={filterMenu.column}

@@ -113,6 +113,16 @@ For the included demo collection, enter `orders` as the collection and use:
 
 The MongoDB driver returns matching documents, including each document's `_id` field. Insert, update, delete, index and collection operations are available through the collection toolbar; updates use MongoDB update operators such as `$set` or `$inc`.
 
+#### Generate a query with AI
+
+Choose **AI query** beside the MongoDB editor controls. The first time, open **Settings → AI query**, enter an OpenAI-compatible chat-completions endpoint and model, and add an API key if the provider requires one. AI query generation is off until you enable it. Rowfish stores the key using Electron `safeStorage` and sends provider requests from the Electron main process; it is never exposed to the renderer. HTTPS is required for remote endpoints; plain HTTP is accepted only for loopback providers such as `localhost`.
+
+Before every generation request, Rowfish shows what will be sent and asks for your consent. The request includes your prompt, database and collection names, field paths, and index definitions. It does not include document contents, sampled field values, database credentials, or the MongoDB URI. The prompt and schema metadata go directly to your configured provider, which may apply its own retention, privacy, and billing policies.
+
+The separate **Save & test** action in Settings also sends a short provider-check request when you choose it.
+
+The returned filter or aggregation pipeline is parsed and checked against Rowfish's blocked operators before it can be inserted. **Use** only places the draft in the editor; it does not run automatically. Review the generated query and run it yourself when ready.
+
 ## Results, search and cancellation
 
 Results arrive in batches and are shown in a virtualized grid. Choose a row limit from `500`, `1,000`, `5,000` or `10,000`; the default is `1,000`. The renderer retains no more than 10,000 rows and the normalized result payload is capped at **16 MB**. Individual cells are truncated at 8,192 characters, and the grid displays at most 100 columns.

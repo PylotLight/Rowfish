@@ -4464,6 +4464,63 @@ textarea:focus-visible,
 .db-result-table td.db-col-filler {
   padding: 0;
 }
+.db-result-table th.db-row-copy-head,
+.db-result-table td.db-row-copy-actions {
+  position: sticky;
+  right: 0;
+  width: 144px;
+  min-width: 144px;
+  max-width: 144px;
+  border-left: 1px solid var(--border);
+}
+.db-result-table th.db-row-copy-head {
+  z-index: 4;
+  background: var(--surface-raised);
+}
+.db-result-table td.db-row-copy-actions {
+  z-index: 2;
+  padding: 0 6px;
+  background: rgba(19, 22, 27, 0.98);
+  white-space: nowrap;
+}
+.db-result-table tr:hover td.db-row-copy-actions {
+  background: var(--mint-dim);
+}
+.db-result-table tbody tr.selected-row td.db-row-copy-actions {
+  background: rgba(111, 151, 211, 0.16);
+}
+.db-row-copy-actions {
+  text-align: left;
+}
+.db-row-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--muted);
+  font: inherit;
+  font-size: 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.db-row-copy-btn + .db-row-copy-btn {
+  margin-left: 4px;
+}
+.db-row-copy-btn:hover,
+.db-row-copy-btn:focus-visible {
+  border-color: rgba(126, 226, 168, 0.38);
+  background: var(--mint-dim);
+  color: var(--mint);
+}
+.db-row-copy-btn.copied {
+  color: var(--mint);
+}
+.db-row-copy-btn.failed {
+  color: var(--danger, #ff8b8b);
+}
 .db-result-table th .db-column-filter-button {
   right: 9px;
 }

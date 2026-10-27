@@ -1,4 +1,5 @@
 import { useState } from "react";
+import AiQuerySettings from "./AiQuerySettings";
 import {
   ACCENTS,
   DEFAULT_UI_PREFERENCES,
@@ -7,19 +8,25 @@ import {
 } from "../lib/ui-preferences";
 import "../components/settings.css";
 
+type Section = "appearance" | "editor" | "ai";
 type Props = {
   prefs: UiPreferences;
   onChange: (prefs: UiPreferences) => void;
   onBack: () => void;
+  initialSection?: Section;
+  onSectionChange?: (section: Section) => void;
 };
-type Section = "appearance" | "editor";
 
 export default function Settings({
   prefs,
   onChange,
   onBack,
+  initialSection,
+  onSectionChange,
 }: Props): React.JSX.Element {
-  const [section, setSection] = useState<Section>("appearance");
+  const [section, setSection] = useState<Section>(
+    initialSection ?? "appearance",
+  );
   const set = (patch: Partial<UiPreferences>) =>
     onChange({ ...prefs, ...patch });
   const radio = <T extends string>(
@@ -95,18 +102,25 @@ export default function Settings({
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="Settings sections">
           <span className="settings-nav-caption">PREFERENCES</span>
-          {(["appearance", "editor"] as const).map((item) => (
+          {(["appearance", "editor", "ai"] as const).map((item) => (
             <button
               type="button"
               key={item}
               className={`settings-nav-button${section === item ? " active" : ""}`}
               aria-current={section === item ? "page" : undefined}
-              onClick={() => setSection(item)}
+              onClick={() => {
+                setSection(item);
+                onSectionChange?.(item);
+              }}
             >
               <span aria-hidden="true">
-                {item === "appearance" ? "◐" : "⌘"}
+                {item === "appearance" ? "◐" : item === "editor" ? "⌘" : "✦"}
               </span>
-              {item === "appearance" ? "Appearance" : "Editor"}
+              {item === "appearance"
+                ? "Appearance"
+                : item === "editor"
+                  ? "Editor"
+                  : "AI query"}
             </button>
           ))}
           <button
@@ -279,7 +293,7 @@ export default function Settings({
                 </div>
               </section>
             </>
-          ) : (
+          ) : section === "editor" ? (
             <section className="settings-section">
               <h2>Editor</h2>
               <p className="settings-description">
@@ -414,6 +428,8 @@ export default function Settings({
                 </div>
               </div>
             </section>
+          ) : (
+            <AiQuerySettings />
           )}
         </div>
       </div>
