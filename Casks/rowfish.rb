@@ -1,8 +1,8 @@
 # Updated automatically by .github/workflows/release.yml on every release.
 # Edit Casks/rowfish.rb.tmpl instead — this file is rendered from it.
 cask "rowfish" do
-  version "0.2.0-beta.2"
-  sha256 "fd12ac7603825f7edfb02b77f912753d3800a9dd8a9a42eeecfe0ea9f9b1b0be"
+  version "0.2.0-beta.3"
+  sha256 "05d5666b06969f1ecb987477f3ceb47dc8d5cbf90928137cfeb7fc705867e932"
 
   url "https://github.com/PylotLight/Rowfish/releases/download/v#{version}/Rowfish-#{version}-mac-arm64.zip"
   name "Rowfish"
