@@ -4,7 +4,7 @@
 
 **A PostgreSQL-first desktop query client, with MongoDB support available.**
 
-Rowfish brings persistent SQL tabs, a searchable server explorer, schema-aware autocomplete and a virtualized results grid into one compact workspace. It is built with Electron 45, React and TypeScript; existing MongoDB workflows remain available.
+Rowfish brings persistent SQL tabs, a searchable server explorer, schema-aware autocomplete and a virtualized results grid into one compact workspace. It is built with prerelease Electron 46, React and TypeScript; existing MongoDB workflows remain available.
 
 ## Install
 
