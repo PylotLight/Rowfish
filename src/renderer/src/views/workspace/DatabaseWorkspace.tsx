@@ -12,6 +12,7 @@ import {
   CircleHelp,
   List,
   Braces,
+  Sparkles,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import "../../components/query-connection.css";
@@ -47,6 +48,7 @@ import MongoCollectionBar from "./components/MongoCollectionBar";
 import MongoOperationDialog, {
   type MongoOperationFields,
 } from "./components/MongoOperationDialog";
+import MongoAiQueryDialog from "./components/MongoAiQueryDialog";
 import QueryConnectionDialog from "./components/QueryConnectionDialog";
 import ResultsTable from "./components/ResultsTable";
 import SaveQueryDialog from "./components/SaveQueryDialog";
@@ -102,6 +104,7 @@ import type {
   DatabaseRow,
   MongoBrowserCollection,
   MongoBrowserDatabase,
+  MongoAiQueryResult,
   MongoMutationRequest,
   SavedConnectionProfile,
 } from "../../../../shared/database";
@@ -153,13 +156,16 @@ export default function DatabaseWorkspace({
   preferences,
   sidebarActions,
   settingsView,
+  onOpenSettings,
 }: {
   search: string;
   preferences: UiPreferences;
   sidebarActions: ReactNode;
   settingsView?: ReactNode;
+  onOpenSettings: (section?: "appearance" | "editor" | "ai") => void;
 }): React.JSX.Element {
   const [showConnect, setShowConnect] = useState(false);
+  const [showMongoAiGenerator, setShowMongoAiGenerator] = useState(false);
   const [showQueryConnection, setShowQueryConnection] = useState(false);
   const queryConnectionTabId = useRef<string | null>(null);
   const [queryConnectionBusy, setQueryConnectionBusy] = useState(false);
@@ -2226,6 +2232,18 @@ export default function DatabaseWorkspace({
                         />
                       </label>
                     ))}
+                  {activeTab?.kind === "mongodb" &&
+                    activeConnection?.kind === "mongodb" && (
+                      <button
+                        type="button"
+                        className="db-ai-query-button"
+                        disabled={runState !== "idle"}
+                        title="Generate a MongoDB filter or aggregation draft"
+                        onClick={() => setShowMongoAiGenerator(true)}
+                      >
+                        <Sparkles size={13} /> AI query
+                      </button>
+                    )}
                   <label className="db-limit-field">
                     <span>Max rows</span>
                     <select
@@ -2770,6 +2788,37 @@ export default function DatabaseWorkspace({
             onClose={() => setMongoOperation(null)}
           />
         )}
+      {showMongoAiGenerator && activeConnection?.kind === "mongodb" && (
+        <MongoAiQueryDialog
+          connectionId={activeConnection.id}
+          database={selectedMongoDatabase || activeConnection.database}
+          collection={collection}
+          initialMode={mongoQueryMode}
+          onClose={() => setShowMongoAiGenerator(false)}
+          onOpenSettings={() => {
+            setShowMongoAiGenerator(false);
+            onOpenSettings("ai");
+          }}
+          onApply={(generated: MongoAiQueryResult) => {
+            const placeholder = mongoQueryMode === "find" ? "{}" : "[]";
+            if (
+              queryText.trim() &&
+              queryText.trim() !== placeholder &&
+              !window.confirm(
+                "Replace the current MongoDB query draft with this generated query?",
+              )
+            )
+              return;
+            setMongoQueryMode(generated.mode);
+            setQueryText(generated.query);
+            setQueryError("");
+            setQuerySummary(
+              "Generated query inserted. Review it before running.",
+            );
+            setShowMongoAiGenerator(false);
+          }}
+        />
+      )}
     </section>
   );
 }

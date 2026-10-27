@@ -249,6 +249,36 @@ export interface MongoMutationResult {
   insertedId?: string;
 }
 
+export interface AiQuerySettings {
+  endpoint: string;
+  model: string;
+  enabled: boolean;
+  hasApiKey: boolean;
+  configured: boolean;
+}
+
+export interface AiQuerySettingsInput {
+  endpoint: string;
+  model: string;
+  enabled: boolean;
+  apiKey?: string;
+  clearApiKey?: boolean;
+}
+
+export interface MongoAiQueryRequest {
+  connectionId: string;
+  database: string;
+  collection: string;
+  prompt: string;
+  mode: "find" | "aggregate";
+}
+
+export interface MongoAiQueryResult {
+  mode: "find" | "aggregate";
+  query: string;
+  explanation: string;
+}
+
 export interface DatabaseQueryRequest {
   connectionId: string;
   queryId: string;

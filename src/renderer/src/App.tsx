@@ -11,9 +11,12 @@ import {
 } from "./lib/ui-preferences";
 
 export default function App(): React.JSX.Element {
+  type SettingsSection = "appearance" | "editor" | "ai";
   const [search, setSearch] = useState("");
   const [prefs, setPrefs] = useState(loadUiPreferences);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] =
+    useState<SettingsSection>("appearance");
   const [saveError, setSaveError] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -25,6 +28,10 @@ export default function App(): React.JSX.Element {
   const closeSettings = () => {
     setSettingsOpen(false);
     requestAnimationFrame(() => triggerRef.current?.focus());
+  };
+  const openSettings = (section?: SettingsSection) => {
+    if (section) setSettingsSection(section);
+    setSettingsOpen(true);
   };
   useEffect(() => {
     if (settingsOpen)
@@ -106,12 +113,15 @@ export default function App(): React.JSX.Element {
             search={search}
             preferences={prefs}
             sidebarActions={actions}
+            onOpenSettings={openSettings}
             settingsView={
               settingsOpen ? (
                 <Settings
                   prefs={prefs}
                   onChange={changePreferences}
                   onBack={closeSettings}
+                  initialSection={settingsSection}
+                  onSectionChange={setSettingsSection}
                 />
               ) : undefined
             }

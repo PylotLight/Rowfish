@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
+  AiQuerySettings,
+  AiQuerySettingsInput,
   DatabaseBrowserDatabase,
   DatabaseBrowserTable,
   DatabaseConnectionInput,
@@ -11,6 +13,8 @@ import type {
   DatabaseQueryRequest,
   MongoBrowserCollection,
   MongoBrowserDatabase,
+  MongoAiQueryRequest,
+  MongoAiQueryResult,
   MongoMutationRequest,
   MongoMutationResult,
   PostgresServerInfo,
@@ -34,6 +38,18 @@ const api = {
       ipcRenderer.invoke("app:choose-alembic-config"),
     choosePythonInterpreter: (): Promise<string | null> =>
       ipcRenderer.invoke("app:choose-python-interpreter"),
+  },
+  aiQuery: {
+    getSettings: (): Promise<AiQuerySettings> =>
+      ipcRenderer.invoke("ai-query:get-settings"),
+    saveSettings: (input: AiQuerySettingsInput): Promise<AiQuerySettings> =>
+      ipcRenderer.invoke("ai-query:save-settings", input),
+    testProvider: (): Promise<{ message: string }> =>
+      ipcRenderer.invoke("ai-query:test-provider"),
+    generateMongoQuery: (
+      request: MongoAiQueryRequest,
+    ): Promise<MongoAiQueryResult> =>
+      ipcRenderer.invoke("ai-query:generate-mongo", request),
   },
   database: {
     connect: (
