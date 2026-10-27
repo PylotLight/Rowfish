@@ -49,6 +49,7 @@ import MongoOperationDialog, {
   type MongoOperationFields,
 } from "./components/MongoOperationDialog";
 import MongoAiQueryDialog from "./components/MongoAiQueryDialog";
+import SqlAiQueryDialog from "./components/SqlAiQueryDialog";
 import QueryConnectionDialog from "./components/QueryConnectionDialog";
 import ResultsTable from "./components/ResultsTable";
 import SaveQueryDialog from "./components/SaveQueryDialog";
@@ -105,6 +106,7 @@ import type {
   MongoBrowserCollection,
   MongoBrowserDatabase,
   MongoAiQueryResult,
+  SqlAiQueryResult,
   MongoMutationRequest,
   SavedConnectionProfile,
 } from "../../../../shared/database";
@@ -166,6 +168,7 @@ export default function DatabaseWorkspace({
 }): React.JSX.Element {
   const [showConnect, setShowConnect] = useState(false);
   const [showMongoAiGenerator, setShowMongoAiGenerator] = useState(false);
+  const [showSqlAiGenerator, setShowSqlAiGenerator] = useState(false);
   const [showQueryConnection, setShowQueryConnection] = useState(false);
   const queryConnectionTabId = useRef<string | null>(null);
   const [queryConnectionBusy, setQueryConnectionBusy] = useState(false);
@@ -2161,7 +2164,9 @@ export default function DatabaseWorkspace({
                   </span>
                   <span className="db-editor-language">
                     {(activeTab?.kind ?? activeConnection?.kind) !== "mongodb"
-                      ? "POSTGRESQL"
+                      ? (activeTab?.kind ?? activeConnection?.kind) === "sqlite"
+                        ? "SQLITE"
+                        : "POSTGRESQL"
                       : "MONGODB JSON"}
                   </span>
                 </div>
@@ -2242,6 +2247,22 @@ export default function DatabaseWorkspace({
                         onClick={() => setShowMongoAiGenerator(true)}
                       >
                         <Sparkles size={13} /> AI query
+                      </button>
+                    )}
+                  {activeConnection &&
+                    (activeConnection.kind === "postgres" ||
+                      activeConnection.kind === "sqlite") &&
+                    !activeConnection.serverMode &&
+                    (activeTab?.kind ?? activeConnection.kind) !==
+                      "mongodb" && (
+                      <button
+                        type="button"
+                        className="db-ai-query-button"
+                        disabled={runState !== "idle"}
+                        title={`Generate a schema-aware ${activeConnection.kind === "sqlite" ? "SQLite" : "PostgreSQL"} SQL draft`}
+                        onClick={() => setShowSqlAiGenerator(true)}
+                      >
+                        <Sparkles size={13} /> AI SQL
                       </button>
                     )}
                   <label className="db-limit-field">
@@ -2819,6 +2840,40 @@ export default function DatabaseWorkspace({
           }}
         />
       )}
+      {showSqlAiGenerator &&
+        activeConnection &&
+        (activeConnection.kind === "postgres" ||
+          activeConnection.kind === "sqlite") && (
+          <SqlAiQueryDialog
+            connectionId={activeConnection.id}
+            dialect={activeConnection.kind}
+            connectionLabel={
+              activeConnection.kind === "sqlite"
+                ? activeConnection.name
+                : activeConnection.database
+            }
+            onClose={() => setShowSqlAiGenerator(false)}
+            onOpenSettings={() => {
+              setShowSqlAiGenerator(false);
+              onOpenSettings("ai");
+            }}
+            onApply={(generated: SqlAiQueryResult) => {
+              if (
+                queryText.trim() &&
+                !window.confirm(
+                  "Replace the current SQL query draft with this generated SQL?",
+                )
+              )
+                return;
+              setQueryText(generated.query);
+              setQueryError("");
+              setQuerySummary(
+                "Generated SQL inserted. Review it before running.",
+              );
+              setShowSqlAiGenerator(false);
+            }}
+          />
+        )}
     </section>
   );
 }

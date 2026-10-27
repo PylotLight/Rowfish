@@ -279,6 +279,17 @@ export interface MongoAiQueryResult {
   explanation: string;
 }
 
+export interface SqlAiQueryRequest {
+  connectionId: string;
+  prompt: string;
+}
+
+export interface SqlAiQueryResult {
+  dialect: "postgres" | "sqlite";
+  query: string;
+  explanation: string;
+}
+
 export interface DatabaseQueryRequest {
   connectionId: string;
   queryId: string;

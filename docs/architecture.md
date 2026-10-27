@@ -15,7 +15,7 @@ React renderer → preload bridge → Electron IPC → connection manager → No
 - `src/main/alembic-graph.js` reads Alembic revision files without importing project Python code, then compares the revision graph with live `alembic_version` rows.
 - `src/main/alembic-model-compare.js` invokes the selected project Python interpreter for SQLAlchemy/Alembic autogenerate comparison. Its helper returns operation summaries and offline-rendered SQL for review; it does not apply upgrades or execute the preview.
 - `src/main/saved-connections.ts` stores profile metadata in the app's user-data directory and protects passwords with Electron `safeStorage` backed by the operating system credential store.
-- `src/main/ai-query.js` keeps the OpenAI-compatible provider key encrypted with Electron `safeStorage`, sends user-approved prompts from the main process, and validates generated MongoDB filters and pipelines before returning them.
+- `src/main/ai-query.js` keeps the OpenAI-compatible provider key encrypted with Electron `safeStorage`, sends user-approved prompts from the main process, and returns MongoDB query or PostgreSQL/SQLite SQL drafts for review.
 - `src/shared/` contains database types, validation helpers and app configuration.
 
 ## Query path
@@ -34,4 +34,4 @@ SQLite connections point to absolute local file paths. `DatabaseSync` stays in t
 2. The main process validates database inputs before starting driver work.
 3. Driver work and result normalization stay off the Electron main thread.
 4. Renderer capabilities are limited to methods exposed through `src/preload/index.ts`.
-5. AI provider credentials and HTTP requests stay in the main process. AI generation is opt-in; each request requires a renderer consent check, sends field/index metadata but no document values, and returns a query draft that is never executed automatically.
+5. AI provider credentials and HTTP requests stay in the main process. AI generation is opt-in; each request requires renderer consent, sends only the prompt and schema metadata (never database rows), and returns a draft that is never executed automatically. SQL output is checked for one statement, not syntax-validated.

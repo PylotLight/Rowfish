@@ -15,6 +15,8 @@ import type {
   MongoBrowserDatabase,
   MongoAiQueryRequest,
   MongoAiQueryResult,
+  SqlAiQueryRequest,
+  SqlAiQueryResult,
   MongoMutationRequest,
   MongoMutationResult,
   PostgresServerInfo,
@@ -50,6 +52,8 @@ const api = {
       request: MongoAiQueryRequest,
     ): Promise<MongoAiQueryResult> =>
       ipcRenderer.invoke("ai-query:generate-mongo", request),
+    generateSqlQuery: (request: SqlAiQueryRequest): Promise<SqlAiQueryResult> =>
+      ipcRenderer.invoke("ai-query:generate-sql", request),
   },
   database: {
     connect: (

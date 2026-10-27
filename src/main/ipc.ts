@@ -2,6 +2,7 @@ import { app, dialog, ipcMain } from "electron";
 import { getMainWindow } from "./window";
 import {
   generateMongoQueryWithAi,
+  generateSqlQueryWithAi,
   getAiQuerySettings,
   saveAiQuerySettings,
   testAiQueryProvider,
@@ -63,6 +64,10 @@ export function registerIpc(): void {
   ipcMain.handle("ai-query:generate-mongo", (event, request: unknown) => {
     assertAppSender(event);
     return generateMongoQueryWithAi(event, request);
+  });
+  ipcMain.handle("ai-query:generate-sql", (event, request: unknown) => {
+    assertAppSender(event);
+    return generateSqlQueryWithAi(event, request);
   });
   ipcMain.handle("app:quit", (event) => {
     assertAppSender(event);

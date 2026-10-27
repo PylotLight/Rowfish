@@ -4,13 +4,19 @@ import path from "node:path";
 import { app, safeStorage } from "electron";
 import {
   buildMongoQueryMessages,
+  buildSqlQueryMessages,
   DEFAULT_AI_QUERY_SETTINGS,
   isLocalAiEndpoint,
   normalizeAiEndpoint,
   parseGeneratedMongoQuery,
+  parseGeneratedSqlQuery,
 } from "../shared/ai-query.js";
 import { isPlainRecord, validateText } from "./database/validation";
-import { getOwnedConnection } from "./database";
+import {
+  getOwnedConnection,
+  listPostgresColumns,
+  listPostgresTables,
+} from "./database";
 import { getMongoCollectionDetails } from "./database/mongo";
 import { assertAllowedSender } from "./database/worker-bridge";
 
@@ -294,6 +300,81 @@ export async function testAiQueryProvider(event) {
   if (!content.trim())
     throw new Error("The AI provider returned an empty test response.");
   return { message: "The provider responded successfully." };
+}
+
+export async function generateSqlQueryWithAi(event, rawValue) {
+  assertAllowedSender(event.sender);
+  if (!isPlainRecord(rawValue)) throw new Error("Invalid AI query request.");
+  const connectionId = validateText(
+    rawValue.connectionId,
+    "Connection id",
+    80,
+    true,
+  );
+  const prompt = validatePrompt(rawValue.prompt);
+  const settings = await readStoredSettings();
+  if (!settings.enabled)
+    throw new Error(
+      "AI query generation is disabled. Enable it in Settings first.",
+    );
+  const connection = getOwnedConnection(event, connectionId);
+  if (
+    (connection.config.kind !== "postgres" &&
+      connection.config.kind !== "sqlite") ||
+    connection.config.serverMode
+  ) {
+    throw new Error("Choose a PostgreSQL or SQLite database connection.");
+  }
+  if (connection.activeQueryId || connection.rowBusy) {
+    throw new Error(
+      "Wait for the active database operation to finish before generating SQL.",
+    );
+  }
+
+  const [tableList, columnList] = await Promise.all([
+    listPostgresTables(event, connectionId),
+    listPostgresColumns(event, connectionId),
+  ]);
+  const tables = tableList
+    .filter(
+      (table) =>
+        typeof table?.schema === "string" && typeof table?.name === "string",
+    )
+    .slice(0, 200)
+    .map((table) => ({
+      schema: table.schema,
+      name: table.name,
+      kind: table.kind,
+      columns: [],
+    }));
+  const tableByName = new Map(
+    tables.map((table) => [JSON.stringify([table.schema, table.name]), table]),
+  );
+  let columnCount = 0;
+  for (const column of columnList) {
+    if (columnCount >= 2_000) break;
+    if (
+      typeof column?.schema !== "string" ||
+      typeof column?.table !== "string" ||
+      typeof column?.name !== "string" ||
+      column.name.length > 240
+    ) {
+      continue;
+    }
+    const table = tableByName.get(
+      JSON.stringify([column.schema, column.table]),
+    );
+    if (!table) continue;
+    table.columns.push(column.name);
+    columnCount += 1;
+  }
+  const messages = buildSqlQueryMessages({
+    prompt,
+    dialect: connection.config.kind,
+    tables,
+  });
+  const content = await requestCompletion(settings, messages);
+  return parseGeneratedSqlQuery(content, connection.config.kind);
 }
 
 export async function generateMongoQueryWithAi(event, rawValue) {

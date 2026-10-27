@@ -93,6 +93,12 @@ Rowfish executes the SQL you submit, including write statements. Review a statem
 
 The same editor supports SQLite files. SQLite statements run through the selected file connection; use SQLite syntax and remember that writes change the file. SQLite statement selection preserves quoted text, comments and trigger bodies when splitting scripts.
 
+#### Generate SQL with AI
+
+Choose **AI SQL** beside the editor controls for a connected PostgreSQL or SQLite database. AI generation is off until enabled in **Settings → AI query**. Before each request, Rowfish shows the configured provider and asks for consent. It sends only your prompt and schema metadata (schema, table, and column names); it does not send database rows or values, credentials, connection strings, or a local SQLite file path.
+
+The generated SQL appears in a review preview. Rowfish checks that the response contains one SQL statement, but does not syntax-validate or execute it. **Use SQL draft** only inserts it into the editor; inspect it and press **Run query** yourself if you choose to execute it. The configured provider may retain requests or bill usage under its own policies.
+
 ### MongoDB
 
 Choose a collection in the sidebar, then enter a JSON filter for `find` or switch the query mode to **Aggregate** and enter a JSON array of pipeline stages. Rowfish reads documents in batches and keeps the configured row and byte limits. `$where`, `$function`, `$accumulator`, `$out` and `$merge` are blocked; aggregation pipelines cannot write data or invoke server-side JavaScript.

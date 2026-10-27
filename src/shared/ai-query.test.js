@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildMongoQueryMessages,
+  buildSqlQueryMessages,
   isLocalAiEndpoint,
   normalizeAiEndpoint,
   parseGeneratedMongoQuery,
+  parseGeneratedSqlQuery,
 } from "./ai-query.js";
 
 describe("AI query connector helpers", () => {
@@ -100,5 +102,73 @@ describe("AI query connector helpers", () => {
         "find",
       ),
     ).toThrow("empty or too long");
+  });
+
+  test("builds PostgreSQL and SQLite prompts from schema identifiers only", () => {
+    const tables = [
+      {
+        schema: "public",
+        name: "orders",
+        kind: "table",
+        columns: ["id", "status", "total"],
+        rows: [{ customer_email: "sample-row-secret" }],
+      },
+    ];
+    for (const dialect of ["postgres", "sqlite"]) {
+      const messages = buildSqlQueryMessages({
+        prompt: "Find paid orders",
+        dialect,
+        tables,
+      });
+      const content = messages.map((message) => message.content).join("\n");
+      expect(content).toContain(dialect === "sqlite" ? "SQLite" : "PostgreSQL");
+      expect(content).toContain('"table":"orders"');
+      expect(content).toContain('"columns":["id","status","total"]');
+      expect(content).toContain("Find paid orders");
+      expect(content).toContain("no row data");
+      expect(content).not.toContain("sample-row-secret");
+    }
+  });
+
+  test("parses SQL preview responses without running them", () => {
+    const query =
+      'SELECT id, total FROM "public"."orders" WHERE status = \'paid\';';
+    expect(
+      parseGeneratedSqlQuery(
+        JSON.stringify({ query, explanation: "Returns paid orders." }),
+        "postgres",
+      ),
+    ).toEqual({
+      dialect: "postgres",
+      query,
+      explanation: "Returns paid orders.",
+    });
+    expect(
+      parseGeneratedSqlQuery(
+        '```json\n{"query":"SELECT name FROM users;","explanation":"SQLite query."}\n```',
+        "sqlite",
+      ).dialect,
+    ).toBe("sqlite");
+    expect(
+      parseGeneratedSqlQuery(
+        JSON.stringify({ query: "SELECT 'a;b';", explanation: "" }),
+        "sqlite",
+      ).query,
+    ).toBe("SELECT 'a;b';");
+    expect(() =>
+      parseGeneratedSqlQuery(
+        JSON.stringify({ query: "SELECT 1; SELECT 2;", explanation: "" }),
+        "postgres",
+      ),
+    ).toThrow("exactly one statement");
+    expect(() => parseGeneratedSqlQuery("not JSON", "sqlite")).toThrow(
+      "required SQL query response",
+    );
+    expect(() => parseGeneratedSqlQuery("{}", "postgres")).toThrow(
+      "empty or too long",
+    );
+    expect(() => parseGeneratedSqlQuery("{}", "mongodb")).toThrow(
+      "Choose PostgreSQL or SQLite",
+    );
   });
 });
