@@ -130,7 +130,7 @@ try {
     request: {
       queryId: "sqlite-smoke-query",
       query:
-        "CREATE /* comment between keywords */ TRIGGER smoke_trigger AFTER INSERT ON items BEGIN INSERT INTO items(label) VALUES ('triggered'); END; SELECT id, label FROM items ORDER BY id; -- trailing comment only",
+        "CREATE /* comment between keywords */ TRIGGER smoke_trigger AFTER INSERT ON items BEGIN INSERT INTO items(label) VALUES ('triggered'); END; INSERT INTO items(label) VALUES ('source'); SELECT id, label FROM items ORDER BY id; -- trailing comment only",
       maxRows: 100,
     },
   });
@@ -147,10 +147,12 @@ try {
         message.type === "rows" && message.queryId === "sqlite-smoke-query",
     )
     .flatMap((message) => message.rows);
-  assert.equal(completion.receivedRows, 2);
+  assert.equal(completion.receivedRows, 4);
   assert.deepEqual(rows, [
     { id: 1, label: "alpha" },
     { id: 2, label: "beta" },
+    { id: 3, label: "source" },
+    { id: 4, label: "triggered" },
   ]);
 
   worker.postMessage({ type: "close" });

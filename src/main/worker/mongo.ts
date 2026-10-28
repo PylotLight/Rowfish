@@ -46,6 +46,7 @@ export async function readMongo(request: DatabaseQueryRequest): Promise<void> {
     parseMongoPipeline(request.query);
     const pipeline = EJSON.parse(
       normalizeMongoQuery(request.query.trim() || "[]"),
+      { relaxed: false },
     );
     cursor = selectedCollection
       .aggregate(pipeline as never, { maxTimeMS: QUERY_TIMEOUT_MS })
@@ -57,6 +58,7 @@ export async function readMongo(request: DatabaseQueryRequest): Promise<void> {
     // real BSON values instead of literal operator objects.
     const filter = EJSON.parse(
       normalizeMongoQuery(request.query.trim() || "{}"),
+      { relaxed: false },
     ) as Record<string, unknown>;
     cursor = selectedCollection
       .find(filter)
@@ -137,7 +139,9 @@ function parseMongoObject(
   source: string,
   label: string,
 ): Record<string, unknown> {
-  const parsed: unknown = EJSON.parse(normalizeMongoQuery(source));
+  const parsed: unknown = EJSON.parse(normalizeMongoQuery(source), {
+    relaxed: false,
+  });
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
     throw new Error(`${label} must be a JSON object.`);
   return parsed as Record<string, unknown>;

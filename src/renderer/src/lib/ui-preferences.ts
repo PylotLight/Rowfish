@@ -146,9 +146,18 @@ function luminance(hex: string): number {
     .map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
   return 0.2126 * values[0]! + 0.7152 * values[1]! + 0.0722 * values[2]!;
 }
-export function applyUiPreferences(prefs: UiPreferences): void {
-  if (typeof document === "undefined") return;
-  const root = document.documentElement;
+type UiPreferenceTarget = Pick<HTMLElement, "dataset"> & {
+  style: Pick<CSSStyleDeclaration, "setProperty">;
+};
+
+export function applyUiPreferences(
+  prefs: UiPreferences,
+  target?: UiPreferenceTarget,
+): void {
+  const root =
+    target ??
+    (typeof document === "undefined" ? undefined : document.documentElement);
+  if (!root) return;
   let accent: string =
     prefs.accent === "custom"
       ? prefs.customAccent

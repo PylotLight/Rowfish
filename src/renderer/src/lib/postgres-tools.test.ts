@@ -80,8 +80,33 @@ describe("PostgreSQL tools", () => {
       "index-usage",
       "blocking",
     ]);
+    const requiredSql = {
+      sessions: [
+        "FROM pg_stat_activity",
+        "datname = current_database()",
+        "pid <> pg_backend_pid()",
+        "LIMIT 100;",
+      ],
+      sizes: [
+        "FROM pg_catalog.pg_statio_user_tables",
+        "pg_total_relation_size(relid)",
+        "LIMIT 100;",
+      ],
+      "index-usage": [
+        "FROM pg_catalog.pg_stat_user_indexes",
+        "ORDER BY idx_scan ASC",
+        "LIMIT 200;",
+      ],
+      blocking: [
+        "FROM pg_catalog.pg_stat_activity AS blocked",
+        "pg_blocking_pids(blocked.pid)",
+        "blocked.datname = current_database()",
+        "LIMIT 100;",
+      ],
+    };
     for (const { sql } of postgresDiagnostics) {
-      expect(sql).toMatch(/\bLIMIT (?:100|200);/);
+      const id = postgresDiagnostics.find((item) => item.sql === sql)!.id;
+      for (const invariant of requiredSql[id]) expect(sql).toContain(invariant);
       expect(sql).not.toMatch(
         /\b(?:INSERT|UPDATE|DELETE|DROP|CREATE|ALTER)\b/i,
       );

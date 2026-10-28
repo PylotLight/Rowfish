@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   assertCompletePrimaryKey,
   buildRowUpdate,
-  quoteIdentifier,
   validateRowRequest,
 } from "./postgres-row-edit";
 
@@ -15,12 +14,21 @@ describe("PostgreSQL row-edit request helpers", () => {
     expect(() =>
       assertCompletePrimaryKey({ id: "1", extra: "x" }, ["id"]),
     ).toThrow();
+    expect(() => assertCompletePrimaryKey({ id: "1" }, [])).toThrow(
+      "requires a primary key",
+    );
     expect(() => assertCompletePrimaryKey({ id: "1" }, ["id"])).not.toThrow();
   });
-  test("quotes identifiers and emits xmin concurrency SQL", () => {
-    expect(quoteIdentifier('a"b')).toBe('"a""b"');
-    expect(buildRowUpdate("s", "t", ["id"], ["value"])).toContain(
-      "xmin::text = $3",
+  test("quotes identifiers and orders composite-key, change, and version parameters", () => {
+    expect(
+      buildRowUpdate(
+        'odd"schema',
+        'audit"table',
+        ["tenant id", 'row"id'],
+        ["display", "value"],
+      ),
+    ).toBe(
+      'UPDATE "odd""schema"."audit""table" SET "display" = $3, "value" = $4 WHERE "tenant id" = $1 AND "row""id" = $2 AND xmin::text = $5 RETURNING xmin::text AS "__rowfish_xmin"',
     );
   });
   test("validates request objects and rejects malformed cells", () => {

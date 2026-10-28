@@ -35,12 +35,9 @@ print(json.dumps([
   { encoding: "utf8" },
 );
 
-if (pythonCheck.error) {
-  console.warn(
-    "Skipping Alembic model operation descriptions: Python 3 is required.",
-  );
-} else {
-  test("Alembic model operation descriptions", () => {
+test.skipIf(pythonCheck.error !== undefined)(
+  "Alembic model operation descriptions (requires Python 3)",
+  () => {
     expect(pythonCheck.status).toBe(0);
     expect(JSON.parse(pythonCheck.stdout)).toEqual([
       {
@@ -52,5 +49,5 @@ if (pythonCheck.error) {
         description: "Create index ix_accounts_email on public.accounts",
       },
     ]);
-  });
-}
+  },
+);

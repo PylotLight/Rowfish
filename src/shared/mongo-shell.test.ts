@@ -7,7 +7,8 @@ const { EJSON, ObjectId, BSONRegExp } = BSON;
 type ObjectId = InstanceType<typeof ObjectId>;
 type BSONRegExp = InstanceType<typeof BSONRegExp>;
 
-const parse = (source: string) => EJSON.parse(normalizeMongoQuery(source));
+const parse = (source: string) =>
+  EJSON.parse(normalizeMongoQuery(source), { relaxed: false });
 
 describe("normalizeMongoQuery", () => {
   test("leaves strict JSON alone", () => {
@@ -32,7 +33,7 @@ describe("normalizeMongoQuery", () => {
     });
   });
 
-  test("turns shell helpers into BSON values", () => {
+  test("turns shell helpers into BSON values without losing NumberLong precision", () => {
     const id = "65f1c0ffee0000000000abcd";
     const doc = parse(
       `{ _id: ObjectId("${id}"), at: { $gte: ISODate("2026-01-01T00:00:00Z") }, made: new Date('2026-02-01'), n: NumberLong("9007199254740993"), i: NumberInt(4) }`,
@@ -41,7 +42,10 @@ describe("normalizeMongoQuery", () => {
     expect((doc._id as ObjectId).toHexString()).toBe(id);
     expect((doc.at as Record<string, unknown>).$gte).toBeInstanceOf(Date);
     expect(doc.made).toBeInstanceOf(Date);
-    expect(doc.i).toBe(4);
+    expect(doc.n).toBeInstanceOf(BSON.Long);
+    expect(String(doc.n)).toBe("9007199254740993");
+    expect(doc.i).toBeInstanceOf(BSON.Int32);
+    expect(String(doc.i)).toBe("4");
   });
 
   test("reads Extended JSON $oid as an ObjectId", () => {

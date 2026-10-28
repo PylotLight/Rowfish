@@ -115,8 +115,14 @@ describe("UI preferences", () => {
       false,
     );
   });
-  test("applies preference datasets and CSS values when a DOM is present", () => {
-    if (typeof document === "undefined") return;
+  test("applies visible preference datasets and CSS values", () => {
+    const css = new Map<string, string>();
+    const root = {
+      dataset: {} as DOMStringMap,
+      style: {
+        setProperty: (name: string, value: string) => css.set(name, value),
+      },
+    };
     const prefs = {
       ...DEFAULT_UI_PREFERENCES,
       theme: "plum" as const,
@@ -124,21 +130,39 @@ describe("UI preferences", () => {
       density: "compact" as const,
       motion: "reduced" as const,
       blur: false,
+      interfaceFont: "Georgia" as const,
+      editorFont: "Menlo" as const,
       editorFontSize: 17,
     };
-    applyUiPreferences(prefs);
-    expect(document.documentElement.dataset.appearance).toBe("plum");
-    expect(document.documentElement.dataset.textDensity).toBe("compact");
-    expect(document.documentElement.dataset.motion).toBe("reduced");
-    expect(document.documentElement.dataset.blur).toBe("false");
-    expect(document.documentElement.style.getPropertyValue("--mint")).toBe(
-      "#70b8ff",
+    applyUiPreferences(prefs, root);
+    expect(root.dataset.appearance).toBe("plum");
+    expect(root.dataset.textDensity).toBe("compact");
+    expect(root.dataset.motion).toBe("reduced");
+    expect(root.dataset.blur).toBe("false");
+    expect(css.get("--mint")).toBe("#70b8ff");
+    expect(css.get("--mint-dim")).toBe("#70b8ff33");
+    expect(css.get("--mint-ink")).toBe("#101719");
+    expect(css.get("--ui-font")).toBe("'Georgia', sans-serif");
+    expect(css.get("--editor-font")).toBe("'Menlo', monospace");
+    expect(css.get("--editor-font-size")).toBe("17px");
+
+    const paperCss = new Map<string, string>();
+    const paperRoot = {
+      dataset: {} as DOMStringMap,
+      style: {
+        setProperty: (name: string, value: string) => paperCss.set(name, value),
+      },
+    };
+    applyUiPreferences(
+      {
+        ...DEFAULT_UI_PREFERENCES,
+        theme: "paper",
+        accent: "custom",
+        customAccent: "#ffffff",
+      },
+      paperRoot,
     );
-    expect(document.documentElement.style.getPropertyValue("--mint-ink")).toBe(
-      "#101719",
-    );
-    expect(
-      document.documentElement.style.getPropertyValue("--editor-font-size"),
-    ).toBe("17px");
+    expect(paperCss.get("--mint")).not.toBe("#ffffff");
+    expect(paperCss.get("--mint-ink")).toBe("#ffffff");
   });
 });

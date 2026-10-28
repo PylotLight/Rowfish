@@ -77,17 +77,21 @@ describe("query workspace persistence", () => {
     expect(state.activeTabId).toBeNull();
   });
   test("connection key does not contain credentials and distinguishes databases", () => {
-    const key = queryConnectionKey({
+    const connectionWithCredentials = {
       id: "secret-id",
       name: "db",
-      kind: "postgres",
+      kind: "postgres" as const,
       host: "LOCALHOST",
       port: 5432,
       database: "app",
+      username: "rowfish-user",
+      password: "actual-db-secret",
       connectedAt: 0,
-    });
+    };
+    const key = queryConnectionKey(connectionWithCredentials);
     expect(key).toBe("session%3Asecret-id|postgres|localhost|5432|app");
-    expect(key).not.toContain("password");
+    expect(key).not.toContain("rowfish-user");
+    expect(key).not.toContain("actual-db-secret");
     const base = {
       id: "runtime",
       name: "db",
@@ -97,6 +101,9 @@ describe("query workspace persistence", () => {
       database: "app",
       connectedAt: 0,
     };
+    expect(queryConnectionKey({ ...base, database: "reporting" })).not.toBe(
+      queryConnectionKey(base),
+    );
     expect(
       queryConnectionKey({ ...base, savedConnectionId: "profile-a" }),
     ).not.toBe(queryConnectionKey({ ...base, savedConnectionId: "profile-b" }));

@@ -305,9 +305,12 @@ export function toPlain(value: unknown): unknown {
       return String(payload);
     case "$date":
       return isoDate(payload);
-    case "$numberInt":
-    case "$numberDouble":
     case "$numberLong": {
+      const number = Number(payload);
+      return Number.isSafeInteger(number) ? number : String(payload);
+    }
+    case "$numberInt":
+    case "$numberDouble": {
       const number = Number(payload);
       return Number.isFinite(number) ? number : String(payload);
     }

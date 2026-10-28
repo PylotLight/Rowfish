@@ -11,7 +11,6 @@ import {
   jsonTokens,
   loadResultsView,
   parseJsonCell,
-  rowAsDocument,
   saveResultsView,
   toPlain,
   toRelaxed,
@@ -140,6 +139,7 @@ describe("relaxed and plain output", () => {
     expect(plain.created).toBe("2024-01-02T03:04:05.000Z");
     expect(plain.price).toBe("19.99");
     expect(plain.uuid).toBe("3b241101-e2bb-4255-8caf-4136c566a962");
+    expect(plain.big).toBe("9007199254740993");
     expect(plain.address).toEqual({
       city: "Melbourne",
       zip: "3000",
@@ -163,12 +163,19 @@ describe("row fallbacks", () => {
 
   test("documentFor prefers typed EJSON, falls back to cells", () => {
     const row = { _id: "abc", meta: '{"x":1}', n: 2 };
-    expect(documentFor(row, null)).toEqual(rowAsDocument(row));
-    expect(rowAsDocument(row)).toEqual({ _id: "abc", meta: { x: 1 }, n: 2 });
+    expect(documentFor(row, null)).toEqual({
+      _id: "abc",
+      meta: { x: 1 },
+      n: 2,
+    });
     expect(documentFor(row, '{"_id":{"$oid":"1"}}')).toEqual({
       _id: { $oid: "1" },
     });
-    expect(documentFor(row, "not json")).toEqual(rowAsDocument(row));
+    expect(documentFor(row, "not json")).toEqual({
+      _id: "abc",
+      meta: { x: 1 },
+      n: 2,
+    });
   });
 });
 
