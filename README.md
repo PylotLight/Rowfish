@@ -88,4 +88,4 @@ MIT licensed. See [LICENSE](LICENSE).
 
 ## Development
 
-Use Bun 1.4.4 or newer. Install dependencies with `bun install --frozen-lockfile`; run `bun run format` to format files and `bun run format:check` to verify formatting. Run `bun run typecheck`, `bun run test` and `bun run build` for validation.
+Use Bun 1.4.4 or newer for development and install dependencies with `bun install --frozen-lockfile`. Run `bun run format` to format files and `bun run format:check` to verify formatting. Run `bun lint` to check JavaScript and TypeScript; this built-in command requires Bun canary, which CI installs for the lint job. Run `bun run typecheck`, `bun run test` and `bun run build` for validation.

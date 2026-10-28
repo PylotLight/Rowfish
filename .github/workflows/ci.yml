@@ -13,6 +13,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    name: "Rowfish · CI · lint · ${{ github.ref_name || github.event_name }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: canary
+      - run: bun lint
+
   checks:
     name: "Rowfish · CI · checks · ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.event_name == 'workflow_dispatch' && format('manual · {0}', github.ref_name) || github.ref_name || github.event_name }}"
     runs-on: ubuntu-latest
@@ -45,7 +56,8 @@ jobs:
         env:
           PGPASSWORD: rowfish_local_fixture
         run: psql -h 127.0.0.1 -U rowfish_test -d rowfish_fixture -v ON_ERROR_STOP=1 -f scripts/smoke-fixture.sql
-      - run: bun run format:check
+      - name: Check formatting
+        run: bun run format:check
       - run: bun run test
       - run: bun run typecheck
       - run: bun run build
