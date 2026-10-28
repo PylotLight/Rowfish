@@ -29,6 +29,8 @@ export function useWorkspaceTabs({
   onSaveDialogChange: (open: boolean) => void;
   onRailViewChange: (view: RailView) => void;
 }) {
+  const onNoticeRef = useRef(onNotice);
+  onNoticeRef.current = onNotice;
   const [workspace, setWorkspace] = useState<QueryWorkspaceState>(() => {
     const loaded = loadQueryWorkspace();
     if (!loaded.tabs.length) {
@@ -66,14 +68,16 @@ export function useWorkspaceTabs({
         "rowfish.remember-query-history",
         String(rememberQueries),
       );
-    } catch {}
+    } catch {
+      // Query-history preference persistence is optional when storage is unavailable.
+    }
   }, [rememberQueries]);
   const workspaceSnapshot = useRef(workspace);
   workspaceSnapshot.current = workspace;
   useEffect(() => {
     const timer = window.setTimeout(() => {
       if (!saveQueryWorkspace(workspace))
-        onNotice(
+        onNoticeRef.current(
           "Workspace could not be saved locally. Export important SQL before closing.",
         );
     }, 250);

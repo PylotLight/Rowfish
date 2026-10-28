@@ -20,8 +20,6 @@ afterEach(async () => {
   if (root) await rm(root, { recursive: true, force: true });
   root = undefined;
 });
-const rev = (id, down = "None", tail = "") =>
-  `"${id}"\nrevision = '${id}'\ndown_revision = ${down}\n${tail}`;
 
 describe("analyzeAlembicVersionsDirectory", () => {
   test("orders a linear history deterministically and compares applied ancestors", async () => {

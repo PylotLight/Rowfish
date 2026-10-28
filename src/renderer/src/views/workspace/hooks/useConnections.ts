@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import type {
   DatabaseBrowserDatabase,
@@ -92,13 +92,15 @@ export function useConnections({
   const activeConnection =
     connections.find((connection) => connection.id === activeId) ?? null;
 
+  const onConnectionErrorRef = useRef(onConnectionError);
+  onConnectionErrorRef.current = onConnectionError;
   async function refreshSavedConnections(): Promise<void> {
     setSavedConnections(await window.api.database.saved());
   }
 
   useEffect(() => {
     void refreshSavedConnections().catch((error: unknown) => {
-      onConnectionError(
+      onConnectionErrorRef.current(
         error instanceof Error
           ? error.message
           : "Could not load saved connections.",
@@ -218,7 +220,7 @@ export function useConnections({
       const connected = await window.api.database.connectSaved(profile.id);
       onConnected(connected);
     } catch (error) {
-      onConnectionError(
+      onConnectionErrorRef.current(
         error instanceof Error
           ? error.message
           : `Could not connect to ${profile.name}.`,
@@ -238,7 +240,7 @@ export function useConnections({
         current.filter((item) => item.id !== profile.id),
       );
     } catch (error) {
-      onConnectionError(
+      onConnectionErrorRef.current(
         error instanceof Error
           ? error.message
           : "Could not remove the saved connection.",

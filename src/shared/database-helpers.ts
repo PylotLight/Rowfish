@@ -416,10 +416,12 @@ export function parsePostgresConnectionString(
   const database = databasePath
     ? decodeConnectionPart(databasePath, message)
     : "";
+  // eslint-disable-next-line no-control-regex -- reject control characters in database names
   if (database.length > 128 || /[\0-\x1f\x7f]/.test(database))
     throw new Error(
       "The database name in the PostgreSQL connection string is invalid or too long.",
     );
+  // eslint-disable-next-line no-control-regex -- reject control characters in usernames
   if (username.length > 512 || /[\0-\x1f\x7f]/.test(username))
     throw new Error(
       "The username in the PostgreSQL connection string is invalid.",
@@ -524,7 +526,7 @@ export function parseMongoConnectionString(
 
   let firstPort = 27_017;
   const normalizedHosts = hosts.map((host, index) => {
-    let hostname = "";
+    let hostname: string;
     let portText = "";
     let hasPort = false;
     if (host.startsWith("[")) {
@@ -589,6 +591,7 @@ export function parseMongoConnectionString(
       );
     }
   }
+  // eslint-disable-next-line no-control-regex -- reject control characters in database names
   if (database.length > 128 || /[\0-\x1f\x7f]/.test(database)) {
     throw new Error(
       "The database name in the MongoDB connection string is invalid or too long.",
@@ -613,6 +616,7 @@ function parseMongoText(source: string): unknown {
   } catch (error) {
     throw new Error(
       `Could not read the MongoDB query: ${error instanceof Error ? error.message : "invalid syntax"}`,
+      { cause: error },
     );
   }
 }

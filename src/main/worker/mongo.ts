@@ -30,6 +30,7 @@ export async function readMongo(request: DatabaseQueryRequest): Promise<void> {
   if (
     !collectionName ||
     collectionName.length > 128 ||
+    // eslint-disable-next-line no-control-regex -- MongoDB collection names cannot contain control characters
     /[\0-\x1f]/.test(collectionName)
   ) {
     throw new Error(

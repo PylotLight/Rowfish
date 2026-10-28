@@ -27,33 +27,6 @@ const editor = () => page.locator(".cm-content");
 const run = () => page.getByRole("button", { name: /Run query/i });
 const dialog = () =>
   page.getByRole("dialog", { name: "Choose a query connection" });
-const profile = (id, name, kind = "postgres") => ({
-  id,
-  name,
-  kind,
-  host: "db.example.test",
-  port: kind === "postgres" ? 5432 : 27017,
-  database: "appdb",
-  username: "tester",
-  saved: true,
-});
-const online = (
-  id,
-  name,
-  kind = "postgres",
-  database = "appdb",
-  extra = {},
-) => ({
-  id,
-  name,
-  kind,
-  host: "db.example.test",
-  port: kind === "postgres" ? 5432 : 27017,
-  database,
-  username: "tester",
-  connected: true,
-  ...extra,
-});
 const queryTab = (
   kind = "postgres",
   query = "SELECT 731 AS preserved_draft;",
@@ -71,10 +44,6 @@ const workspace = (kind = "postgres", query) => ({
   saved: [],
   history: [],
 });
-const profiles = [
-  profile("saved-pg", "Saved PostgreSQL"),
-  profile("saved-mongo", "Saved MongoDB", "mongodb"),
-];
 
 // Install handlers in Electron's main process, where ipcMain handlers are mutable.
 await app.evaluate(({ ipcMain, BrowserWindow }) => {

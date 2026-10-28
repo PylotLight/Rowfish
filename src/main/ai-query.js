@@ -31,6 +31,7 @@ function validatePrompt(value) {
   if (
     !prompt ||
     prompt.length > MAX_PROMPT_LENGTH ||
+    // eslint-disable-next-line no-control-regex -- reject unsafe control characters in prompts
     /[\0-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(prompt)
   ) {
     throw new Error("Prompt is required and must be under 3,000 characters.");
@@ -260,10 +261,13 @@ async function requestCompletion(settings, messages, maxTokens = 2_048) {
     });
   } catch (error) {
     if (error?.name === "TimeoutError" || error?.name === "AbortError") {
-      throw new Error("The AI provider did not respond within 45 seconds.");
+      throw new Error("The AI provider did not respond within 45 seconds.", {
+        cause: error,
+      });
     }
     throw new Error(
       "Could not reach the configured AI provider. Check the endpoint and your network connection.",
+      { cause: error },
     );
   }
   if (!response.ok) throw new Error(providerError(response.status));
@@ -273,7 +277,9 @@ async function requestCompletion(settings, messages, maxTokens = 2_048) {
   } catch (error) {
     if (error?.message === "The AI provider response exceeds the 256 KB limit.")
       throw error;
-    throw new Error("The AI provider returned an unreadable response.");
+    throw new Error("The AI provider returned an unreadable response.", {
+      cause: error,
+    });
   }
   const content = payload?.choices?.[0]?.message?.content;
   if (typeof content !== "string" || !content.trim()) {

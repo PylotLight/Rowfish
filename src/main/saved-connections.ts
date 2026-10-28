@@ -202,18 +202,19 @@ export async function getSavedConnectionInput(
   );
   if (!profile) throw new Error("This saved connection no longer exists.");
   let password = "";
-  let shouldReEncrypt = false;
   if (profile.encryptedSecret) {
     if (!(await hasSecurePasswordStorage())) {
       throw new Error(
         "The operating system credential store is unavailable, so Rowfish cannot decrypt this saved credential.",
       );
     }
+    let shouldReEncrypt: boolean;
     try {
-      ({ result: password, shouldReEncrypt } =
-        await safeStorage.decryptStringAsync(
-          Buffer.from(profile.encryptedSecret, "base64"),
-        ));
+      const decrypted = await safeStorage.decryptStringAsync(
+        Buffer.from(profile.encryptedSecret, "base64"),
+      );
+      password = decrypted.result;
+      shouldReEncrypt = decrypted.shouldReEncrypt;
     } catch {
       throw new Error(
         "Rowfish could not decrypt this saved credential. Re-enter the password or connection string and save the connection again.",

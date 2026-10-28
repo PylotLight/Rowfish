@@ -23,6 +23,7 @@ export function validateText(
   if (typeof value !== "string") throw new Error(`${label} must be text.`);
   const normalized = value.trim();
   if (required && !normalized) throw new Error(`${label} is required.`);
+  // eslint-disable-next-line no-control-regex -- reject control characters in validated text
   if (normalized.length > maxLength || /[\0-\x1f\x7f]/.test(normalized)) {
     throw new Error(`${label} is invalid or too long.`);
   }
@@ -40,6 +41,7 @@ export function validateQueryText(
   if (required && !normalized) throw new Error(`${label} is required.`);
   if (
     normalized.length > maxLength ||
+    // eslint-disable-next-line no-control-regex -- reject unsafe controls while allowing ordinary line breaks
     /[\0-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(normalized)
   ) {
     throw new Error(`${label} is invalid or too long.`);

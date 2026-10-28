@@ -244,7 +244,6 @@ export async function readPostgres(
   let truncated = false;
   let affectedRows = 0;
   let hasAffectedRows = false;
-  let finalColumns: string[] = [];
   for (
     let statementIndex = 0;
     statementIndex < statements.length;
@@ -329,13 +328,12 @@ export async function readPostgres(
       if (truncated) await cursor.close().catch(() => undefined);
     }
     if (statementIndex === statements.length - 1) {
-      finalColumns = [...columns];
       // Preserve column metadata for zero-row SELECT results.
       post({
         type: "rows",
         queryId: request.queryId,
         rows: outgoing,
-        columns: finalColumns,
+        columns: [...columns],
         receivedRows,
       });
     }

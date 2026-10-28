@@ -180,7 +180,16 @@ export function useQueryRunner({
       setSelectedTable(saved.selectedTable);
       setTableDetails(saved.tableDetails);
     }
-  }, [workspace.activeTabId]);
+  }, [
+    workspace.activeTabId,
+    setColumnFilters,
+    setFilterMenu,
+    setResultView,
+    setRowSource,
+    setSelectedTable,
+    setSort,
+    setTableDetails,
+  ]);
   useEffect(() => {
     if (runState !== "idle") return;
     if (skipResultSave.current) {
@@ -217,6 +226,13 @@ export function useQueryRunner({
     selectedTable,
     tableDetails,
     runState,
+    setColumnFilters,
+    setFilterMenu,
+    setResultView,
+    setRowSource,
+    setSelectedTable,
+    setSort,
+    setTableDetails,
   ]);
 
   async function runQuery(overrides: QueryRunnerOverrides = {}): Promise<void> {

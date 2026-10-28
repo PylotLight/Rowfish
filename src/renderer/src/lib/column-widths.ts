@@ -123,5 +123,7 @@ export function saveColumnWidths(
       delete store.widths[oldest];
     }
     target.setItem(KEY, JSON.stringify(store));
-  } catch {}
+  } catch {
+    // Column widths are an optional preference; unavailable storage is ignored.
+  }
 }

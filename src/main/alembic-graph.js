@@ -53,7 +53,7 @@ function pythonString(text) {
   const body = text.slice(1, -1);
   if (q === '"') return JSON.parse(text);
   // JSON's escape rules cover the ordinary escapes used in Alembic metadata.
-  const escaped = body.replace(/\\'/g, "'").replace(/\"/g, '\\"');
+  const escaped = body.replace(/\\'/g, "'").replace(/"/g, '\\"');
   return JSON.parse(`"${escaped}"`);
 }
 
@@ -163,7 +163,7 @@ function normalizeRefs(value, field, errors) {
 
 function firstLineMessage(source) {
   const match = source.match(
-    /^\s*(?:[rubfRUBF]{0,2})?('''|\"\"\"|'|\")([\s\S]*?)\1/,
+    /^\s*(?:[rubfRUBF]{0,2})?('''|"""|'|")([\s\S]*?)\1/,
   );
   return match ? match[2].split(/\r?\n/, 1)[0] : "";
 }

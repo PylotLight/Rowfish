@@ -36,7 +36,9 @@ print(json.dumps([
 );
 
 if (pythonCheck.error) {
-  test.skip("Alembic model operation descriptions (Python 3 required)", () => {});
+  console.warn(
+    "Skipping Alembic model operation descriptions: Python 3 is required.",
+  );
 } else {
   test("Alembic model operation descriptions", () => {
     expect(pythonCheck.status).toBe(0);

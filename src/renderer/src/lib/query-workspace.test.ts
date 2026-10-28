@@ -140,8 +140,8 @@ describe("SQL statement selection", () => {
 
 test("statement selection follows PostgreSQL backslash rules", () => {
   expect(getSqlStatement("SELECT 'a\\'; SELECT 2;", 3)).toBe("SELECT 'a\\'");
-  expect(getSqlStatement("SELECT E'a\\\';b'; SELECT 2;", 3)).toBe(
-    "SELECT E'a\\\';b'",
+  expect(getSqlStatement("SELECT E'a\\';b'; SELECT 2;", 3)).toBe(
+    "SELECT E'a\\';b'",
   );
 });
 

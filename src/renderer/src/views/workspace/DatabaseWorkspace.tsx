@@ -17,7 +17,6 @@ import {
 import type { ReactNode } from "react";
 import "../../components/query-connection.css";
 import type { UiPreferences } from "../../lib/ui-preferences";
-import ColumnFilterMenu from "../../components/ColumnFilterMenu";
 import {
   applyColumnFilters,
   isColumnFilterActive,
@@ -41,9 +40,7 @@ import { isSameRow } from "../../lib/row-editor";
 import DocumentResults from "../../components/DocumentResults";
 import ConnectionDialog from "./components/ConnectionDialog";
 import ConnectionRail from "./components/ConnectionRail";
-import DbSwitcher from "./components/DbSwitcher";
 import HelpDialog from "./components/HelpDialog";
-import MongoBrowser from "./components/MongoBrowser";
 import MongoCollectionBar from "./components/MongoCollectionBar";
 import MongoOperationDialog, {
   type MongoOperationFields,
@@ -286,14 +283,14 @@ export default function DatabaseWorkspace({
   // toggle button still opens it until dismissed.
   const [sidebarPeek, setSidebarPeek] = useState(false);
   const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clearPeekTimer = (): void => {
+  const clearPeekTimer = useCallback((): void => {
     if (peekTimer.current) clearTimeout(peekTimer.current);
     peekTimer.current = null;
-  };
-  const revealSidebar = (): void => {
+  }, []);
+  const revealSidebar = useCallback((): void => {
     clearPeekTimer();
     setSidebarPeek(true);
-  };
+  }, [clearPeekTimer]);
   const scheduleSidebarHide = (): void => {
     clearPeekTimer();
     peekTimer.current = setTimeout(() => {
@@ -323,11 +320,11 @@ export default function DatabaseWorkspace({
     setSidebarHidden(false);
   };
   // Tuck a hover-peeked explorer away after an action; a docked one stays.
-  const dismissPeek = (): void => {
+  const dismissPeek = useCallback((): void => {
     clearPeekTimer();
     setSidebarPeek(false);
-  };
-  useEffect(() => clearPeekTimer, []);
+  }, [clearPeekTimer]);
+  useEffect(() => clearPeekTimer, [clearPeekTimer]);
   // Leaving Settings returns focus to its gear in the rail footer, so keep the
   // rail peeked out until the pointer moves away or it is dismissed.
   // Layout effect so the rail is out before App's rAF focus lands on the gear.
@@ -335,7 +332,7 @@ export default function DatabaseWorkspace({
   useLayoutEffect(() => {
     if (hadSettings.current && !settingsView && sidebarHidden) revealSidebar();
     hadSettings.current = !!settingsView;
-  }, [settingsView]);
+  }, [settingsView, sidebarHidden, revealSidebar]);
   const railOpen = !sidebarHidden || sidebarPeek;
   useEffect(() => {
     try {
@@ -374,12 +371,14 @@ export default function DatabaseWorkspace({
       document.removeEventListener("keydown", dismiss);
       document.removeEventListener("pointerdown", outside);
     };
-  }, [sidebarPeek, settingsView]);
+  }, [sidebarPeek, settingsView, dismissPeek]);
   const [selectedTable, setSelectedTable] = useState<{
     connectionId: string;
     schema: string;
     name: string;
   } | null>(null);
+  const selectedTableConnectionIdRef = useRef(selectedTable?.connectionId);
+  selectedTableConnectionIdRef.current = selectedTable?.connectionId;
   const [tableDetails, setTableDetails] = useState<PostgresTableDetails | null>(
     null,
   );
@@ -511,6 +510,8 @@ export default function DatabaseWorkspace({
     switchDatabase,
     disconnect,
   } = connectionState;
+  const activeConnectionRef = useRef(activeConnection);
+  activeConnectionRef.current = activeConnection;
   const {
     workspace,
     setWorkspace,
@@ -711,24 +712,30 @@ export default function DatabaseWorkspace({
   const resultsResetKey = `${activeTab?.id ?? ""}:${resultId(rows[0])}`;
   /** Mongo type hint per column, sampled from the first documents. */
   const sampleSize = Math.min(rows.length, 200);
+  const firstRow = rows[0];
   const mongoColumnKinds = useMemo(
     () =>
       isMongoResult && sampleSize
         ? columnKinds(columns, rows.slice(0, sampleSize).map(documentOf))
         : {},
     // Re-sample only while the first 200 rows are still streaming in.
-    [isMongoResult, columns, sampleSize, rows[0]],
+    // Preserve first-batch sampling; only recompute as the first 200 rows stream in.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- later batches must not resample already-seen rows
+    [isMongoResult, columns, sampleSize, firstRow],
   );
-  function cellText(row: DatabaseRow, column: string): string {
-    if (isMongoResult) {
-      const document = documentOf(row);
-      if (column in document) {
-        const info = describeValue(document[column]);
-        if (isNestedKind(info.kind)) return cellSummary(info);
+  const cellText = useCallback(
+    (row: DatabaseRow, column: string): string => {
+      if (isMongoResult) {
+        const document = documentOf(row);
+        if (column in document) {
+          const info = describeValue(document[column]);
+          if (isNestedKind(info.kind)) return cellSummary(info);
+        }
       }
-    }
-    return String(row[column] ?? "NULL");
-  }
+      return String(row[column] ?? "NULL");
+    },
+    [isMongoResult],
+  );
 
   // Resizable columns, remembered per Mongo collection or per Postgres tab.
   const widthScope = isMongoResult
@@ -754,7 +761,9 @@ export default function DatabaseWorkspace({
       );
     return out;
     // Defaults come from the first batch so widths don't jump while streaming.
-  }, [columns, rows[0], mongoColumnKinds]);
+    // Keep widths based on the first result batch so they do not jump while streaming.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- later batches intentionally do not alter initial widths
+  }, [columns, firstRow, mongoColumnKinds, cellText]);
   const widthOf = (column: string): number =>
     columnWidths[column] ?? defaultWidths[column] ?? 160;
   const tableWidth =
@@ -928,46 +937,50 @@ export default function DatabaseWorkspace({
       );
     }
   }
+  const keyboardActionsRef = useRef({
+    runQuery,
+    formatQuery,
+    saveCurrentQuery,
+    newTab,
+  });
+  keyboardActionsRef.current = {
+    runQuery,
+    formatQuery,
+    saveCurrentQuery,
+    newTab,
+  };
   useEffect(() => {
     const handler = (event: KeyboardEvent): void => {
       if (document.querySelector('[role="dialog"]')) return;
       if (event.key === "F5") {
         event.preventDefault();
-        void runQuery();
+        void keyboardActionsRef.current.runQuery();
         return;
       }
       if (!(event.metaKey || event.ctrlKey)) return;
       if (event.shiftKey && event.key.toLowerCase() === "f") {
         event.preventDefault();
-        formatQuery();
+        keyboardActionsRef.current.formatQuery();
       }
       if (event.key.toLowerCase() === "s") {
         event.preventDefault();
-        saveCurrentQuery();
+        keyboardActionsRef.current.saveCurrentQuery();
       }
       if (event.key.toLowerCase() === "t") {
         event.preventDefault();
-        newTab();
+        keyboardActionsRef.current.newTab();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [
-    queryText,
-    activeTab,
-    activeConnection,
-    rowDirty,
-    rowBusy,
-    selectedTable,
-    tableDetails,
-    runState,
-  ]);
+  }, []);
   useEffect(() => {
+    const connection = activeConnectionRef.current;
     setServerInfo(null);
-    if (activeConnection?.kind === "postgres") {
+    if (connection?.kind === "postgres") {
       let cancelled = false;
       void window.api.database
-        .getPostgresServerInfo(activeConnection!.id)
+        .getPostgresServerInfo(connection.id)
         .then((info) => {
           if (!cancelled) setServerInfo(info);
         })
@@ -976,7 +989,7 @@ export default function DatabaseWorkspace({
         cancelled = true;
       };
     }
-  }, [activeConnection?.id]);
+  }, [activeConnection?.id, activeConnection?.kind]);
 
   useEffect(() => {
     if (!(
@@ -1094,8 +1107,11 @@ export default function DatabaseWorkspace({
     return profile;
   }
 
+  const eventHandlersRef = useRef({ connectionState, queryRunner });
+  eventHandlersRef.current = { connectionState, queryRunner };
   useEffect(() => {
     const unsubscribe = window.api.database.onEvent((event) => {
+      const { connectionState, queryRunner } = eventHandlersRef.current;
       if (event.type === "connection:closed") {
         connectionState.handleConnectionClosed(event);
         queryRunner.handleConnectionClosed(event);
@@ -1107,10 +1123,12 @@ export default function DatabaseWorkspace({
   }, []);
 
   useEffect(() => {
+    const connection = activeConnectionRef.current;
+    const selectedTableConnectionId = selectedTableConnectionIdRef.current;
     setInspectedRow(null);
     setRowSource(null);
     setSelectedMongoCollection(null);
-    if (selectedTable?.connectionId !== activeConnection?.id) {
+    if (selectedTableConnectionId !== connection?.id) {
       setSelectedTable(null);
       setTableDetails(null);
       metadataRequest.current += 1;
@@ -1119,21 +1137,21 @@ export default function DatabaseWorkspace({
     setSort(null);
     setColumnFilters({});
     setFilterMenu(null);
-    if (activeConnection && !activeConnection!.serverMode) {
-      const key = queryConnectionKey(activeConnection);
+    if (connection && !connection!.serverMode) {
+      const key = queryConnectionKey(connection);
       setWorkspace((current) => {
         const selected = current.tabs.find(
           (tab) => tab.id === current.activeTabId,
         );
         if (
           selected?.connectionKey === key &&
-          selected.kind === activeConnection.kind
+          selected.kind === connection.kind
         )
           return current;
         if (
           selected &&
           !selected.connectionKey &&
-          selected.kind === activeConnection.kind
+          selected.kind === connection.kind
         )
           return {
             ...current,
@@ -1142,8 +1160,7 @@ export default function DatabaseWorkspace({
             ),
           };
         const existing = current.tabs.find(
-          (tab) =>
-            tab.connectionKey === key && tab.kind === activeConnection?.kind,
+          (tab) => tab.connectionKey === key && tab.kind === connection?.kind,
         );
         if (existing) return { ...current, activeTabId: existing.id };
         const unbound = current.tabs.find(
@@ -1155,11 +1172,11 @@ export default function DatabaseWorkspace({
             activeTabId: unbound.id,
             tabs: current.tabs.map((tab) =>
               tab.id === unbound.id
-                ? { ...tab, kind: activeConnection?.kind, connectionKey: key }
+                ? { ...tab, kind: connection?.kind, connectionKey: key }
                 : tab,
             ),
           };
-        const tab = makeQueryTab(activeConnection?.kind, key);
+        const tab = makeQueryTab(connection?.kind, key);
         return {
           ...current,
           tabs: [...current.tabs, tab],
@@ -1167,10 +1184,10 @@ export default function DatabaseWorkspace({
         };
       });
     }
-    if (activeConnection?.kind === "mongodb") {
+    if (connection?.kind === "mongodb") {
       setCollection("documents");
       setMongoQueryMode("find");
-      setSelectedMongoDatabase(activeConnection!.database || "");
+      setSelectedMongoDatabase(connection!.database || "");
       setSelectedMongoCollection(null);
     }
     setRows([]);
@@ -1179,8 +1196,8 @@ export default function DatabaseWorkspace({
     setQueryPlan(null);
     explainPending.current = false;
     setQuerySummary(
-      activeConnection
-        ? `${activeConnection?.kind !== "mongodb" ? "PostgreSQL" : "MongoDB"} · ${activeConnection!.serverMode ? "server browser" : activeConnection!.database}`
+      connection
+        ? `${connection?.kind !== "mongodb" ? "PostgreSQL" : "MongoDB"} · ${connection!.serverMode ? "server browser" : connection!.database}`
         : "No query run.",
     );
     if (scrollElement.current) scrollElement.current.scrollTop = 0;
@@ -1189,6 +1206,15 @@ export default function DatabaseWorkspace({
     activeConnection?.kind,
     activeConnection?.database,
     activeConnection?.serverMode,
+    explainPending,
+    setColumns,
+    setQueryError,
+    setQueryPlan,
+    setQuerySummary,
+    setRows,
+    setSelectedMongoCollection,
+    setSelectedMongoDatabase,
+    setWorkspace,
   ]);
 
   // Clicking a table opens its SELECT and runs it once the tab, connection
@@ -1214,6 +1240,7 @@ export default function DatabaseWorkspace({
     metadataLoading,
     runState,
     tableDetails,
+    runQuery,
   ]);
 
   useEffect(() => {
@@ -1228,7 +1255,7 @@ export default function DatabaseWorkspace({
     const observer = new ResizeObserver(update);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [columns.length > 0, resultsView]);
+  }, [columns.length, resultsView]);
 
   function cancelQueryConnection(): void {
     queryConnectionTabId.current = null;

@@ -243,7 +243,9 @@ export function documentFor(
     try {
       const parsed: unknown = JSON.parse(ejson);
       if (isObject(parsed)) return parsed;
-    } catch {}
+    } catch {
+      // Invalid persisted EJSON falls back to the row values below.
+    }
   }
   return rowAsDocument(row);
 }
@@ -402,7 +404,9 @@ export function saveResultsView(
       storage ??
       (typeof localStorage === "undefined" ? undefined : localStorage)
     )?.setItem(RESULTS_VIEW_KEY, view);
-  } catch {}
+  } catch {
+    // The results-view preference is optional when storage is unavailable.
+  }
 }
 
 /**

@@ -37,6 +37,8 @@ export default function RowSidePanel({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const request = useRef(0);
+  const callbacksRef = useRef({ onDirtyChange, onBusyChange });
+  callbacksRef.current = { onDirtyChange, onBusyChange };
   const closeButton = useRef<HTMLButtonElement>(null);
   const columns =
     details?.columns ??
@@ -61,12 +63,13 @@ export default function RowSidePanel({
   useEffect(() => {
     closeButton.current?.focus();
     return () => {
-      onDirtyChange(false);
-      onBusyChange(false);
+      callbacksRef.current.onDirtyChange(false);
+      callbacksRef.current.onBusyChange(false);
     };
   }, []);
   useEffect(() => {
     const id = ++request.current;
+    let cancelled = false;
     setDetails(null);
     setDraft({});
     setError("");
@@ -96,21 +99,21 @@ export default function RowSidePanel({
         key,
       })
       .then((result) => {
-        if (request.current !== id) return;
+        if (cancelled || request.current !== id) return;
         setDetails(result);
         setDraft(result.row);
       })
       .catch((cause) => {
-        if (request.current === id)
+        if (!cancelled && request.current === id)
           setError(
             cause instanceof Error ? cause.message : "Could not load this row.",
           );
       })
       .finally(() => {
-        if (request.current === id) setLoading(false);
+        if (!cancelled && request.current === id) setLoading(false);
       });
     return () => {
-      request.current++;
+      cancelled = true;
     };
   }, [row, source, reload]);
   useEffect(() => {

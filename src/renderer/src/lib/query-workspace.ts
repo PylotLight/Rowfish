@@ -259,6 +259,7 @@ function csvCell(value: unknown): string {
       : typeof value === "object"
         ? JSON.stringify(value)
         : String(value);
+  // eslint-disable-next-line no-control-regex -- protect spreadsheet exports after leading control characters
   if (typeof value === "string" && /^[\s\u0000-\u001f]*[=+@-]/.test(text))
     text = `'${text}`;
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;

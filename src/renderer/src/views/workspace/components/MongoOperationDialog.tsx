@@ -84,9 +84,7 @@ export default function MongoOperationDialog({
   const [databaseName, setDatabaseName] = useState(
     prefill.databaseName ?? (selectedDatabase || connection.database),
   );
-  const [createNewDatabase, setCreateNewDatabase] = useState(
-    prefill.createNewDatabase ?? false,
-  );
+  const [createNewDatabase] = useState(prefill.createNewDatabase ?? false);
   const [confirmName, setConfirmName] = useState(prefill.confirmName ?? "");
   const [deleteConfirmed, setDeleteConfirmed] = useState(
     prefill.deleteConfirmed ?? false,

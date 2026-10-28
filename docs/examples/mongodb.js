@@ -1,4 +1,5 @@
 // Fictional Rowfish demo orders for mongosh. Existing rows with these IDs are left unchanged.
+/* global db */
 const demo = db.getSiblingDB("rowfish_demo");
 const orders = demo.getCollection("orders");
 const rows = [
