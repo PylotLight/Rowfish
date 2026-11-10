@@ -10,7 +10,7 @@ The workflow has no signing secrets. It sets `CSC_IDENTITY_AUTO_DISCOVERY=false`
 
 ## Tagged GitHub release
 
-The `.github/workflows/release.yml` workflow only runs after an intentional `v*` tag push. It validates the stable/prerelease tag and checks that its version matches `package.json`, then builds and tests on `macos-14`, packages Apple Silicon (`arm64`) and publishes the files as a GitHub Release with generated release notes and `SHA256SUMS.txt` checksums.
+The `.github/workflows/release.yml` workflow only runs after an intentional `v*` tag push. It validates the stable/prerelease tag and checks that its version matches `package.json`, then builds and tests on `macos-26`, packages Apple Silicon (`arm64`) and publishes the files as a GitHub Release with generated release notes and `SHA256SUMS.txt` checksums.
 
 To trigger one after the change is merged and ready:
 
