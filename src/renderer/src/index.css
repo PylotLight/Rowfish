@@ -3612,22 +3612,6 @@ textarea:focus-visible,
   flex-shrink: 0;
 }
 
-/* Explorer hover peek: a thin strip on the left edge slides the explorer out
-   over the workspace (same overlay as the opened explorer), Surffish-style. */
-.rail-reveal-edge {
-  position: absolute;
-  z-index: 32;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 10px;
-  background: transparent;
-  transition: background 140ms ease;
-  -webkit-app-region: no-drag;
-}
-.rail-reveal-edge:hover {
-  background: color-mix(in srgb, var(--mint) 8%, transparent);
-}
 .db-workspace:not(.settings-open) > .db-rail {
   animation: rail-slide-in 140ms ease-out;
 }
@@ -4567,4 +4551,115 @@ textarea:focus-visible,
 .db-result-table td.nested-cell {
   color: var(--muted);
   font-style: italic;
+}
+
+/* Compact explorer rail and unified translucent workbench frame. */
+.db-workspace:not(.settings-open) > .db-rail {
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--border) 88%, var(--mint));
+  background:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.055), transparent 42%),
+    var(--surface-raised, rgba(17, 20, 25, 0.68));
+  backdrop-filter: blur(28px) saturate(165%);
+  -webkit-backdrop-filter: blur(28px) saturate(165%);
+  transition:
+    width 190ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 190ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    opacity 150ms ease,
+    box-shadow 190ms ease;
+}
+.db-workspace.sidebar-hidden:not(.settings-open) > .db-rail {
+  display: flex !important;
+  width: 54px;
+  min-width: 54px;
+  max-width: 54px;
+  padding: 10px 7px;
+  align-items: center;
+  border-radius: 16px;
+  box-shadow: 8px 0 28px rgba(0, 0, 0, 0.2);
+  transform: translateX(0);
+  opacity: 0.86;
+}
+.collapsed-rail-toggle {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.065);
+  color: var(--mint);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.collapsed-rail-toggle:hover,
+.collapsed-rail-toggle:focus-visible {
+  background: var(--mint-dim);
+  color: var(--text);
+}
+.collapsed-rail-toggle:focus-visible {
+  outline: 2px solid var(--mint);
+  outline-offset: 2px;
+}
+.sidebar-hidden:not(.settings-open) > .db-rail > .collapsed-rail-toggle {
+  display: grid !important;
+}
+.sidebar-hidden:not(.settings-open)
+  > .db-rail
+  > :not(.collapsed-rail-toggle):not(.db-rail-footer) {
+  display: none !important;
+}
+.sidebar-hidden:not(.settings-open) > .db-rail > .db-rail-footer {
+  display: flex !important;
+  width: 100%;
+  margin-top: auto;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--border);
+}
+.sidebar-hidden:not(.settings-open)
+  > .db-rail
+  > .db-rail-footer
+  .db-security-note {
+  display: none;
+}
+.sidebar-hidden:not(.settings-open)
+  > .db-rail
+  > .db-rail-footer
+  .app-sidebar-actions {
+  flex-direction: column;
+  gap: 5px;
+  margin: 0 auto;
+}
+.sidebar-hidden:not(.settings-open) > .db-main {
+  padding-left: 62px;
+  transition: padding-left 190ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.db-workspace:not(.sidebar-hidden) > .db-main {
+  transition:
+    margin-left 190ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    width 190ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.db-editor-card,
+.db-results-card {
+  border-color: color-mix(in srgb, var(--border) 92%, var(--mint));
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.025), transparent 38%),
+    var(--surface-raised, rgba(17, 20, 25, 0.54));
+  backdrop-filter: blur(20px) saturate(145%);
+  -webkit-backdrop-filter: blur(20px) saturate(145%);
+}
+.db-workspace > .explorer-resizer {
+  left: calc(min(var(--sidebar-width, 292px), calc(100% - 360px)) - 2px);
+}
+.db-workspace.sidebar-hidden:not(.settings-open) > .explorer-resizer {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .db-workspace:not(.settings-open) > .db-rail,
+  .sidebar-hidden:not(.settings-open) > .db-main,
+  .db-workspace:not(.sidebar-hidden) > .db-main {
+    animation: none !important;
+    transition: none !important;
+  }
 }

@@ -12,10 +12,26 @@ const app = await electron.launch({
 });
 const page = await app.firstWindow();
 page.setDefaultTimeout(10000);
+const workspace = page.locator(".db-workspace");
+const rail = page.locator(".db-rail");
+const compactToggle = page.locator(".collapsed-rail-toggle");
+const expectCompactRail = async () => {
+  await expect(workspace).toHaveClass(/sidebar-hidden/);
+  await expect(rail).toBeVisible();
+  await expect(compactToggle).toBeVisible();
+  await expect(compactToggle).toHaveAttribute("aria-expanded", "false");
+  expect(Math.round((await rail.boundingBox()).width)).toBe(54);
+};
 const revealRail = async () => {
-  if (!(await page.locator(".db-rail").isVisible()))
-    await page.locator(".rail-reveal-edge").hover();
-  await expect(page.locator(".db-rail")).toBeVisible();
+  if (
+    await workspace.evaluate((element) =>
+      element.classList.contains("sidebar-hidden"),
+    )
+  )
+    await compactToggle.hover();
+  await expect(rail).toBeVisible();
+  await expect(workspace).not.toHaveClass(/sidebar-hidden/);
+  await expect(compactToggle).toHaveAttribute("aria-expanded", "true");
 };
 const check = async (name, fn) => {
   await fn();
@@ -24,13 +40,16 @@ const check = async (name, fn) => {
 try {
   await page.waitForSelector(".cm-content");
   await check(
-    "closed explorer preserves full query width and settings remains reachable",
+    "compact rail preserves the query canvas and settings remains reachable",
     async () => {
-      await expect(page.locator(".db-rail")).toBeHidden();
+      await expectCompactRail();
+      await expect(
+        page.getByRole("button", { name: "Settings" }),
+      ).toBeVisible();
       let main = await page.locator(".db-main").boundingBox();
       const workspace = await page.locator(".db-workspace").boundingBox();
       expect(main.width).toBeGreaterThan(workspace.width * 0.95);
-      // Hovering the left edge peeks the explorer out over the workspace.
+      // Hovering the compact rail peeks the explorer over the workspace.
       await revealRail();
       main = await page.locator(".db-main").boundingBox();
       expect(main.width).toBeGreaterThan(workspace.width * 0.95);
@@ -43,10 +62,10 @@ try {
         .first()
         .click();
       await expect(page.locator(".cm-content")).toBeVisible();
-      // Back from Settings leaves the rail peeked on the gear; moving away hides it.
+      // Back from Settings leaves the rail peeked on the gear; moving away collapses it.
       await page.mouse.move(800, 300);
       await page.mouse.move(820, 320);
-      await expect(page.locator(".db-rail")).toBeHidden();
+      await expectCompactRail();
     },
   );
   await check(
@@ -55,25 +74,28 @@ try {
       await page.locator(".sidebar-toggle").click();
       await expect(page.locator(".db-rail")).toBeVisible();
       await expect(page.locator(".db-workspace")).toHaveClass(/sidebar-docked/);
-      const rail = await page.locator(".db-rail").boundingBox();
-      const main = await page.locator(".db-main").boundingBox();
-      expect(main.x).toBeGreaterThanOrEqual(rail.x + rail.width - 1);
+      await expect
+        .poll(async () => {
+          const rail = await page.locator(".db-rail").boundingBox();
+          const main = await page.locator(".db-main").boundingBox();
+          return main.x - (rail.x + rail.width);
+        })
+        .toBeGreaterThanOrEqual(-1);
       await page.keyboard.press("Escape");
       await expect(page.locator(".db-rail")).toBeVisible();
       await page
         .getByRole("button", { name: "Collapse explorer sidebar" })
         .click();
-      await expect(page.locator(".db-rail")).toBeHidden();
+      await expectCompactRail();
       await expect(page.locator(".sidebar-toggle")).toBeVisible();
-      // Peek from the edge, then pin it with the same button.
-      await page.locator(".rail-reveal-edge").hover();
-      await expect(page.locator(".db-rail")).toBeVisible();
+      // Hover to peek, then pin it with the same compact-rail button.
+      await revealRail();
       await page.getByRole("button", { name: "Pin explorer sidebar" }).click();
       await expect(page.locator(".db-workspace")).toHaveClass(/sidebar-docked/);
       await page
         .getByRole("button", { name: "Collapse explorer sidebar" })
         .click();
-      await expect(page.locator(".db-rail")).toBeHidden();
+      await expectCompactRail();
       await page.mouse.move(800, 300);
       await page.locator(".sidebar-toggle").click();
       await expect(page.locator(".db-rail")).toBeVisible();
@@ -111,7 +133,7 @@ try {
       await page
         .getByRole("button", { name: "Collapse explorer sidebar" })
         .click();
-      await expect(page.locator(".db-rail")).toBeHidden();
+      await expectCompactRail();
       const editorBefore = await page.locator(".db-editor-card").boundingBox();
       const resultsBefore = await page
         .locator(".db-results-card")
