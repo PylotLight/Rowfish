@@ -179,7 +179,18 @@ try {
       await page.screenshot({
         path: join(artifacts, "layout-smoke-1000x640.png"),
       });
-      await page.locator(".sidebar-toggle").click();
+      await page.mouse.move(800, 300);
+      const toolbarSidebarToggle = page
+        .locator(".db-workspace-header")
+        .getByRole("button", {
+          name: "Open explorer sidebar",
+          exact: true,
+        });
+      await expect(toolbarSidebarToggle).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+      await toolbarSidebarToggle.click();
       await expect(
         page.getByRole("separator", { name: "Resize explorer sidebar" }),
       ).toBeVisible();
