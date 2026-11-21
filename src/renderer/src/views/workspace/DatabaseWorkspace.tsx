@@ -1942,14 +1942,29 @@ export default function DatabaseWorkspace({
         className="db-rail"
         ref={railRef}
         aria-label="Database explorer"
-        aria-hidden={!railOpen && !settingsView}
+        aria-hidden={false}
         onMouseEnter={() => {
+          if (sidebarHidden && !sidebarPeek && !settingsView) revealSidebar();
           if (sidebarPeek) clearPeekTimer();
         }}
         onMouseLeave={() => {
           if (sidebarPeek && sidebarHidden) scheduleSidebarHide();
         }}
       >
+        {sidebarHidden && !settingsView && (
+          <button
+            className="collapsed-rail-toggle"
+            type="button"
+            aria-label={
+              sidebarPeek ? "Pin explorer sidebar" : "Open explorer sidebar"
+            }
+            title={sidebarPeek ? "Keep explorer open" : "Open explorer sidebar"}
+            aria-expanded={railOpen}
+            onClick={dockSidebar}
+          >
+            <PanelLeftOpen size={17} aria-hidden="true" />
+          </button>
+        )}
         <ConnectionRail
           connections={connections}
           savedConnections={savedConnections}
@@ -2020,14 +2035,6 @@ export default function DatabaseWorkspace({
           onCloseSidebar={closeSidebar}
         />
       </aside>
-      {!railOpen && !settingsView && (
-        <div
-          className="rail-reveal-edge"
-          aria-hidden="true"
-          onMouseEnter={revealSidebar}
-          onMouseMove={revealSidebar}
-        />
-      )}
       {settingsView}
       {railOpen && !settingsView && (
         <ResizeSeparator

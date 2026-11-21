@@ -297,7 +297,8 @@ export function downloadText(
   document.body.appendChild(link);
   link.click();
   link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  // Electron may still be opening the blob-backed download after the click.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /** Extract the complete statement surrounding a zero-based cursor, ignoring delimiters in quoted/commented text. */

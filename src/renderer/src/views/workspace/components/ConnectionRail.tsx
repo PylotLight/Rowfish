@@ -442,7 +442,7 @@ export default function ConnectionRail({
     <>
       <div className="db-rail-heading">
         <h2>Explorer</h2>
-        {!settingsView && (
+        {!settingsView && !sidebarHidden && (
           <button
             className="db-icon-button rail-close"
             aria-label={

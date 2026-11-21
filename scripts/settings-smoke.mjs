@@ -19,8 +19,18 @@ const settings = () =>
   page.getByRole("button", { name: "Settings", exact: true });
 const panel = () => page.getByRole("region", { name: "Settings", exact: true });
 const revealRail = async () => {
-  if (!(await page.locator(".db-rail").isVisible()))
-    await page.locator(".rail-reveal-edge").hover();
+  const workspace = page.locator(".db-workspace");
+  if (
+    await workspace.evaluate((element) =>
+      element.classList.contains("sidebar-hidden"),
+    )
+  ) {
+    await page.locator(".collapsed-rail-toggle").hover();
+    await expect(page.locator(".collapsed-rail-toggle")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  }
   await expect(page.locator(".db-rail")).toBeVisible();
 };
 const chooseTheme = async (name) =>
@@ -130,11 +140,20 @@ try {
   await expect(sidebarToggle).toHaveAccessibleName(
     /^(Open|Close) explorer sidebar$/,
   );
-  // Back leaves the rail peeked over the toggle; Escape tucks it away.
-  if (await page.locator(".db-rail").isVisible())
+  // Back leaves the rail peeked over the toggle; Escape returns to the compact rail.
+  if (
+    !(await page
+      .locator(".db-workspace")
+      .evaluate((element) => element.classList.contains("sidebar-hidden")))
+  )
     await page.keyboard.press("Escape");
-  await expect(page.locator(".db-rail")).not.toBeVisible();
-  // A collapsed explorer peeks out from the left edge, footer and all.
+  await expect(page.locator(".db-workspace")).toHaveClass(/sidebar-hidden/);
+  await expect(page.locator(".db-rail")).toBeVisible();
+  await expect(page.locator(".collapsed-rail-toggle")).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  // Hovering the compact rail expands the explorer, footer and all.
   await revealRail();
   await expect(settings()).toBeVisible();
   await settings().click();

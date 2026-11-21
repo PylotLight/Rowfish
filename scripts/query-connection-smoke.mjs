@@ -614,7 +614,7 @@ try {
         .getByRole("button", { name: "Reconnect Saved PostgreSQL" })
         .click();
       await expect(dialog()).toHaveCount(0);
-      await page.getByRole("button", { name: "Open explorer sidebar" }).click();
+      await page.locator(".sidebar-toggle").click();
       const card = page
         .locator(".db-connection-list .db-browser-server")
         .filter({ hasText: "Switchable PostgreSQL" });

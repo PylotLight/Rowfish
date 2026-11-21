@@ -26,32 +26,30 @@ const editor = () => page.locator(".cm-content");
 const ensureSidebar = async () => {
   const rail = page.locator(".db-rail");
   const workspace = page.locator(".db-workspace");
-  if ((await rail.getAttribute("aria-hidden")) !== "false") {
-    await page.locator(".rail-reveal-edge").hover();
-    await expect(rail).toHaveAttribute("aria-hidden", "false");
-  }
-  if (
-    !(await workspace.evaluate((element) =>
-      element.classList.contains("sidebar-docked"),
-    ))
-  )
-    await page.getByRole("button", { name: "Pin explorer sidebar" }).click();
+  const compactToggle = page.locator(".collapsed-rail-toggle");
+  if (await compactToggle.isVisible()) await compactToggle.click();
   await expect(workspace).toHaveClass(/sidebar-docked/);
-  await expect(rail).toHaveAttribute("aria-hidden", "false");
   await expect(rail).toBeVisible();
 };
 const inputQuery = async (query) => {
-  if ((await page.locator(".db-rail").getAttribute("aria-hidden")) === "false")
+  if (
+    !(await page
+      .locator(".db-workspace")
+      .evaluate((element) => element.classList.contains("sidebar-hidden")))
+  )
     await page.keyboard.press("Escape");
   await editor().click();
   await page.keyboard.press("Control+a");
   await page.keyboard.insertText(query);
 };
 const revealRail = async () => {
-  if ((await page.locator(".db-rail").getAttribute("aria-hidden")) === "true")
-    await page.locator(".rail-reveal-edge").hover();
-  if ((await page.locator(".db-rail").getAttribute("aria-hidden")) === "true")
-    await page.locator(".sidebar-toggle").click();
+  const workspace = page.locator(".db-workspace");
+  if (
+    await workspace.evaluate((element) =>
+      element.classList.contains("sidebar-hidden"),
+    )
+  )
+    await page.locator(".collapsed-rail-toggle").hover();
   await expect(page.locator(".db-rail")).toBeVisible();
 };
 const appearance = () =>
@@ -353,7 +351,11 @@ try {
     if (await collapse.isVisible()) await collapse.click();
     else await page.keyboard.press("Escape");
     await page.mouse.move(800, 300);
-    await expect(page.locator(".db-rail")).toBeHidden();
+    await expect(page.locator(".db-workspace")).toHaveClass(/sidebar-hidden/);
+    await expect(page.locator(".collapsed-rail-toggle")).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
     for (const target of [
       page.getByTestId("explain-query"),
       page.getByRole("button", { name: /Run query/ }),

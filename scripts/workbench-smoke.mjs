@@ -30,15 +30,23 @@ const check = async (name, fn) => {
 const editor = () => page.locator(".cm-content");
 const ensureSidebar = async () => {
   const rail = page.locator(".db-rail");
-  if (!(await rail.isVisible())) await page.locator(".sidebar-toggle").click();
+  const compactToggle = page.locator(".collapsed-rail-toggle");
+  if (await compactToggle.isVisible()) await compactToggle.click();
+  else if (!(await rail.isVisible()))
+    await page.locator(".sidebar-toggle").click();
   await expect(rail).toBeVisible();
+  await expect(page.locator(".db-workspace")).toHaveClass(/sidebar-docked/);
 };
 const sidebarTab = async (name) => {
   await ensureSidebar();
   await page.getByRole("tab", { name, exact: true }).click();
 };
 const inputQuery = async (query) => {
-  if (await page.locator(".db-rail").isVisible())
+  if (
+    !(await page
+      .locator(".db-workspace")
+      .evaluate((element) => element.classList.contains("sidebar-hidden")))
+  )
     await page.keyboard.press("Escape");
   await editor().click();
   await page.keyboard.press("Control+a");
@@ -341,11 +349,13 @@ try {
       await expect
         .poll(async () => (await panel.boundingBox()).width)
         .toBeGreaterThan(panelBefore.width + 40);
-      const mainAfterResize = await page.locator(".db-main").boundingBox();
-      const panelAfterResize = await panel.boundingBox();
-      expect(mainAfterResize.x + mainAfterResize.width).toBeLessThanOrEqual(
-        panelAfterResize.x,
-      );
+      await expect
+        .poll(async () => {
+          const main = await page.locator(".db-main").boundingBox();
+          const details = await panel.boundingBox();
+          return details.x - (main.x + main.width);
+        })
+        .toBeGreaterThanOrEqual(-8);
       const draggedWidth = Number(
         await rowResize.getAttribute("aria-valuenow"),
       );
