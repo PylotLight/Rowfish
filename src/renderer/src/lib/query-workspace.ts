@@ -1,4 +1,5 @@
 import {
+  isSqlCommentPosition,
   postgresStatementRanges,
   sqliteStatementRanges,
 } from "../../../shared/sql-statements";
@@ -301,6 +302,38 @@ export function downloadText(
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** Choose selected SQL, the complete draft, or the statement at the cursor. */
+export function getQueryToRun(
+  text: string,
+  selection: string,
+  cursor: number,
+  kind: QueryKind,
+  fallback: "all" | "statement" = "statement",
+): string {
+  const selected = selection.trim();
+  if (selected) {
+    if (kind === "mongodb") return selected;
+    const ranges =
+      kind === "sqlite"
+        ? sqliteStatementRanges(selection, false)
+        : postgresStatementRanges(selection, false);
+    return ranges.length ? selected : "";
+  }
+  if (kind === "mongodb") return text.trim() ? text : "";
+  if (fallback === "all") {
+    const ranges =
+      kind === "sqlite"
+        ? sqliteStatementRanges(text, false)
+        : postgresStatementRanges(text, false);
+    return ranges.length ? text : "";
+  }
+  return getSqlStatement(
+    text,
+    cursor,
+    kind === "sqlite" ? "sqlite" : "postgres",
+  );
+}
+
 /** Extract the complete statement surrounding a zero-based cursor, ignoring delimiters in quoted/commented text. */
 export function getSqlStatement(
   text: string,
@@ -308,6 +341,7 @@ export function getSqlStatement(
   kind: "postgres" | "sqlite" = "postgres",
 ): string {
   const position = Math.max(0, Math.min(text.length, cursor));
+  if (isSqlCommentPosition(text, position, kind)) return "";
   const ranges =
     kind === "sqlite"
       ? sqliteStatementRanges(text, false)

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   exportResultsCsv,
   exportResultsJson,
+  getQueryToRun,
   getSqlStatement,
   loadQueryWorkspace,
   makeQueryTab,
@@ -142,6 +143,43 @@ describe("SQL statement selection", () => {
   test("handles cursor bounds and trailing statements", () => {
     expect(getSqlStatement(" select 1; select 2  ", 999)).toBe("select 2");
     expect(getSqlStatement("select 1;", -10)).toBe("select 1");
+  });
+  test("does not run a neighboring statement when the caret is in a comment", () => {
+    const lineComment = "-- SELECT 0;\nSELECT 1;";
+    const blockComment = "/* SELECT 0; */ SELECT 1;";
+    expect(
+      getSqlStatement(lineComment, lineComment.indexOf("SELECT 0") + 3),
+    ).toBe("");
+    expect(
+      getSqlStatement(blockComment, blockComment.indexOf("SELECT 0") + 3),
+    ).toBe("");
+    expect(
+      getSqlStatement(
+        lineComment,
+        lineComment.indexOf("SELECT 0") + 3,
+        "sqlite",
+      ),
+    ).toBe("");
+  });
+  test("treats comment markers inside literals as text", () => {
+    const sql = "SELECT '-- not a comment;'; SELECT 2;";
+    expect(getSqlStatement(sql, sql.indexOf("not a comment"))).toBe(
+      "SELECT '-- not a comment;'",
+    );
+  });
+  test("prefers highlighted SQL and only runs the whole draft as an explicit fallback", () => {
+    const draft = "SELECT 1; SELECT 2;";
+    expect(getQueryToRun(draft, "SELECT 2;", 0, "postgres", "all")).toBe(
+      "SELECT 2;",
+    );
+    expect(getQueryToRun(draft, "", 3, "postgres", "all")).toBe(draft);
+    expect(getQueryToRun(draft, "", 3, "postgres", "statement")).toBe(
+      "SELECT 1",
+    );
+  });
+  test("skips a highlighted or full-draft SQL payload that contains only comments", () => {
+    expect(getQueryToRun("SELECT 1;", "-- SELECT 2;", 0, "postgres")).toBe("");
+    expect(getQueryToRun("-- SELECT 1;", "", 0, "postgres", "all")).toBe("");
   });
 });
 

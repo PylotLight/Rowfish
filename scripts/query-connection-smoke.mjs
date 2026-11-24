@@ -300,6 +300,35 @@ try {
       );
     },
   );
+  await check("Run query and F5 execute only highlighted SQL", async () => {
+    await clearCalls();
+    const first = "SELECT 1 AS selected;";
+    const second = "SELECT 2 AS skipped;";
+    await editor().click();
+    await page.keyboard.press("Control+A");
+    await page.keyboard.type(`${first} ${second}`);
+    await page.keyboard.press("Control+Home");
+    for (let index = 0; index < first.length; index += 1)
+      await page.keyboard.press("Shift+ArrowRight");
+    await run().click();
+    await expect
+      .poll(async () => (await calls()).filter((x) => x[0] === "run").length)
+      .toBe(1);
+    expect((await calls()).find((x) => x[0] === "run")[1].query).toBe(first);
+
+    await clearCalls();
+    await editor().click();
+    await page.keyboard.press("Control+Home");
+    for (let index = 0; index < first.length + 1; index += 1)
+      await page.keyboard.press("ArrowRight");
+    for (let index = 0; index < second.length; index += 1)
+      await page.keyboard.press("Shift+ArrowRight");
+    await page.keyboard.press("F5");
+    await expect
+      .poll(async () => (await calls()).filter((x) => x[0] === "run").length)
+      .toBe(1);
+    expect((await calls()).find((x) => x[0] === "run")[1].query).toBe(second);
+  });
   await check(
     "kind filtering works for offline Mongo labels and compatible reconnect retains Mongo kind",
     async () => {
