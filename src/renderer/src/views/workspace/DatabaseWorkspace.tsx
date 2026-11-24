@@ -80,6 +80,7 @@ import {
   exportResultsCsv,
   exportResultsJson,
   downloadText,
+  getQueryToRun,
   type SavedQuery,
 } from "../../lib/query-workspace";
 import {
@@ -937,14 +938,20 @@ export default function DatabaseWorkspace({
       );
     }
   }
+  function runDraftQuery(): void {
+    const kind = activeTab?.kind ?? activeConnection?.kind ?? "postgres";
+    void runQuery({
+      query: getQueryToRun(queryText, sqlSelection, 0, kind, "all"),
+    });
+  }
   const keyboardActionsRef = useRef({
-    runQuery,
+    runQuery: runDraftQuery,
     formatQuery,
     saveCurrentQuery,
     newTab,
   });
   keyboardActionsRef.current = {
-    runQuery,
+    runQuery: runDraftQuery,
     formatQuery,
     saveCurrentQuery,
     newTab,
@@ -2317,12 +2324,13 @@ export default function DatabaseWorkspace({
                   {runState === "idle" ? (
                     <button
                       className="db-run-button"
-                      onClick={() => void runQuery()}
+                      onClick={runDraftQuery}
                       disabled={
                         !queryText.trim() &&
                         (activeTab?.kind ?? activeConnection?.kind) !==
                           "mongodb"
                       }
+                      title="Run the highlighted query, or the full draft if nothing is selected"
                     >
                       <span>▶</span> Run query
                     </button>

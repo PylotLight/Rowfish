@@ -27,7 +27,7 @@ import {
   historyKeymap,
   indentWithTab,
 } from "@codemirror/commands";
-import { getSqlStatement } from "../lib/query-workspace";
+import { getQueryToRun } from "../lib/query-workspace";
 import {
   mongoCompletionAt,
   type MongoCompletionOptions,
@@ -179,8 +179,8 @@ export default function SqlEditor({
   const mongoOptions = useRef(mongo ?? EMPTY_MONGO);
   mongoOptions.current = mongo ?? EMPTY_MONGO;
   const view = useRef<EditorView | null>(null);
-  const latest = useRef({ onChange, onRun, onSelectionChange, disabled });
-  latest.current = { onChange, onRun, onSelectionChange, disabled };
+  const latest = useRef({ onChange, onRun, onSelectionChange, disabled, kind });
+  latest.current = { onChange, onRun, onSelectionChange, disabled, kind };
 
   useEffect(() => {
     if (!container.current) return;
@@ -199,12 +199,13 @@ export default function SqlEditor({
             .sliceDoc(selection.from, selection.to)
             .trim();
           latest.current.onRun(
-            selected ||
-              getSqlStatement(
-                editor.state.doc.toString(),
-                selection.head,
-                kind === "sqlite" ? "sqlite" : "postgres",
-              ),
+            getQueryToRun(
+              editor.state.doc.toString(),
+              selected,
+              selection.head,
+              latest.current.kind,
+              "statement",
+            ),
           );
           return true;
         },

@@ -113,6 +113,91 @@ export function postgresStatementRanges(
   return statements;
 }
 
+/** Return whether a cursor position is inside an SQL comment, not a string or identifier. */
+export function isSqlCommentPosition(
+  sql: string,
+  position: number,
+  kind: "postgres" | "sqlite",
+): boolean {
+  const cursor = Math.max(0, Math.min(sql.length, position));
+  let index = 0;
+  while (index < sql.length) {
+    if (index > cursor) return false;
+    if (sql.startsWith("--", index)) {
+      const newline = sql.indexOf("\n", index + 2);
+      const end = newline < 0 ? sql.length : newline;
+      if (cursor >= index && cursor < end) return true;
+      index = end;
+      continue;
+    }
+    if (sql.startsWith("/*", index)) {
+      const start = index;
+      let depth = 1;
+      index += 2;
+      while (index < sql.length && depth > 0) {
+        if (kind === "postgres" && sql.startsWith("/*", index)) {
+          depth += 1;
+          index += 2;
+        } else if (sql.startsWith("*/", index)) {
+          depth -= 1;
+          index += 2;
+        } else index += 1;
+      }
+      if (cursor >= start && cursor < index) return true;
+      continue;
+    }
+
+    const char = sql[index]!;
+    if (
+      kind === "postgres" &&
+      char === "$" &&
+      (index === 0 || !/[\w$]/.test(sql[index - 1]!))
+    ) {
+      const match = /^\$([A-Za-z_][A-Za-z0-9_]*|)\$/.exec(sql.slice(index));
+      if (match) {
+        const start = index;
+        const close = sql.indexOf(match[0], index + match[0].length);
+        index = close < 0 ? sql.length : close + match[0].length;
+        if (cursor >= start && cursor < index) return false;
+        continue;
+      }
+    }
+
+    const isQuote =
+      char === "'" ||
+      char === '"' ||
+      (kind === "sqlite" && (char === "`" || char === "["));
+    if (isQuote) {
+      const start = index;
+      const closing = char === "[" ? "]" : char;
+      const prior = sql[index - 1];
+      const escapeString =
+        kind === "postgres" &&
+        char === "'" &&
+        (prior === "e" || prior === "E") &&
+        (index < 2 || !/[\w$]/.test(sql[index - 2]!));
+      index += 1;
+      while (index < sql.length) {
+        if (escapeString && sql[index] === "\\") {
+          index += Math.min(2, sql.length - index);
+          continue;
+        }
+        if (sql[index] === closing) {
+          if (char !== "[" && sql[index + 1] === closing) index += 2;
+          else {
+            index += 1;
+            break;
+          }
+        } else index += 1;
+      }
+      if (cursor >= start && cursor < index) return false;
+      continue;
+    }
+    index += 1;
+  }
+  return false;
+}
+
 export function splitPostgresStatements(sql: string): string[] {
   return postgresStatementRanges(sql).map((range) =>
     sql.slice(range.start, range.end).trim(),
