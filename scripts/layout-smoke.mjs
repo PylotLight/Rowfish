@@ -134,6 +134,13 @@ try {
         .getByRole("button", { name: "Collapse explorer sidebar" })
         .click();
       await expectCompactRail();
+      await page.locator(".db-main").evaluate(async (element) => {
+        await Promise.all(
+          element
+            .getAnimations()
+            .map((animation) => animation.finished.catch(() => undefined)),
+        );
+      });
       const editorBefore = await page.locator(".db-editor-card").boundingBox();
       const resultsBefore = await page
         .locator(".db-results-card")
