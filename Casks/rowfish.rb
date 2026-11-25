@@ -2,7 +2,7 @@
 # Edit Casks/rowfish.rb.tmpl instead — this file is rendered from it.
 cask "rowfish" do
   version "0.2.0-beta.5"
-  sha256 "a595e45d32b16e7c61740ebe4a15bbdc21ec0ea319dfbd93f8224c140a978736"
+  sha256 "0358dcb02e0d6f4eb5f1108872e56ed8e9f7a04533d233580de4e83d6f80cc3a"
 
   url "https://github.com/PylotLight/Rowfish/releases/download/v#{version}/Rowfish-#{version}-mac-arm64.zip"
   name "Rowfish"
